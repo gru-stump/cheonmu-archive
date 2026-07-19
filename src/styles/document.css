@@ -578,6 +578,43 @@
   color: var(--ink-muted);
 }
 
+.route-loading {
+  width: min(100%, 24rem);
+  margin: min(30vh, 12rem) auto;
+  padding: var(--space-lg);
+  color: var(--ink-muted);
+  border-block: 0.2rem double var(--rule);
+  font-family: var(--font-label);
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-align: center;
+}
+
+@media (max-width: 64rem) {
+  .home-page {
+    display: flex;
+    flex-direction: column;
+    min-height: auto;
+  }
+
+  .home-copy {
+    padding-block: var(--space-md) 0;
+  }
+
+  .home-portraits {
+    min-height: 29rem;
+  }
+
+  .home-portrait {
+    width: 72%;
+  }
+
+  .home-file-note {
+    gap: var(--space-md);
+  }
+}
+
 @media (max-width: 47.999rem) {
   .archive-shell {
     display: block;
@@ -623,28 +660,6 @@
     background:
       repeating-linear-gradient(0deg, transparent, transparent 2rem, rgb(98 91 80 / 7%) 2.06rem),
       var(--paper-raised);
-  }
-
-  .home-page {
-    display: flex;
-    flex-direction: column;
-    min-height: auto;
-  }
-
-  .home-copy {
-    padding-block: var(--space-md) 0;
-  }
-
-  .home-portraits {
-    min-height: 29rem;
-  }
-
-  .home-portrait {
-    width: 72%;
-  }
-
-  .home-file-note {
-    gap: var(--space-md);
   }
 
   .timeline-header {

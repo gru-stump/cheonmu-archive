@@ -15,7 +15,7 @@ const filters: ReadonlyArray<{ value: TimelineStatus; label: string }> = [
 
 export function TimelineFilter({ selected, onSelect }: TimelineFilterProps): JSX.Element {
   return (
-    <div className="timeline-filter" aria-label="기록 상태 필터">
+    <div className="timeline-filter" role="group" aria-label="기록 상태 필터">
       {filters.map((filter) => (
         <button
           key={filter.value}

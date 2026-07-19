@@ -68,6 +68,7 @@ describe('TimelinePage', () => {
   it('renders records in stage order and links each card to its detail', () => {
     renderTimeline();
 
+    expect(screen.getByRole('group', { name: '기록 상태 필터' })).toBeInTheDocument();
     const cards = screen.getAllByTestId('record-card');
     expect(cards).toHaveLength(3);
     expect(within(cards[0]).getByRole('heading', { name: '첫 조우' })).toBeInTheDocument();
