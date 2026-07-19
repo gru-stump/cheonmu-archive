@@ -38,3 +38,18 @@ Status: DONE
 - Confirmed no push, merge, or Pages enablement was performed.
 
 Concerns: None.
+
+## Post-review housekeeping
+
+Status: DONE
+
+- Preserved the user-refreshed LD artwork exactly as supplied, without editing or re-encoding:
+  - `public/images/Cheonryeong_LD.png`: 908×2400, SHA-256 `5658E6CBB53B3147955E44655F3E7B1B7278AF360C2F94B22EF3C0795AA8F8B4`.
+  - `public/images/Muyeong_LD.png`: 881×2400, SHA-256 `349D13F74EEE368103E925D82ABF37715472DD334DB45712AD4C9FAD4E6858D7`.
+- Updated `actions/upload-pages-artifact` from `v3` to `v4`; retained `actions/configure-pages@v5` and `actions/deploy-pages@v4`.
+- `npm run validate`: passed (`Content validation passed.`).
+- `npm run test:run -- src/lib/publicAssetUrl.test.ts src/features/archive/GalleryLightbox.test.tsx`: 2 files passed, 8 tests passed.
+- `npm run build`: TypeScript and Vite production build passed; 387 modules transformed.
+- `npm run e2e`: 3 Playwright tests passed, including the home and gallery loaded-image `naturalWidth > 0` assertions.
+
+Post-review concerns: None.
