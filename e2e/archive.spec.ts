@@ -10,6 +10,33 @@ test('visitor sees public artwork on the archive home page', async ({ page }) =>
   await expect.poll(() => artwork.evaluate((image: HTMLImageElement) => image.naturalWidth)).toBeGreaterThan(0);
 });
 
+for (const viewport of [
+  { width: 1440, height: 1000 },
+  { width: 768, height: 1024 },
+  { width: 390, height: 844 },
+]) {
+  test(`Muyeong home caption stays inside the portrait panel at ${viewport.width}px`, async ({ page }) => {
+    await page.setViewportSize(viewport);
+    await page.goto('./');
+
+    const portraits = page.locator('.home-portraits');
+    const caption = page.locator('.home-portrait--muyeong figcaption');
+    await expect(portraits).toBeVisible();
+    await expect(caption).toBeVisible();
+    const [portraitsBounds, captionBounds] = await Promise.all([
+      portraits.boundingBox(),
+      caption.boundingBox(),
+    ]);
+
+    expect(portraitsBounds).not.toBeNull();
+    expect(captionBounds).not.toBeNull();
+    expect(captionBounds!.x).toBeGreaterThanOrEqual(portraitsBounds!.x);
+    expect(captionBounds!.x + captionBounds!.width).toBeLessThanOrEqual(portraitsBounds!.x + portraitsBounds!.width);
+    expect(captionBounds!.y).toBeGreaterThanOrEqual(portraitsBounds!.y);
+    expect(captionBounds!.y + captionBounds!.height).toBeLessThanOrEqual(portraitsBounds!.y + portraitsBounds!.height);
+  });
+}
+
 test('visitor reads a record and opens its cinematic scene', async ({ page }) => {
   await page.goto('./#/records');
   await page.getByRole('link', { name: '첫 조우', exact: true }).click();

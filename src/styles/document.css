@@ -259,7 +259,7 @@
 }
 
 .home-portrait--cheonryeong figcaption { left: 5%; }
-.home-portrait--muyeong figcaption { right: 5%; }
+.home-portrait--muyeong figcaption { right: 13%; }
 
 .home-file-note {
   grid-column: 1 / -1;
