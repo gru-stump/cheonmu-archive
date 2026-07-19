@@ -2,6 +2,7 @@ import { useState, type JSX } from 'react';
 import { Link } from 'react-router-dom';
 import { loadAllContent } from '../../content/load';
 import type { GalleryItem } from '../../content/schema';
+import { resolvePublicAssetUrl } from '../../lib/publicAssetUrl';
 import { GalleryLightbox } from './GalleryLightbox';
 
 type GalleryPageProps = {
@@ -32,7 +33,7 @@ export function GalleryPage({ items = loadAllContent().gallery }: GalleryPagePro
               aria-label={`${item.title} 크게 보기`}
               onClick={() => setSelectedIndex(index)}
             >
-              <span className="gallery-card__image"><img src={item.image} alt={item.alt} /></span>
+              <span className="gallery-card__image"><img src={resolvePublicAssetUrl(item.image)} alt={item.alt} /></span>
               <span className="gallery-card__caption">
                 <strong>{item.title}</strong>
                 <small>작가 {item.creator}</small>

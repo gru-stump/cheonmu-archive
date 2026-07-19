@@ -4,6 +4,7 @@ import { Link, useParams } from 'react-router-dom';
 import { StatusStamp } from '../../components/StatusStamp';
 import { loadAllContent } from '../../content/load';
 import type { ArchiveRecord } from '../../content/schema';
+import { resolvePublicAssetUrl } from '../../lib/publicAssetUrl';
 import { CinematicScene, type CinematicSceneItem } from './CinematicScene';
 
 type RecordDetailPageProps = {
@@ -81,8 +82,8 @@ export function RecordDetailPage({ records = loadAllContent().records }: RecordD
         <div className="markdown-document"><ReactMarkdown>{record.body}</ReactMarkdown></div>
         <aside className="record-detail__aside" aria-label="기록 정보">
           <div className="detail-portraits" aria-hidden="true">
-            <img src="/images/Cheonryeong_head.png" alt="" />
-            <img src="/images/Muyeong_head.png" alt="" />
+            <img src={resolvePublicAssetUrl('/images/Cheonryeong_head.png')} alt="" />
+            <img src={resolvePublicAssetUrl('/images/Muyeong_head.png')} alt="" />
           </div>
           <dl>
             <dt>분류</dt><dd>{record.cinematic ? '주요 장면' : '관계 기록'}</dd>

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useId, useRef, useState, type JSX, type KeyboardEvent } from 'react';
+import { resolvePublicAssetUrl } from '../../lib/publicAssetUrl';
 
 export type CinematicSceneItem = {
   id: string;
@@ -93,7 +94,7 @@ export function CinematicScene({ title, scenes, onClose }: CinematicSceneProps):
         {scene?.backdrop && (
           <div
             className="cinematic-scene__backdrop"
-            style={{ backgroundImage: `url(${JSON.stringify(scene.backdrop)})` }}
+            style={{ backgroundImage: `url(${JSON.stringify(resolvePublicAssetUrl(scene.backdrop))})` }}
             aria-hidden="true"
           />
         )}

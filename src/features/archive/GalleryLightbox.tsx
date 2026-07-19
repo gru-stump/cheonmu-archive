@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useId, useRef, useState, type JSX, type KeyboardEvent } from 'react';
 import type { GalleryItem } from '../../content/schema';
+import { resolvePublicAssetUrl } from '../../lib/publicAssetUrl';
 
 type GalleryLightboxProps = {
   items: readonly GalleryItem[];
@@ -86,7 +87,7 @@ export function GalleryLightbox({ items, initialIndex, onClose }: GalleryLightbo
         </header>
 
         <div className="gallery-lightbox__image-wrap">
-          <img src={item.image} alt={item.alt} />
+          <img src={resolvePublicAssetUrl(item.image)} alt={item.alt} />
         </div>
 
         <footer className="gallery-lightbox__footer">

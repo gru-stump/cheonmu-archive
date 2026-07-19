@@ -1,6 +1,7 @@
 import type { JSX } from 'react';
 import { Link } from 'react-router-dom';
 import { loadAllContent } from '../../content/load';
+import { resolvePublicAssetUrl } from '../../lib/publicAssetUrl';
 
 export function HomePage(): JSX.Element {
   const content = loadAllContent();
@@ -25,13 +26,13 @@ export function HomePage(): JSX.Element {
       <div className="home-portraits" aria-label="천령과 무영">
         {cheonryeongArt && (
           <figure className="home-portrait home-portrait--cheonryeong">
-            <img src={cheonryeongArt.image} alt={cheonryeongArt.alt} />
+            <img src={resolvePublicAssetUrl(cheonryeongArt.image)} alt={cheonryeongArt.alt} />
             <figcaption><b>천령</b><span>의사 · 연구원</span></figcaption>
           </figure>
         )}
         {muyeongArt && (
           <figure className="home-portrait home-portrait--muyeong">
-            <img src={muyeongArt.image} alt={muyeongArt.alt} />
+            <img src={resolvePublicAssetUrl(muyeongArt.image)} alt={muyeongArt.alt} />
             <figcaption><b>무영</b><span>현장 지휘관</span></figcaption>
           </figure>
         )}
