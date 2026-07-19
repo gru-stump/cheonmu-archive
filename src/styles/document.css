@@ -488,6 +488,173 @@
   text-align: center;
 }
 
+.cinematic-entry {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-md);
+  margin: calc(var(--space-lg) * -0.35) 0 var(--space-xl);
+  padding: var(--space-md);
+  color: var(--paper-raised);
+  background: var(--muyeong-black);
+  border: 1px solid rgb(243 236 218 / 24%);
+  border-left: 0.35rem solid var(--muyeong-red);
+}
+
+.cinematic-entry p {
+  margin: 0;
+  color: var(--paper-shadow);
+  font-family: var(--font-label);
+  font-size: 0.75rem;
+  letter-spacing: 0.06em;
+}
+
+.cinematic-entry button,
+.cinematic-scene button {
+  min-height: 2.75rem;
+  padding: 0.55rem 0.9rem;
+  color: var(--paper-raised);
+  background: transparent;
+  border: 1px solid rgb(243 236 218 / 55%);
+  cursor: pointer;
+  font-family: var(--font-label);
+  font-size: 0.76rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  transition: color 160ms ease, background-color 160ms ease, border-color 160ms ease;
+}
+
+.cinematic-entry button:hover,
+.cinematic-scene button:hover:not(:disabled) {
+  color: var(--muyeong-black);
+  background: var(--paper-raised);
+  border-color: var(--paper-raised);
+}
+
+.cinematic-scene {
+  position: fixed;
+  z-index: 100;
+  inset: 0;
+  overflow: auto;
+  color: var(--paper-raised);
+  background: rgb(10 9 9 / 96%);
+}
+
+.cinematic-scene__dialog {
+  position: relative;
+  isolation: isolate;
+  display: grid;
+  grid-template-rows: auto minmax(18rem, 1fr) auto;
+  width: min(100%, 76rem);
+  min-height: 100dvh;
+  margin-inline: auto;
+  padding: clamp(var(--space-md), 4vw, var(--space-xl));
+  overflow: hidden;
+  background:
+    linear-gradient(115deg, rgb(112 45 43 / 15%), transparent 42%),
+    var(--muyeong-black);
+}
+
+.cinematic-scene__backdrop {
+  position: absolute;
+  z-index: -2;
+  inset: 0;
+  background-position: center;
+  background-size: cover;
+  filter: grayscale(1) contrast(1.12);
+  opacity: 0.24;
+}
+
+.cinematic-scene__dialog::after {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  background: linear-gradient(180deg, rgb(29 27 26 / 52%), rgb(29 27 26 / 92%));
+  content: '';
+  pointer-events: none;
+}
+
+.cinematic-scene__header,
+.cinematic-scene__controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-md);
+}
+
+.cinematic-scene__header {
+  padding-bottom: var(--space-md);
+  border-bottom: 1px solid rgb(243 236 218 / 22%);
+}
+
+.cinematic-scene__kicker {
+  margin: 0 0 var(--space-xs);
+  color: #c58986;
+  font-family: var(--font-label);
+  font-size: 0.66rem;
+  font-weight: 800;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+
+.cinematic-scene__header h2 {
+  margin: 0;
+  font-size: clamp(1.35rem, 4vw, 2.25rem);
+  font-weight: 500;
+}
+
+.cinematic-scene__content {
+  display: grid;
+  place-items: center;
+  width: min(100%, 54rem);
+  margin-inline: auto;
+  padding: var(--space-xl) var(--space-md);
+  text-align: center;
+}
+
+.cinematic-scene__frame {
+  width: 100%;
+}
+
+.cinematic-scene__speaker {
+  margin: 0 0 var(--space-sm);
+  color: #c58986;
+  font-family: var(--font-label);
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+}
+
+.cinematic-scene__text {
+  margin: 0;
+  font-size: clamp(1.6rem, 5vw, 3.75rem);
+  line-height: 1.5;
+  text-wrap: balance;
+}
+
+.cinematic-scene__empty {
+  color: var(--paper-shadow);
+}
+
+.cinematic-scene__controls {
+  padding-top: var(--space-md);
+  border-top: 1px solid rgb(243 236 218 / 22%);
+}
+
+.cinematic-scene__controls p {
+  margin: 0;
+  color: var(--paper-shadow);
+  font-family: var(--font-label);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+}
+
+.cinematic-scene button:disabled {
+  cursor: not-allowed;
+  opacity: 0.38;
+}
+
 .record-detail__layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 14rem;
@@ -720,10 +887,34 @@
     flex-direction: column;
   }
 
+  .cinematic-entry {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .cinematic-scene__dialog {
+    grid-template-rows: auto minmax(12rem, 1fr) auto;
+  }
+
+  .cinematic-scene__header {
+    align-items: flex-start;
+  }
+
+  .cinematic-scene__controls button {
+    padding-inline: 0.6rem;
+  }
+
   .record-detail__aside { display: block; }
   .detail-portraits {
     margin: calc(var(--space-md) * -1) calc(var(--space-md) * -1) var(--space-md);
     border-right: 0;
     border-bottom: 1px solid var(--rule);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cinematic-entry button,
+  .cinematic-scene button {
+    transition: none;
   }
 }

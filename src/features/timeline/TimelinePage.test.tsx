@@ -134,6 +134,35 @@ describe('RecordDetailPage', () => {
       '/records',
     );
   });
+
+  it('opens a sourced scene reconstruction for cinematic records only', async () => {
+    const user = userEvent.setup();
+    const { unmount } = render(
+      <MemoryRouter initialEntries={['/records/first-contact']}>
+        <Routes>
+          <Route path="records/:recordId" element={<RecordDetailPage records={records} />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    const openButton = screen.getByRole('button', { name: '장면 재구성 열기' });
+    await user.click(openButton);
+
+    const dialog = screen.getByRole('dialog', { name: '첫 조우 장면 재구성' });
+    expect(dialog).toBeVisible();
+    expect(within(dialog).getByText('정체불명의 의사와 중상 환자.')).toBeVisible();
+
+    unmount();
+    render(
+      <MemoryRouter initialEntries={['/records/second-return']}>
+        <Routes>
+          <Route path="records/:recordId" element={<RecordDetailPage records={records} />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(screen.queryByRole('button', { name: '장면 재구성 열기' })).not.toBeInTheDocument();
+  });
 });
 
 describe('HomePage', () => {

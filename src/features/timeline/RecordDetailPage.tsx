@@ -1,16 +1,33 @@
-import type { JSX } from 'react';
+import { useState, type JSX } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { Link, useParams } from 'react-router-dom';
 import { StatusStamp } from '../../components/StatusStamp';
 import { loadAllContent } from '../../content/load';
 import type { ArchiveRecord } from '../../content/schema';
+import { CinematicScene, type CinematicSceneItem } from './CinematicScene';
 
 type RecordDetailPageProps = {
   records?: readonly ArchiveRecord[];
 };
 
+const cinematicStages = new Set([1, 3, 5, 7]);
+
+function scenesFromRecord(record: ArchiveRecord): CinematicSceneItem[] {
+  return record.body
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line, index) => ({
+      id: `${record.id}-scene-${index + 1}`,
+      text: line
+        .replace(/^>\s?/, '')
+        .replace(/^\*\*(.+)\*\*$/, '$1'),
+    }));
+}
+
 export function RecordDetailPage({ records = loadAllContent().records }: RecordDetailPageProps): JSX.Element {
   const { recordId } = useParams();
+  const [isCinematicOpen, setIsCinematicOpen] = useState(false);
   const record = records.find((item) => item.id === recordId);
 
   if (!record) {
@@ -27,6 +44,10 @@ export function RecordDetailPage({ records = loadAllContent().records }: RecordD
   const relatedRecords = record.related
     .map((id) => records.find((item) => item.id === id))
     .filter((item): item is ArchiveRecord => Boolean(item));
+  const hasCinematicScene = record.cinematic
+    && record.status === 'confirmed'
+    && cinematicStages.has(record.stage);
+  const scenes = hasCinematicScene ? scenesFromRecord(record) : [];
 
   return (
     <article className="record-detail">
@@ -40,6 +61,15 @@ export function RecordDetailPage({ records = loadAllContent().records }: RecordD
       </header>
 
       <blockquote className="record-detail__quote">“{record.quote}”</blockquote>
+
+      {hasCinematicScene && (
+        <div className="cinematic-entry">
+          <p>이 기록의 확정된 문장을 장면 순서대로 열람합니다.</p>
+          <button type="button" onClick={() => setIsCinematicOpen(true)}>
+            장면 재구성 열기
+          </button>
+        </div>
+      )}
 
       <div className="record-detail__layout">
         <div className="markdown-document"><ReactMarkdown>{record.body}</ReactMarkdown></div>
@@ -65,6 +95,14 @@ export function RecordDetailPage({ records = loadAllContent().records }: RecordD
             ))}
           </ul>
         </nav>
+      )}
+
+      {isCinematicOpen && (
+        <CinematicScene
+          title={record.title}
+          scenes={scenes}
+          onClose={() => setIsCinematicOpen(false)}
+        />
       )}
     </article>
   );
