@@ -1,11 +1,13 @@
 // @vitest-environment node
 
+import { once } from 'node:events';
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
+import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import request from 'supertest';
 import { afterEach, describe, expect, it } from 'vitest';
-import { createEditorServer } from './server';
+import { createEditorServer, EDITOR_HOST, EDITOR_PORT, startEditorServer } from './server';
 
 const temporaryRoots: string[] = [];
 
@@ -23,6 +25,23 @@ afterEach(async () => {
 });
 
 describe('editor content API', () => {
+  it('binds startup to the configured loopback host and port', async () => {
+    const rootDir = await makeRoot();
+    const server = startEditorServer({ rootDir });
+
+    try {
+      await once(server, 'listening');
+      const address = server.address() as AddressInfo;
+      expect(address.address).toBe(EDITOR_HOST);
+      expect(address.port).toBe(EDITOR_PORT);
+      expect(address.address).toBe('127.0.0.1');
+    } finally {
+      await new Promise<void>((resolveClose, rejectClose) => {
+        server.close((error) => error ? rejectClose(error) : resolveClose());
+      });
+    }
+  });
+
   it('lists entries from an allowed content kind', async () => {
     const rootDir = await makeRoot();
     await writeFile(join(rootDir, 'src', 'content', 'documents', 'settings.md'), 'settings', 'utf8');
