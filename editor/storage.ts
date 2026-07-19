@@ -178,10 +178,21 @@ export function createEditorStorage({ rootDir, now = () => new Date() }: EditorS
       .filter((id) => contentIdPattern.test(id))
       .sort((left, right) => left.localeCompare(right));
 
-    return Promise.all(ids.map(async (id) => ({
-      id,
-      source: await readFile(await existingEntryPath(directory, id), 'utf8'),
-    })));
+    const entries = await Promise.all(ids.map(async (id) => {
+      try {
+        return {
+          id,
+          source: await readFile(await existingEntryPath(directory, id), 'utf8'),
+        };
+      } catch (error) {
+        if (error instanceof EditorStorageError && error.code === 'INVALID_PATH') {
+          return undefined;
+        }
+        throw error;
+      }
+    }));
+
+    return entries.filter((entry): entry is { id: string; source: string } => entry !== undefined);
   }
 
   async function readEntry(kind: string, id: string): Promise<string> {

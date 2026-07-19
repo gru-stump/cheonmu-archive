@@ -59,6 +59,36 @@ describe('editor storage safety', () => {
     ]);
   });
 
+  it('lists regular Markdown while omitting a reparse-point entry', async (context) => {
+    const rootDir = await makeRoot();
+    const recordsDirectory = join(rootDir, 'src', 'content', 'records');
+    await writeFile(join(recordsDirectory, 'safe.md'), 'safe source', 'utf8');
+    const externalDirectory = await mkdtemp(join(tmpdir(), 'cheonmu-editor-list-junction-'));
+    temporaryRoots.push(externalDirectory);
+    try {
+      await symlink(
+        externalDirectory,
+        join(recordsDirectory, 'unsafe.md'),
+        process.platform === 'win32' ? 'junction' : 'dir',
+      );
+    } catch (error) {
+      if (
+        typeof error === 'object'
+        && error !== null
+        && 'code' in error
+        && ['EPERM', 'EACCES', 'UNKNOWN'].includes(String(error.code))
+      ) {
+        context.skip(`Reparse links are not permitted on this platform: ${String(error.code)}`);
+      }
+      throw error;
+    }
+    const storage = createEditorStorage({ rootDir });
+
+    await expect(storage.listEntries('records')).resolves.toEqual([
+      { id: 'safe', source: 'safe source' },
+    ]);
+  });
+
   it('rejects traversal outside the content root', async () => {
     const rootDir = await makeRoot();
     const storage = createEditorStorage({ rootDir });
