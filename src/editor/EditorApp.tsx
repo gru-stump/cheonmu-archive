@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type JSX } from 'react';
+import { useEffect, useMemo, useRef, useState, type JSX } from 'react';
 import { parse as parseYaml, stringify } from 'yaml';
 import { ZodError, type ZodType } from 'zod';
 import { parseMarkdown } from '../content/frontmatter';
@@ -72,6 +72,8 @@ export function EditorApp({ api = editorApi }: { api?: EditorApiContract }): JSX
   const [isNew, setIsNew] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [message, setMessage] = useState('');
+  const [pending, setPending] = useState<'save' | 'delete' | null>(null);
+  const pendingRef = useRef(false);
 
   useEffect(() => {
     void Promise.all(kinds.map(async (entryKind) => [entryKind, await api.list(entryKind)] as const))
@@ -94,6 +96,7 @@ export function EditorApp({ api = editorApi }: { api?: EditorApiContract }): JSX
   const action: EditorAction = deleting ? '삭제 예정' : isNew ? '생성' : draft?.dirty ? '수정' : '변경 없음';
 
   function transition(next: () => void) {
+    if (pendingRef.current) return;
     if (hasUnsavedChanges && !window.confirm('저장하지 않은 변경 사항을 버리시겠습니까?')) return;
     next();
   }
@@ -123,7 +126,7 @@ export function EditorApp({ api = editorApi }: { api?: EditorApiContract }): JSX
   }
 
   function update(dataUpdate: Partial<DraftData>, body?: string) {
-    if (!draft) return;
+    if (!draft || pendingRef.current) return;
     try {
       const current = previewSource(draft.source);
       if (!current) throw new Error('Markdown frontmatter를 읽을 수 없습니다.');
@@ -136,7 +139,10 @@ export function EditorApp({ api = editorApi }: { api?: EditorApiContract }): JSX
   }
 
   async function save() {
-    if (!draft || (!deleting && !draft.validation.valid)) return;
+    if (pendingRef.current || !draft || (!deleting && !draft.validation.valid)) return;
+    const operation = deleting ? 'delete' : 'save';
+    pendingRef.current = true;
+    setPending(operation);
     try {
       if (deleting) {
         await api.remove(draft.kind, draft.id);
@@ -160,6 +166,9 @@ export function EditorApp({ api = editorApi }: { api?: EditorApiContract }): JSX
       const fields = fieldErrors(error);
       if (fields) setDraft((current) => current ? { ...current, validation: { valid: false, fields } } : current);
       setMessage(error instanceof Error ? error.message : '저장하지 못했습니다.');
+    } finally {
+      pendingRef.current = false;
+      setPending(null);
     }
   }
 
@@ -176,19 +185,20 @@ export function EditorApp({ api = editorApi }: { api?: EditorApiContract }): JSX
 
   return <main>
     <header><h1>천무 로컬 편집기</h1><p>저장 전 미리보기와 스키마 검증을 확인하세요.</p></header>
-    <nav aria-label="콘텐츠 종류">{kinds.map((entryKind) => <button key={entryKind} type="button" aria-pressed={kind === entryKind} onClick={() => changeTab(entryKind)}>{labels[entryKind].tab}</button>)}</nav>
+    <nav aria-label="콘텐츠 종류">{kinds.map((entryKind) => <button key={entryKind} type="button" disabled={pending !== null} aria-pressed={kind === entryKind} onClick={() => changeTab(entryKind)}>{labels[entryKind].tab}</button>)}</nav>
     <section aria-label="콘텐츠 목록">
-      <label>검색<input value={query} onChange={(event) => setQuery(event.target.value)} /></label>
-      <button type="button" onClick={() => create(kind)}>{labels[kind].create}</button>
-      <ul>{visibleEntries.map((entry) => <li key={entry.id}><button type="button" onClick={() => select(kind, entry)}>{titleFrom(kind, entry.source)} 편집</button></li>)}</ul>
+      <label>검색<input disabled={pending !== null} value={query} onChange={(event) => setQuery(event.target.value)} /></label>
+      <button type="button" disabled={pending !== null} onClick={() => create(kind)}>{labels[kind].create}</button>
+      <ul>{visibleEntries.map((entry) => <li key={entry.id}><button type="button" disabled={pending !== null} onClick={() => select(kind, entry)}>{titleFrom(kind, entry.source)} 편집</button></li>)}</ul>
     </section>
     {draft && preview && <section aria-label="편집 초안">
       {hasUnsavedChanges && <p role="status">저장하지 않은 변경 사항이 있습니다.</p>}
-      {draft.kind === 'records' && <RecordForm value={preview.data as RecordMeta} body={preview.body} errors={draft.validation.fields} recordIds={recordIds} idEditable={isNew} onChange={update} onBodyChange={(body) => update({}, body)} />}
-      {draft.kind === 'profiles' && <ProfileForm value={preview.data as ProfileMeta} body={preview.body} errors={draft.validation.fields} idEditable={isNew} onChange={update} onBodyChange={(body) => update({}, body)} />}
-      {draft.kind === 'documents' && <DocumentForm value={preview.data as DocumentMeta} body={preview.body} errors={draft.validation.fields} idEditable={isNew} onChange={update} onBodyChange={(body) => update({}, body)} />}
-      {!isNew && <button type="button" onClick={() => setDeleting((value) => !value)}>{deleting ? '삭제 취소' : '삭제 예정으로 표시'}</button>}
-      <button type="button" disabled={deleting ? false : !draft.validation.valid} onClick={() => void save()}>{deleting ? '삭제 확인' : '저장'}</button>
+      {pending && <p role="status" aria-live="polite">{pending === 'delete' ? '삭제 중입니다.' : '저장 중입니다.'}</p>}
+      {draft.kind === 'records' && <RecordForm value={preview.data as RecordMeta} body={preview.body} errors={draft.validation.fields} recordIds={recordIds} idEditable={isNew} disabled={pending !== null} onChange={update} onBodyChange={(body) => update({}, body)} />}
+      {draft.kind === 'profiles' && <ProfileForm value={preview.data as ProfileMeta} body={preview.body} errors={draft.validation.fields} idEditable={isNew} disabled={pending !== null} onChange={update} onBodyChange={(body) => update({}, body)} />}
+      {draft.kind === 'documents' && <DocumentForm value={preview.data as DocumentMeta} body={preview.body} errors={draft.validation.fields} idEditable={isNew} disabled={pending !== null} onChange={update} onBodyChange={(body) => update({}, body)} />}
+      {!isNew && <button type="button" disabled={pending !== null} onClick={() => setDeleting((value) => !value)}>{deleting ? '삭제 취소' : '삭제 예정으로 표시'}</button>}
+      <button type="button" disabled={pending !== null || (deleting ? false : !draft.validation.valid)} onClick={() => void save()}>{deleting ? '삭제 확인' : '저장'}</button>
       <PreviewPane kind={draft.kind} data={preview.data} body={preview.body} path={`src/content/${draft.kind}/${draft.id}.md`} action={action} />
     </section>}
     {message && <p role="status">{message}</p>}

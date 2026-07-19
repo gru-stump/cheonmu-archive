@@ -130,6 +130,7 @@ describe('RecordDetailPage', () => {
     );
 
     expect(screen.getByRole('heading', { name: '첫 조우' })).toBeInTheDocument();
+    expect(screen.getByTestId('record-content-display')).toBeVisible();
     expect(screen.getByText('정체불명의 의사와 중상 환자.')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: '두 번째 귀환' })).toHaveAttribute(
       'href',

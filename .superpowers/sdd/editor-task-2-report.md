@@ -96,3 +96,51 @@ The first sandboxed invocation could not resolve the Windows workspace path (`EP
 - All Critical, Important, and Minor findings supplied for the review fix are covered by focused regressions or direct HTTP/build boundary checks.
 - Public record/profile/document page components are route-bound and unsuitable for direct composition in a form preview; the preview reuses their stable public primitives and class structures instead.
 - No blocking concerns remain.
+
+---
+
+## Second review follow-up: async mutation safety and literal display reuse
+
+### Root causes
+
+- `save()` awaited API mutations without a pending guard. During the await, form, list, tab, create, save, and delete controls remained active; a late response then unconditionally replaced the current draft and cache. The save button also had no synchronous duplicate-submission guard.
+- `PreviewPane` duplicated record/profile/document display markup instead of consuming the same components as the public detail pages.
+
+### RED evidence
+
+Added delayed-promise API regressions for save followed by attempted editing/navigation/duplicate submission and delete followed by attempted navigation. Added integration assertions requiring both public detail pages and editor preview to render the same record/profile/document display components.
+
+Command:
+
+`npm run test:run -- src/editor/EditorApp.test.tsx src/features/timeline/TimelinePage.test.tsx src/features/archive/ArchivePage.test.tsx`
+
+Result: exit 1; 3 test files failed, 6 tests failed and 26 passed. The two delayed mutation tests could not find accessible pending progress or disabled navigation, and four public/editor assertions could not find the shared display component markers.
+
+### Implementation and GREEN evidence
+
+- Added a synchronous `pendingRef` guard plus rendered `pending` state. This prevents duplicate calls even before React rerenders and blocks transition/update handlers while an API mutation is active.
+- Disabled every draft-changing surface during mutation: form fieldsets, search, create, item selection, tabs, delete toggle, and submission. Added accessible live status text (`저장 중입니다.` / `삭제 중입니다.`).
+- Because no edit or navigation can occur during the request, the completion response is tied to the only active draft; delayed save/delete responses cannot overwrite or resurrect newer state.
+- Extracted literal shared `RecordContentDisplay` and `ArchiveContentDisplay` components. `RecordDetailPage`, `ProfilePage`, `DocumentPage`, and `PreviewPane` all consume them. Public-only cinematic/portrait/sidebar behavior and editor-only schema details remain explicit component options, preserving public rendering.
+
+Focused GREEN:
+
+`npm run test:run -- src/editor/EditorApp.test.tsx src/features/timeline/TimelinePage.test.tsx src/features/archive/ArchivePage.test.tsx`
+
+Result: exit 0; 3 files passed, 32 tests passed.
+
+### Final verification
+
+| Command | Exact result |
+| --- | --- |
+| `npm run test:run -- src/editor` | Exit 0; 1 file passed, 17 tests passed. |
+| `npm run test:run -- src/features/timeline/TimelinePage.test.tsx src/features/archive/ArchivePage.test.tsx` | Exit 0; 2 files passed, 15 tests passed. |
+| `npm run test:run` | Exit 0; 14 files passed; 79 passed, 1 skipped (80 total). |
+| First `npm run build` | Exit 1; TypeScript correctly rejected the delayed save mock's inferred zero-argument signature. The mock was annotated with `EditorSaveRequest`. |
+| Final `npm run build` | Exit 0; `tsc --noEmit` and Vite production build passed; 388 modules transformed. |
+| `rg -n '/api/editor|src/editor|private' dist` | No matches. |
+| `git diff --check` | Exit 0. |
+
+### Concerns
+
+- No blocking concerns remain.

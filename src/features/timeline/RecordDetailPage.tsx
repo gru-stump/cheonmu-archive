@@ -1,10 +1,8 @@
 import { useEffect, useState, type JSX } from 'react';
-import ReactMarkdown from 'react-markdown';
 import { Link, useParams } from 'react-router-dom';
-import { StatusStamp } from '../../components/StatusStamp';
+import { RecordContentDisplay } from '../../components/ContentDisplay';
 import { loadAllContent } from '../../content/load';
 import type { ArchiveRecord } from '../../content/schema';
-import { resolvePublicAssetUrl } from '../../lib/publicAssetUrl';
 import { CinematicScene, type CinematicSceneItem } from './CinematicScene';
 
 type RecordDetailPageProps = {
@@ -59,39 +57,13 @@ export function RecordDetailPage({ records = loadAllContent().records }: RecordD
   return (
     <article className="record-detail">
       <Link className="back-link" to="/records">← 기록철</Link>
-      <header className="record-detail__header">
-        <div>
-          <p className="document-kicker">{record.recordNumber} · Stage {record.stage.toString().padStart(2, '0')}</p>
-          <h1>{record.title}</h1>
-        </div>
-        <StatusStamp status={record.status} />
-      </header>
-
-      <blockquote className="record-detail__quote">“{record.quote}”</blockquote>
-
-      {hasCinematicScene && (
-        <div className="cinematic-entry">
+      <RecordContentDisplay
+        record={record}
+        cinematicEntry={hasCinematicScene ? <div className="cinematic-entry">
           <p>이 기록의 확정된 문장을 장면 순서대로 열람합니다.</p>
-          <button type="button" onClick={() => setIsCinematicOpen(true)}>
-            장면 재구성 열기
-          </button>
-        </div>
-      )}
-
-      <div className="record-detail__layout">
-        <div className="markdown-document"><ReactMarkdown>{record.body}</ReactMarkdown></div>
-        <aside className="record-detail__aside" aria-label="기록 정보">
-          <div className="detail-portraits" aria-hidden="true">
-            <img src={resolvePublicAssetUrl('/images/Cheonryeong_head.png')} alt="" />
-            <img src={resolvePublicAssetUrl('/images/Muyeong_head.png')} alt="" />
-          </div>
-          <dl>
-            <dt>분류</dt><dd>{record.cinematic ? '주요 장면' : '관계 기록'}</dd>
-            <dt>등장</dt><dd>천령 · 무영</dd>
-            <dt>태그</dt><dd>{record.tags.map((tag) => `#${tag}`).join(' ')}</dd>
-          </dl>
-        </aside>
-      </div>
+          <button type="button" onClick={() => setIsCinematicOpen(true)}>장면 재구성 열기</button>
+        </div> : undefined}
+      />
 
       {relatedRecords.length > 0 && (
         <nav className="related-records" aria-label="연결 기록">

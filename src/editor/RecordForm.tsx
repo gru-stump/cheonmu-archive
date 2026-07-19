@@ -6,6 +6,7 @@ type RecordFormProps = {
   recordIds: readonly string[];
   errors: Record<string, string>;
   idEditable: boolean;
+  disabled?: boolean;
   onChange(next: Partial<RecordMeta>): void;
   onBodyChange(value: string): void;
   body: string;
@@ -16,7 +17,7 @@ const toList = (value: string): string[] => value.split(',').map((item) => item.
 type Credit = NonNullable<RecordMeta['credit']>;
 const creditFrom = (creator: string, source: string): Credit | undefined => creator || source ? { creator, source: source || undefined } : undefined;
 
-export function RecordForm({ value, recordIds, errors, idEditable, onChange, onBodyChange, body }: RecordFormProps): JSX.Element {
+export function RecordForm({ value, recordIds, errors, idEditable, disabled = false, onChange, onBodyChange, body }: RecordFormProps): JSX.Element {
   const prefix = useId();
   const errorId = (name: string) => `${prefix}-${name.replace('.', '-')}-error`;
   const errorProps = (name: string): ErrorProps => errors[name] ? { 'aria-invalid': true, 'aria-describedby': errorId(name) } : {};
@@ -24,7 +25,7 @@ export function RecordForm({ value, recordIds, errors, idEditable, onChange, onB
   const idDescription = idEditable ? undefined : `${prefix}-id-rule`;
   const updateRelated = (event: ChangeEvent<HTMLSelectElement>) => onChange({ related: Array.from(event.currentTarget.selectedOptions, (option) => option.value) });
 
-  return <fieldset><legend>기록 정보</legend>
+  return <fieldset disabled={disabled}><legend>기록 정보</legend>
     <label>식별자<input value={value.id} readOnly={!idEditable} aria-describedby={errors.id ? errorId('id') : idDescription} aria-invalid={errors.id ? true : undefined} onChange={(event) => onChange({ id: event.target.value })} /></label>
     {!idEditable && <p id={idDescription}>기존 항목의 식별자는 변경할 수 없습니다.</p>}{error('id')}
     <label>기록 번호<input value={value.recordNumber} {...errorProps('recordNumber')} onChange={(event) => onChange({ recordNumber: event.target.value })} /></label>{error('recordNumber')}

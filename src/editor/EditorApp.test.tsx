@@ -1,8 +1,8 @@
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { EditorApp, type EditorApi } from './EditorApp';
-import type { EditorEntry, EditorKind } from './api';
+import type { EditorEntry, EditorKind, EditorSaveRequest } from './api';
 
 const sources: Record<EditorKind, EditorEntry[]> = {
   records: [
@@ -72,6 +72,16 @@ function createApi(overrides: Partial<EditorApi> = {}): EditorApi {
   };
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}
+
 async function openRecord(user: ReturnType<typeof userEvent.setup>, name = '첫 조우 편집') {
   await user.click(await screen.findByRole('button', { name }));
   return screen.findByLabelText('제목');
@@ -91,6 +101,7 @@ describe('EditorApp', () => {
     await user.type(title, '최초 접촉');
 
     expect(screen.getByRole('heading', { name: '최초 접촉' })).toBeVisible();
+    expect(screen.getByTestId('record-content-display')).toBeVisible();
     expect(screen.getByText('CM-01 · Stage 01')).toBeVisible();
     expect(screen.getByText('그가 돌아왔다.')).toBeVisible();
     expect(screen.getByText('cheonryeong, muyeong')).toBeVisible();
@@ -182,6 +193,53 @@ describe('EditorApp', () => {
     expect(screen.queryByRole('button', { name: '첫 조우 편집' })).not.toBeInTheDocument();
   });
 
+  it('locks editing, navigation, and duplicate submission while save is pending', async () => {
+    const user = userEvent.setup();
+    const pending = deferred<EditorEntry>();
+    const save = vi.fn((_request: EditorSaveRequest) => pending.promise);
+    render(<EditorApp api={createApi({ save })} />);
+    const title = await openRecord(user);
+    await user.type(title, '!');
+    await user.click(screen.getByRole('button', { name: '저장' }));
+
+    expect(screen.getByText('저장 중입니다.')).toHaveAttribute('role', 'status');
+    expect(title).toBeDisabled();
+    expect(screen.getByRole('button', { name: '프로필' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '새 기록' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '저장' })).toBeDisabled();
+    await user.type(title, '늦은 편집');
+    await user.click(screen.getByRole('button', { name: '프로필' }));
+    await user.click(screen.getByRole('button', { name: '저장' }));
+    expect(save).toHaveBeenCalledTimes(1);
+    expect(title).toHaveValue('첫 조우!');
+
+    const request = save.mock.calls[0]![0];
+    await act(async () => pending.resolve({ id: request.id, source: request.source }));
+    await waitFor(() => expect(screen.queryByText('저장 중입니다.')).not.toBeInTheDocument());
+    expect(screen.getByLabelText('제목')).toHaveValue('첫 조우!');
+  });
+
+  it('locks navigation while delete is pending and cannot resurrect the deleted draft', async () => {
+    const user = userEvent.setup();
+    const pending = deferred<void>();
+    const remove = vi.fn(() => pending.promise);
+    render(<EditorApp api={createApi({ remove })} />);
+    await openRecord(user);
+    await user.click(screen.getByRole('button', { name: '삭제 예정으로 표시' }));
+    await user.click(screen.getByRole('button', { name: '삭제 확인' }));
+
+    expect(screen.getByText('삭제 중입니다.')).toHaveAttribute('role', 'status');
+    expect(screen.getByRole('button', { name: '문서' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '두 번째 귀환 편집' })).toBeDisabled();
+    await user.click(screen.getByRole('button', { name: '문서' }));
+    expect(screen.getByLabelText('제목')).toHaveValue('첫 조우');
+
+    await act(async () => pending.resolve());
+    await waitFor(() => expect(screen.queryByRole('button', { name: '첫 조우 편집' })).not.toBeInTheDocument());
+    expect(screen.queryByLabelText('제목')).not.toBeInTheDocument();
+    expect(remove).toHaveBeenCalledTimes(1);
+  });
+
   it('keeps dirty content when item navigation is cancelled', async () => {
     const user = userEvent.setup();
     vi.spyOn(window, 'confirm').mockReturnValue(false);
@@ -249,12 +307,14 @@ describe('EditorApp', () => {
     await user.click(await screen.findByRole('button', { name: '프로필' }));
     await user.click(await screen.findByRole('button', { name: '천령 편집' }));
     const profilePreview = screen.getByRole('complementary', { name: '미리보기' });
+    expect(within(profilePreview).getByTestId('profile-content-display')).toBeVisible();
     expect(within(profilePreview).getByText('신장 186cm')).toBeVisible();
     expect(within(profilePreview).getByText('프로필 작가')).toBeVisible();
 
     await user.click(screen.getByRole('button', { name: '문서' }));
     await user.click(await screen.findByRole('button', { name: '관계 문서 편집' }));
     const documentPreview = screen.getByRole('complementary', { name: '미리보기' });
+    expect(within(documentPreview).getByTestId('document-content-display')).toBeVisible();
     expect(within(documentPreview).getByText('문서 작가')).toBeVisible();
     expect(within(documentPreview).getByRole('heading', { name: '관계' })).toBeVisible();
   });
