@@ -1,5 +1,6 @@
 import express, { type Express, type NextFunction, type Request, type Response } from 'express';
 import { pathToFileURL } from 'node:url';
+import { createGalleryStorage, GalleryStorageError } from './gallery-storage';
 import { createEditorStorage, EditorStorageError } from './storage';
 
 export const EDITOR_HOST = '127.0.0.1';
@@ -12,8 +13,61 @@ export interface EditorServerOptions {
 export function createEditorServer({ rootDir }: EditorServerOptions): Express {
   const app = express();
   const storage = createEditorStorage({ rootDir });
+  const gallery = createGalleryStorage({ rootDir });
 
   app.use(express.json({ limit: '2mb' }));
+
+  app.get('/api/editor/gallery', async (_request, response, next) => {
+    try {
+      response.json(await gallery.listItems());
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post(
+    '/api/editor/gallery/image',
+    express.raw({ type: 'application/octet-stream', limit: '20mb' }),
+    async (request, response, next) => {
+      try {
+        const id = request.get('X-Gallery-Id') ?? '';
+        const originalName = request.get('X-File-Name') ?? '';
+        if (!Buffer.isBuffer(request.body) || !originalName) {
+          throw new GalleryStorageError('Gallery validation failed.', 'VALIDATION_ERROR', { image: 'An image file is required.' });
+        }
+        response.json(await gallery.registerImage({
+          id,
+          originalName,
+          bytes: request.body,
+          overwrite: request.get('X-Confirm-Overwrite') === 'true',
+        }));
+      } catch (error) {
+        next(error);
+      }
+    },
+  );
+
+  app.put('/api/editor/gallery/:id', async (request, response, next) => {
+    try {
+      const { id } = request.params;
+      if (request.body?.id !== id) {
+        throw new GalleryStorageError('Gallery validation failed.', 'VALIDATION_ERROR', { id: 'Gallery ID must match the requested item ID.' });
+      }
+      response.json(await gallery.writeItem(request.body));
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.delete('/api/editor/gallery/:id', async (request, response, next) => {
+    try {
+      const { id } = request.params;
+      await gallery.trashItem(id);
+      response.json({ id, trashed: true });
+    } catch (error) {
+      next(error);
+    }
+  });
 
   app.get('/api/editor/:kind', async (request, response, next) => {
     try {
@@ -67,6 +121,18 @@ export function createEditorServer({ rootDir }: EditorServerOptions): Express {
 
     if (error instanceof EditorStorageError) {
       const status = error.code === 'VALIDATION_ERROR' ? 422 : 400;
+      response.status(status).json({ error: error.message, fields: error.fields });
+      return;
+    }
+
+    if (error instanceof GalleryStorageError) {
+      const status = error.code === 'VALIDATION_ERROR'
+        ? 422
+        : error.code === 'CONFLICT'
+          ? 409
+          : error.code === 'NOT_FOUND'
+            ? 404
+            : 400;
       response.status(status).json({ error: error.message, fields: error.fields });
       return;
     }

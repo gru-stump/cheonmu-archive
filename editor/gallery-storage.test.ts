@@ -1,0 +1,207 @@
+// @vitest-environment node
+
+import { mkdtemp, mkdir, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import request from 'supertest';
+import { parse as parseYaml } from 'yaml';
+import { afterEach, describe, expect, it } from 'vitest';
+import { createEditorServer } from './server';
+import { createGalleryStorage, GalleryStorageError } from './gallery-storage';
+
+const temporaryRoots: string[] = [];
+const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64');
+
+function jpeg(width: number, height: number): Buffer {
+  return Buffer.from([
+    0xff, 0xd8,
+    0xff, 0xc0, 0x00, 0x11, 0x08,
+    (height >> 8) & 0xff, height & 0xff,
+    (width >> 8) & 0xff, width & 0xff,
+    0x03, 0x01, 0x11, 0x00, 0x02, 0x11, 0x00, 0x03, 0x11, 0x00,
+    0xff, 0xd9,
+  ]);
+}
+
+function webp(width: number, height: number): Buffer {
+  const buffer = Buffer.alloc(30);
+  buffer.write('RIFF', 0, 'ascii');
+  buffer.writeUInt32LE(22, 4);
+  buffer.write('WEBP', 8, 'ascii');
+  buffer.write('VP8X', 12, 'ascii');
+  buffer.writeUInt32LE(10, 16);
+  buffer.writeUIntLE(width - 1, 24, 3);
+  buffer.writeUIntLE(height - 1, 27, 3);
+  return buffer;
+}
+
+async function makeRoot(source = '[]\n'): Promise<string> {
+  const rootDir = await mkdtemp(join(tmpdir(), 'cheonmu-gallery-'));
+  temporaryRoots.push(rootDir);
+  await mkdir(join(rootDir, 'src', 'content'), { recursive: true });
+  await mkdir(join(rootDir, 'public', 'images'), { recursive: true });
+  await writeFile(join(rootDir, 'src', 'content', 'gallery.yaml'), source, 'utf8');
+  return rootDir;
+}
+
+const item = {
+  id: 'new-work',
+  title: 'New work',
+  image: '/images/new-work.png',
+  alt: 'A complete alternative description',
+  creator: 'Archive artist',
+  source: 'https://example.com/work',
+  characters: ['cheonryeong'],
+  tags: ['portrait'],
+  public: true,
+};
+
+afterEach(async () => {
+  await Promise.all(temporaryRoots.splice(0).map((rootDir) => rm(rootDir, { recursive: true, force: true })));
+});
+
+describe('gallery image storage', () => {
+  it('rejects executable uploads renamed as images', async () => {
+    const storage = createGalleryStorage({ rootDir: await makeRoot() });
+
+    await expect(storage.registerImage({
+      id: 'not-an-image',
+      originalName: 'not-an-image.png',
+      bytes: Buffer.from('MZ executable content'),
+      overwrite: false,
+    })).rejects.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '지원하지 않는 이미지 파일입니다.',
+    });
+  });
+
+  it.each([
+    ['misleading.exe', png, '/images/work.png', 1, 1],
+    ['misleading.png', jpeg(9, 7), '/images/work.jpg', 9, 7],
+    ['misleading.jpg', webp(11, 13), '/images/work.webp', 11, 13],
+  ])('uses the actual %s signature and dimensions', async (originalName, bytes, path, width, height) => {
+    const rootDir = await makeRoot();
+    const storage = createGalleryStorage({ rootDir });
+
+    await expect(storage.registerImage({ id: 'work', originalName, bytes, overwrite: false }))
+      .resolves.toEqual({ path, width, height });
+    await expect(readFile(join(rootDir, 'public', path.slice(1)))).resolves.toEqual(bytes);
+  });
+
+  it('requires confirmation before replacement and recovers the old image in trash', async () => {
+    const rootDir = await makeRoot();
+    const storage = createGalleryStorage({ rootDir });
+    await storage.registerImage({ id: 'work', originalName: 'first.png', bytes: png, overwrite: false });
+    const replacement = jpeg(4, 5);
+
+    await expect(storage.registerImage({ id: 'work', originalName: 'replacement.jpg', bytes: replacement, overwrite: false }))
+      .rejects.toMatchObject({ code: 'CONFLICT' });
+    await storage.registerImage({ id: 'work', originalName: 'replacement.jpg', bytes: replacement, overwrite: true });
+
+    await expect(readFile(join(rootDir, 'public', 'images', 'work.jpg'))).resolves.toEqual(replacement);
+    await expect(readFile(join(rootDir, 'public', 'images', 'work.png'))).rejects.toMatchObject({ code: 'ENOENT' });
+    const trashed = await readdir(join(rootDir, '.trash', 'images'));
+    expect(trashed.some((name) => name.endsWith('-work.png'))).toBe(true);
+  });
+
+  it('rejects unsafe IDs before resolving an image path', async () => {
+    const storage = createGalleryStorage({ rootDir: await makeRoot() });
+    await expect(storage.registerImage({ id: '../escape', originalName: 'work.png', bytes: png, overwrite: false }))
+      .rejects.toBeInstanceOf(GalleryStorageError);
+  });
+
+  it('rejects a junction-backed public image directory', async (context) => {
+    const rootDir = await makeRoot();
+    const outside = await mkdtemp(join(tmpdir(), 'cheonmu-gallery-outside-'));
+    temporaryRoots.push(outside);
+    const images = join(rootDir, 'public', 'images');
+    await rm(images, { recursive: true });
+    try {
+      await symlink(outside, images, 'junction');
+    } catch (error) {
+      if (typeof error === 'object' && error !== null && 'code' in error && error.code === 'EPERM') {
+        context.skip();
+        return;
+      }
+      throw error;
+    }
+
+    const storage = createGalleryStorage({ rootDir });
+    await expect(storage.registerImage({ id: 'work', originalName: 'work.png', bytes: png, overwrite: false }))
+      .rejects.toMatchObject({ code: 'INVALID_PATH' });
+  });
+});
+
+describe('gallery metadata storage', () => {
+  it('serializes concurrent updates without losing either item and backs up gallery.yaml', async () => {
+    const rootDir = await makeRoot();
+    const storage = createGalleryStorage({ rootDir });
+    await storage.registerImage({ id: 'new-work', originalName: 'first.png', bytes: png, overwrite: false });
+    await storage.registerImage({ id: 'second-work', originalName: 'second.webp', bytes: webp(2, 2), overwrite: false });
+
+    await Promise.all([
+      storage.writeItem(item),
+      storage.writeItem({ ...item, id: 'second-work', image: '/images/second-work.webp', source: undefined }),
+    ]);
+
+    expect((await storage.listItems()).map(({ id }) => id).sort()).toEqual(['new-work', 'second-work']);
+    const yaml = parseYaml(await readFile(join(rootDir, 'src', 'content', 'gallery.yaml'), 'utf8')) as unknown[];
+    expect(yaml).toHaveLength(2);
+    expect(await readdir(join(rootDir, '.trash', 'gallery'))).toHaveLength(2);
+  });
+
+  it('requires complete metadata and an HTTPS source URL', async () => {
+    const storage = createGalleryStorage({ rootDir: await makeRoot() });
+
+    await expect(storage.writeItem({ ...item, creator: '', alt: '', characters: [], source: 'http://example.com/work' }))
+      .rejects.toMatchObject({ code: 'VALIDATION_ERROR', fields: expect.objectContaining({
+        creator: expect.any(String),
+        alt: expect.any(String),
+        characters: expect.any(String),
+        source: expect.any(String),
+      }) });
+  });
+
+  it('recoverably deletes metadata and its registered image', async () => {
+    const rootDir = await makeRoot();
+    const storage = createGalleryStorage({ rootDir });
+    await storage.registerImage({ id: item.id, originalName: 'work.png', bytes: png, overwrite: false });
+    await storage.writeItem(item);
+
+    await storage.trashItem(item.id);
+
+    await expect(storage.listItems()).resolves.toEqual([]);
+    await expect(readFile(join(rootDir, 'public', 'images', 'new-work.png'))).rejects.toMatchObject({ code: 'ENOENT' });
+    expect((await readdir(join(rootDir, '.trash', 'images'))).some((name) => name.endsWith('-new-work.png'))).toBe(true);
+  });
+});
+
+describe('gallery editor API', () => {
+  it('uploads by signature, edits metadata, lists it, and recoverably deletes it', async () => {
+    const rootDir = await makeRoot();
+    await Promise.all(['records', 'profiles', 'documents'].map((kind) => (
+      mkdir(join(rootDir, 'src', 'content', kind), { recursive: true })
+    )));
+    const app = createEditorServer({ rootDir });
+
+    const rejected = await request(app)
+      .post('/api/editor/gallery/image')
+      .set('Content-Type', 'application/octet-stream')
+      .set('X-Gallery-Id', 'bad-work')
+      .set('X-File-Name', 'bad-work.png')
+      .send(Buffer.from('MZ executable content'))
+      .expect(422);
+    expect(rejected.body.error).toBe('지원하지 않는 이미지 파일입니다.');
+
+    await request(app)
+      .post('/api/editor/gallery/image')
+      .set('Content-Type', 'application/octet-stream')
+      .set('X-Gallery-Id', item.id)
+      .set('X-File-Name', 'renamed.exe')
+      .send(png)
+      .expect(200, { path: item.image, width: 1, height: 1 });
+    await request(app).put(`/api/editor/gallery/${item.id}`).send(item).expect(200, item);
+    await request(app).get('/api/editor/gallery').expect(200, [item]);
+    await request(app).delete(`/api/editor/gallery/${item.id}`).expect(200, { id: item.id, trashed: true });
+  });
+});

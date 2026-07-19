@@ -68,6 +68,10 @@ function createApi(overrides: Partial<EditorApi> = {}): EditorApi {
     list: vi.fn(async (kind: EditorKind) => sources[kind].map((entry) => ({ ...entry }))),
     save: vi.fn(async ({ id, source }) => ({ id, source })),
     remove: vi.fn(async () => undefined),
+    listGallery: vi.fn(async () => []),
+    saveGallery: vi.fn(async (item) => item),
+    removeGallery: vi.fn(async () => undefined),
+    uploadGalleryImage: vi.fn(async ({ id }) => ({ path: `/images/${id}.png`, width: 1, height: 1 })),
     ...overrides,
   };
 }
