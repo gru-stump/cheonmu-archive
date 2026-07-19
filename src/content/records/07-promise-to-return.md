@@ -3,15 +3,13 @@ id: promise-to-return
 recordNumber: CM-07
 title: "귀환의 약속"
 stage: 7
-status: draft
+status: confirmed
 characters: [cheonryeong, muyeong]
 tags: [귀환, 약속, 생존]
 related: [keeping-distance, before-lovers]
 quote: "전부 데리고 돌아오겠습니다."
 cinematic: true
 ---
-
-> 이 기록은 서사 제안 초안입니다.
 
 **서로에게 반드시 돌아오기로 한 사이.**
 

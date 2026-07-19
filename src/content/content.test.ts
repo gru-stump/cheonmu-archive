@@ -1,41 +1,67 @@
 import { describe, expect, it } from 'vitest';
 import { loadAllContent, validateContent } from './load';
 
-const DRAFT_NOTICE = '> 이 기록은 서사 제안 초안입니다.';
+const NEW_IMAGE_PATHS = [
+  '/images/Cheonryeong_LD.png',
+  '/images/Cheonryeong_head.png',
+  '/images/Muyeong_LD.png',
+  '/images/Muyeong_head.png',
+];
+
+const OLD_IMAGE_PATHS = [
+  '/images/cheonmu-full.png',
+  '/images/cheonmu-pair-template.png',
+  '/images/creator-profile.png',
+];
 
 describe('initial Cheonmu archive content', () => {
-  it('contains eight ordered relationship stages and four cinematics', () => {
+  it('contains eight confirmed stages with cinematics exactly at 1, 3, 5, and 7', () => {
     const content = loadAllContent();
 
     expect(content.records.map((record) => record.stage)).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
-    expect(content.records.filter((record) => record.cinematic)).toHaveLength(4);
+    expect(content.records.filter((record) => record.cinematic).map((record) => record.stage))
+      .toEqual([1, 3, 5, 7]);
+    expect(content.records.map((record) => record.status)).toEqual(Array(8).fill('confirmed'));
   });
 
-  it('keeps every connective narrative visibly marked as a draft', () => {
-    const drafts = loadAllContent().records.filter((record) => record.status === 'draft');
-
-    expect(drafts.length).toBeGreaterThan(0);
-    expect(drafts.every((record) => record.body.trimStart().startsWith(DRAFT_NOTICE))).toBe(true);
-  });
-
-  it('uses the chosen canonical Muyeong height without a validation conflict', () => {
+  it('uses the canonical character heights without claiming Muyeong is taller', () => {
     const content = loadAllContent();
+    const cheonryeong = content.profiles.find((profile) => profile.id === 'cheonryeong');
     const muyeong = content.profiles.find((profile) => profile.id === 'muyeong');
 
+    expect(cheonryeong?.height).toBe('186cm');
     expect(muyeong?.height).toBe('185cm');
+    expect(muyeong?.body).not.toContain('천령보다 키와 골격이 크고');
     expect(validateContent(content).errors).not.toContain('무영 신장이 185cm와 189cm로 충돌합니다.');
   });
 
-  it('publishes three credited gallery entries', () => {
+  it('publishes only the four new transparent character images with credit', () => {
     const gallery = loadAllContent().gallery;
 
-    expect(gallery).toHaveLength(3);
-    expect(gallery.map((item) => item.image)).toEqual([
-      '/images/cheonmu-full.png',
-      '/images/cheonmu-pair-template.png',
-      '/images/creator-profile.png',
-    ]);
-    expect(gallery.every((item) => item.creator === '그루 (@gru_stump)')).toBe(true);
+    expect(gallery.map((item) => item.image)).toEqual(NEW_IMAGE_PATHS);
+    expect(gallery.map((item) => item.image)).not.toEqual(expect.arrayContaining(OLD_IMAGE_PATHS));
+    expect(gallery.every((item) => item.creator === '불가사리')).toBe(true);
     expect(gallery.every((item) => !('source' in item))).toBe(true);
+  });
+
+  it('removes the three retired public assets', () => {
+    const publicImagePaths = Object.keys(import.meta.glob('/public/images/**/*'))
+      .map((path) => path.replace(/^\/public/, ''));
+
+    expect(publicImagePaths).toEqual(expect.arrayContaining(NEW_IMAGE_PATHS));
+    expect(publicImagePaths).not.toEqual(expect.arrayContaining(OLD_IMAGE_PATHS));
+  });
+
+  it('includes every sourced appellation and its relationship change note', () => {
+    const relationship = loadAllContent().documents.find((document) => document.id === 'relationship');
+
+    expect(relationship?.body).toContain('## 호칭');
+    expect(relationship?.body).toContain('### 천령 → 무영');
+    expect(relationship?.body).toContain('무영\n- 지휘관님\n- 우리 지휘관님\n- 환자분\n- 고질적인 환자');
+    expect(relationship?.body).toContain('### 무영 → 천령');
+    expect(relationship?.body).toContain('천령\n- 천령 선생\n- 선생님\n- 의료관님');
+    expect(relationship?.body).toContain('## 관계가 깊어진 뒤의 변화');
+    expect(relationship?.body).toContain('심각한 상황에서는 이름만 짧게 부른다');
+    expect(relationship?.body).toContain('감정이 흔들릴 때는 ‘천령’이라고만 부른다');
   });
 });

@@ -3,15 +3,13 @@ id: fracture
 recordNumber: CM-05
 title: "균열"
 stage: 5
-status: draft
+status: confirmed
 characters: [cheonryeong, muyeong]
 tags: [중상, 오염, 희생]
 related: [uneasy-trust, keeping-distance]
 quote: "눈 떠. 지금 자면 안 돼."
 cinematic: true
 ---
-
-> 이 기록은 서사 제안 초안입니다.
 
 **서로를 살리기 위해 자신을 소모하는 두 사람.**
 

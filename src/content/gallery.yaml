@@ -1,26 +1,35 @@
-- id: cheonmu-full
-  title: 천무 전신
-  image: /images/cheonmu-full.png
-  alt: 천령과 무영의 전신 캐릭터 디자인
-  creator: 그루 (@gru_stump)
-  characters: [cheonryeong, muyeong]
+- id: cheonryeong-ld
+  title: 천령 전신
+  image: /images/Cheonryeong_LD.png
+  alt: 흰 머리를 길게 땋고 흰색 의료 가운을 입은 천령의 전신 일러스트
+  creator: 불가사리
+  characters: [cheonryeong]
   tags: [전신, 캐릭터-디자인]
   public: true
 
-- id: cheonmu-pair-template
-  title: 천무 페어틀
-  image: /images/cheonmu-pair-template.png
-  alt: 천령과 무영의 관계를 정리한 페어틀
-  creator: 그루 (@gru_stump)
-  characters: [cheonryeong, muyeong]
-  tags: [페어틀, 관계]
+- id: cheonryeong-head
+  title: 천령 두상
+  image: /images/Cheonryeong_head.png
+  alt: 옅은 눈과 붉은 장식 귀걸이를 한 천령의 두상 일러스트
+  creator: 불가사리
+  characters: [cheonryeong]
+  tags: [두상, 캐릭터-디자인]
   public: true
 
-- id: creator-profile
-  title: 제작자 프로필
-  image: /images/creator-profile.png
-  alt: 제작자 그루의 프로필과 천령 및 무영 소개
-  creator: 그루 (@gru_stump)
-  characters: [cheonryeong, muyeong]
-  tags: [제작자, 프로필]
+- id: muyeong-ld
+  title: 무영 전신
+  image: /images/Muyeong_LD.png
+  alt: 검은 전투복과 전술 장비를 착용한 무영의 전신 일러스트
+  creator: 불가사리
+  characters: [muyeong]
+  tags: [전신, 캐릭터-디자인]
+  public: true
+
+- id: muyeong-head
+  title: 무영 두상
+  image: /images/Muyeong_head.png
+  alt: 검은 머리와 금빛 눈, 얼굴 흉터가 보이는 무영의 두상 일러스트
+  creator: 불가사리
+  characters: [muyeong]
+  tags: [두상, 캐릭터-디자인]
   public: true

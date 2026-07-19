@@ -3,15 +3,13 @@ id: field-accompaniment
 recordNumber: CM-03
 title: "현장 동행"
 stage: 3
-status: draft
+status: confirmed
 characters: [cheonryeong, muyeong]
 tags: [현장, 의료-지원, 지휘]
 related: [repeated-treatment, uneasy-trust]
 quote: "환자가 아직 안 나왔는데 내가 어떻게 가."
 cinematic: true
 ---
-
-> 이 기록은 서사 제안 초안입니다.
 
 **명령이 통하지 않는 지휘관과 의료 지원 인력.**
 
