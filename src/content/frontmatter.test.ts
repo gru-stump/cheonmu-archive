@@ -1,0 +1,133 @@
+import { describe, expect, it } from 'vitest';
+import { parseMarkdown } from './frontmatter';
+import { validateContent } from './load';
+import { recordMetaSchema, type ArchiveContent } from './schema';
+
+describe('parseMarkdown', () => {
+  it('parses a confirmed event record', () => {
+    const source = `---
+id: first-contact
+recordNumber: CM-01
+title: First contact
+stage: 1
+status: confirmed
+characters: [cheonryeong, muyeong]
+tags: [first-contact]
+related: []
+quote: Is everyone safe?
+cinematic: true
+---
+Body`;
+
+    expect(parseMarkdown(source, recordMetaSchema).data.id).toBe('first-contact');
+  });
+
+  it('rejects a record without a status', () => {
+    const source = ['---', 'id: broken', 'title: Broken', '---', 'Body'].join('\n');
+
+    expect(() => parseMarkdown(source, recordMetaSchema)).toThrow();
+  });
+
+  it('requires the closing delimiter to occupy its own line', () => {
+    const source = [
+      '---',
+      'id: first-contact',
+      'recordNumber: CM-01',
+      'title: First contact',
+      'stage: 1',
+      'status: confirmed',
+      'characters: [cheonryeong, muyeong]',
+      'tags: [first-contact]',
+      'related: []',
+      'quote: Is everyone safe?',
+      'cinematic: true',
+      '---not-a-delimiter',
+      'Body',
+    ].join('\n');
+
+    expect(() => parseMarkdown(source, recordMetaSchema)).toThrow();
+  });
+
+  it('preserves the body after the closing delimiter', () => {
+    const source = [
+      '---',
+      'id: first-contact',
+      'recordNumber: CM-01',
+      'title: First contact',
+      'stage: 1',
+      'status: confirmed',
+      'characters: [cheonryeong, muyeong]',
+      'tags: [first-contact]',
+      'related: []',
+      'quote: Is everyone safe?',
+      'cinematic: true',
+      '---',
+      '',
+      'Body',
+      '',
+    ].join('\n');
+
+    expect(parseMarkdown(source, recordMetaSchema).body).toBe('\n\nBody\n');
+  });
+});
+
+describe('validateContent', () => {
+  it('reports duplicate IDs, missing relationships, missing public images, invalid stages, and the Muyeong height conflict', () => {
+    const content = {
+      records: [
+        {
+          id: 'first-contact',
+          recordNumber: 'CM-01',
+          title: 'First contact',
+          stage: 0,
+          status: 'confirmed',
+          characters: ['cheonryeong', 'muyeong'],
+          tags: ['first-contact'],
+          related: ['missing-record'],
+          quote: 'Is everyone safe?',
+          cinematic: true,
+          body: 'Body',
+        },
+        {
+          id: 'first-contact',
+          recordNumber: 'CM-02',
+          title: 'Reunion',
+          stage: 2,
+          status: 'draft',
+          characters: ['cheonryeong'],
+          tags: ['reunion'],
+          related: [],
+          quote: 'We meet again.',
+          cinematic: false,
+          body: 'Body',
+        },
+      ],
+      profiles: [
+        { id: 'muyeong', title: 'Muyeong', height: '185cm', body: '185cm' },
+        { id: 'muyeong-profile', title: 'Muyeong supplement', height: '189cm', body: '189cm' },
+      ],
+      documents: [],
+      gallery: [
+        {
+          id: 'missing-image',
+          title: 'Missing image',
+          image: '/images/missing.png',
+          alt: 'A missing image',
+          creator: 'Creator',
+          characters: ['cheonryeong'],
+          public: true,
+        },
+      ],
+    } as unknown as ArchiveContent;
+
+    const result = validateContent(content, { publicImagePaths: [] });
+
+    expect(result.errors).toEqual(expect.arrayContaining([
+      'Duplicate content ID: first-contact',
+      'Record first-contact references missing related ID: missing-record',
+      'Public gallery image is missing: /images/missing.png',
+      'Record first-contact has invalid stage: 0',
+      '\uBB34\uC601 \uC2E0\uC7A5\uC774 185cm\uC640 189cm\uB85C \uCDA9\uB3CC\uD569\uB2C8\uB2E4.',
+    ]));
+  });
+});

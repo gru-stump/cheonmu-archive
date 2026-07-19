@@ -1,12 +1,69 @@
-import { existsSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { parse as parseYaml } from 'yaml';
+import type { ZodType } from 'zod';
+import { parseMarkdown } from '../src/content/frontmatter';
+import { validateArchiveContent } from '../src/content/load';
+import {
+  documentMetaSchema,
+  gallerySchema,
+  profileMetaSchema,
+  recordMetaSchema,
+  type ArchiveContent,
+} from '../src/content/schema';
 
-const contentDirectory = new URL('../src/content/', import.meta.url);
+const rootDirectory = new URL('..', import.meta.url).pathname;
+const contentDirectory = join(rootDirectory, 'src', 'content');
+const publicDirectory = join(rootDirectory, 'public');
 
-if (existsSync(contentDirectory)) {
-  console.error(
-    'Content validation is not implemented until Task 2: src/content exists and requires the Task 2 validator.',
-  );
+function readMarkdownCollection<T>(
+  directory: string,
+  schema: ZodType<T>,
+): Array<T & { body: string }> {
+  if (!existsSync(directory)) {
+    return [];
+  }
+
+  return readdirSync(directory)
+    .filter((fileName) => fileName.endsWith('.md'))
+    .map((fileName) => parseMarkdown(readFileSync(join(directory, fileName), 'utf8'), schema))
+    .map(({ data, body }) => ({ ...data, body }));
+}
+
+function allPublicImages(directory: string, current = ''): string[] {
+  if (!existsSync(directory)) {
+    return [];
+  }
+
+  return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+    const relativePath = join(current, entry.name).replaceAll('\\', '/');
+    return entry.isDirectory()
+      ? allPublicImages(join(directory, entry.name), relativePath)
+      : [`/${relativePath}`];
+  });
+}
+
+const galleryPath = join(contentDirectory, 'gallery.yaml');
+const gallery = existsSync(galleryPath)
+  ? gallerySchema.parse(parseYaml(readFileSync(galleryPath, 'utf8')))
+  : [];
+const content: ArchiveContent = {
+  records: readMarkdownCollection(join(contentDirectory, 'records'), recordMetaSchema),
+  profiles: readMarkdownCollection(join(contentDirectory, 'profiles'), profileMetaSchema),
+  documents: readMarkdownCollection(join(contentDirectory, 'documents'), documentMetaSchema),
+  gallery,
+};
+const result = validateArchiveContent(content, { publicImagePaths: allPublicImages(publicDirectory) });
+
+for (const warning of result.warnings) {
+  console.warn(`Warning: ${warning}`);
+}
+for (const error of result.errors) {
+  console.error(`Error: ${error}`);
+}
+
+if (result.errors.length > 0) {
   process.exitCode = 1;
 } else {
-  console.info('No content directory exists; content validation is deferred to Task 2.');
+  console.info('Content validation passed.');
 }
