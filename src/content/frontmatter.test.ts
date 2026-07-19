@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { parseMarkdown } from './frontmatter';
-import { validateContent } from './load';
+import { loadContentFromSources, validateContent } from './load';
 import { recordMetaSchema, type ArchiveContent } from './schema';
 
 describe('parseMarkdown', () => {
@@ -72,6 +72,29 @@ Body`;
 });
 
 describe('validateContent', () => {
+  it('reports duplicate IDs when one gallery item is private', () => {
+    const content = loadContentFromSources(
+      {},
+      `- id: shared-work
+  title: Public work
+  image: /images/public.png
+  alt: Public work image
+  creator: Creator
+  characters: [cheonryeong]
+  public: true
+- id: shared-work
+  title: Private work
+  image: /images/private.png
+  alt: Private work image
+  creator: Creator
+  characters: [muyeong]
+  public: false`,
+    );
+
+    expect(validateContent(content, { publicImagePaths: ['/images/public.png'] }).errors)
+      .toContain('Duplicate content ID: shared-work');
+  });
+
   it('reports duplicate IDs, missing relationships, missing public images, invalid stages, and the Muyeong height conflict', () => {
     const content = {
       records: [

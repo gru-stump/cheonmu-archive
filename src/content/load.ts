@@ -39,7 +39,11 @@ function publicImagePaths(): string[] {
     .map((path) => path.replace(/^\/public/, ''));
 }
 
-export function loadAllContent(): ArchiveContent {
+export function loadContentFromSources(
+  markdown: RawContentModules,
+  gallerySource?: string,
+  includePrivateGallery = true,
+): ArchiveContent {
   const content: ArchiveContent = {
     records: [],
     profiles: [],
@@ -47,7 +51,7 @@ export function loadAllContent(): ArchiveContent {
     gallery: [],
   };
 
-  for (const [path, source] of Object.entries(markdownModules())) {
+  for (const [path, source] of Object.entries(markdown)) {
     if (path.includes('/records/')) {
       const parsed = parseMarkdown(source, recordMetaSchema);
       content.records.push({ ...parsed.data, body: parsed.body } satisfies ArchiveRecord);
@@ -60,13 +64,25 @@ export function loadAllContent(): ArchiveContent {
     }
   }
 
-  const gallerySource = Object.values(galleryModules())[0];
   if (gallerySource) {
-    content.gallery = gallerySchema.parse(parseYaml(gallerySource)).filter((item) => item.public);
+    const gallery = gallerySchema.parse(parseYaml(gallerySource));
+    content.gallery = includePrivateGallery ? gallery : gallery.filter((item) => item.public);
   }
 
   content.records.sort((left, right) => left.stage - right.stage);
   return content;
+}
+
+function loadContent(includePrivateGallery: boolean): ArchiveContent {
+  return loadContentFromSources(
+    markdownModules(),
+    Object.values(galleryModules())[0],
+    includePrivateGallery,
+  );
+}
+
+export function loadAllContent(): ArchiveContent {
+  return loadContent(false);
 }
 
 export function validateArchiveContent(
@@ -115,7 +131,7 @@ export function validateArchiveContent(
 }
 
 export function validateContent(
-  content: ArchiveContent = loadAllContent(),
+  content: ArchiveContent = loadContent(true),
   options?: ValidationOptions,
 ): ValidationResult {
   return validateArchiveContent(content, options);

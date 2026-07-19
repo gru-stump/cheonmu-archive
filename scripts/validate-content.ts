@@ -2,6 +2,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { parse as parseYaml } from 'yaml';
 import type { ZodType } from 'zod';
+import { resolveValidationRoot } from './content-validation-path';
 import { parseMarkdown } from '../src/content/frontmatter';
 import { validateArchiveContent } from '../src/content/load';
 import {
@@ -12,7 +13,7 @@ import {
   type ArchiveContent,
 } from '../src/content/schema';
 
-const rootDirectory = new URL('..', import.meta.url).pathname;
+const rootDirectory = resolveValidationRoot(import.meta.url);
 const contentDirectory = join(rootDirectory, 'src', 'content');
 const publicDirectory = join(rootDirectory, 'public');
 
