@@ -1,0 +1,26 @@
+:root {
+  color-scheme: light;
+  --paper: #f3ecda;
+  --paper-raised: #fbf7eb;
+  --paper-shadow: #d8cbb2;
+  --ink: #171512;
+  --ink-muted: #625b50;
+  --rule: #b8aa90;
+  --cheonryeong-green: #566758;
+  --cheonryeong-plum: #684956;
+  --muyeong-black: #1d1b1a;
+  --muyeong-red: #702d2b;
+  --stamp-red: #7b2f2c;
+  --focus: #315f69;
+  --content-max: 76rem;
+  --archive-rail-width: 15rem;
+  --space-xs: 0.375rem;
+  --space-sm: 0.75rem;
+  --space-md: 1.25rem;
+  --space-lg: 2rem;
+  --space-xl: 3rem;
+  --radius-sm: 0.125rem;
+  --shadow-document: 0 1.25rem 3rem rgb(52 43 30 / 14%);
+  --font-document: Georgia, 'Times New Roman', 'Noto Serif KR', serif;
+  --font-label: 'Arial Narrow', 'Noto Sans KR', Arial, sans-serif;
+}
