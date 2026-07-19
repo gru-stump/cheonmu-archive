@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { loadAllContent, validateContent } from './load';
 
-const DRAFT_NOTICE = '> ??湲곕줉? ?쒖궗 ?쒖븞 珥덉븞?낅땲??';
+const DRAFT_NOTICE = '> 이 기록은 서사 제안 초안입니다.';
 
 describe('initial Cheonmu archive content', () => {
   it('contains eight ordered relationship stages and four cinematics', () => {
