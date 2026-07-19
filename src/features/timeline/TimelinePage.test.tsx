@@ -1,7 +1,8 @@
 import { cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
+import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { afterEach, describe, expect, it } from 'vitest';
+import { loadAllContent } from '../../content/load';
 import type { ArchiveRecord } from '../../content/schema';
 import { HomePage } from '../home/HomePage';
 import { RecordDetailPage } from './RecordDetailPage';
@@ -49,10 +50,27 @@ const records: ArchiveRecord[] = [
   },
 ];
 
+const actualRecords = loadAllContent().records;
+
 afterEach(cleanup);
 
 function LocationProbe() {
   return <output data-testid="location">{useLocation().search}</output>;
+}
+
+function RecordRouteControls() {
+  const navigate = useNavigate();
+
+  return (
+    <>
+      <button type="button" onClick={() => navigate('/records/second-return')}>
+        비시네마틱 기록으로 이동
+      </button>
+      <button type="button" onClick={() => navigate('/records/first-contact')}>
+        시네마틱 기록으로 이동
+      </button>
+    </>
+  );
 }
 
 function renderTimeline(initialEntry = '/records') {
@@ -162,6 +180,77 @@ describe('RecordDetailPage', () => {
     );
 
     expect(screen.queryByRole('button', { name: '장면 재구성 열기' })).not.toBeInTheDocument();
+  });
+
+  it.each([
+    {
+      stage: 3,
+      scenes: [
+        '명령이 통하지 않는 지휘관과 의료 지원 인력.',
+        '“의료진은 철수하십시오.”',
+        '“환자가 아직 안 나왔는데 내가 어떻게 가.”',
+        '“나는 환자가 아닙니다.”',
+        '“그건 내가 정해요.”',
+      ],
+    },
+    {
+      stage: 7,
+      scenes: [
+        '서로에게 반드시 돌아오기로 한 사이.',
+        '“이번에는 돌아와요.”',
+        '“전부 데리고 돌아오겠습니다.”',
+        '“당신도 포함해서.”',
+        '“……예. 나도 포함해서.”',
+      ],
+    },
+  ])('keeps actual stage $stage scenes non-empty and in source order', async ({ stage, scenes }) => {
+    const user = userEvent.setup();
+    const record = actualRecords.find((item) => item.stage === stage);
+    expect(record).toBeDefined();
+
+    render(
+      <MemoryRouter initialEntries={[`/records/${record!.id}`]}>
+        <Routes>
+          <Route path="records/:recordId" element={<RecordDetailPage records={actualRecords} />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await user.click(screen.getByRole('button', { name: '장면 재구성 열기' }));
+    const dialog = screen.getByRole('dialog', { name: `${record!.title} 장면 재구성` });
+    expect(within(dialog).getByText(`1 / ${scenes.length}`)).toBeVisible();
+
+    for (const [index, expectedText] of scenes.entries()) {
+      const sceneText = dialog.querySelector('.cinematic-scene__text');
+      expect(sceneText?.textContent?.trim()).toBe(expectedText);
+      expect(sceneText?.textContent?.trim()).not.toBe('');
+
+      if (index < scenes.length - 1) {
+        await user.click(within(dialog).getByRole('button', { name: '다음 장면' }));
+      }
+    }
+  });
+
+  it('closes and resets the cinematic modal when the route record changes', async () => {
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter initialEntries={['/records/first-contact']}>
+        <RecordRouteControls />
+        <Routes>
+          <Route path="records/:recordId" element={<RecordDetailPage records={records} />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await user.click(screen.getByRole('button', { name: '장면 재구성 열기' }));
+    expect(screen.getByRole('dialog', { name: '첫 조우 장면 재구성' })).toBeVisible();
+
+    await user.click(screen.getByRole('button', { name: '비시네마틱 기록으로 이동' }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: '시네마틱 기록으로 이동' }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '장면 재구성 열기' })).toBeVisible();
   });
 });
 

@@ -1,4 +1,4 @@
-import { useState, type JSX } from 'react';
+import { useEffect, useState, type JSX } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { Link, useParams } from 'react-router-dom';
 import { StatusStamp } from '../../components/StatusStamp';
@@ -15,13 +15,15 @@ const cinematicStages = new Set([1, 3, 5, 7]);
 function scenesFromRecord(record: ArchiveRecord): CinematicSceneItem[] {
   return record.body
     .split(/\n+/)
-    .map((line) => line.trim())
+    .map((line) => line
+      .trim()
+      .replace(/^>\s?/, '')
+      .replace(/^\*\*(.+)\*\*$/, '$1')
+      .trim())
     .filter(Boolean)
     .map((line, index) => ({
       id: `${record.id}-scene-${index + 1}`,
-      text: line
-        .replace(/^>\s?/, '')
-        .replace(/^\*\*(.+)\*\*$/, '$1'),
+      text: line,
     }));
 }
 
@@ -29,6 +31,10 @@ export function RecordDetailPage({ records = loadAllContent().records }: RecordD
   const { recordId } = useParams();
   const [isCinematicOpen, setIsCinematicOpen] = useState(false);
   const record = records.find((item) => item.id === recordId);
+
+  useEffect(() => {
+    setIsCinematicOpen(false);
+  }, [recordId]);
 
   if (!record) {
     return (
@@ -97,7 +103,7 @@ export function RecordDetailPage({ records = loadAllContent().records }: RecordD
         </nav>
       )}
 
-      {isCinematicOpen && (
+      {isCinematicOpen && hasCinematicScene && (
         <CinematicScene
           title={record.title}
           scenes={scenes}
