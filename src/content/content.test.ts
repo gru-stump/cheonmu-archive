@@ -54,14 +54,15 @@ describe('initial Cheonmu archive content', () => {
 
   it('includes every sourced appellation and its relationship change note', () => {
     const relationship = loadAllContent().documents.find((document) => document.id === 'relationship');
+    const relationshipBody = relationship?.body.replace(/\r\n/g, '\n');
 
-    expect(relationship?.body).toContain('## 호칭');
-    expect(relationship?.body).toContain('### 천령 → 무영');
-    expect(relationship?.body).toContain('무영\n- 지휘관님\n- 우리 지휘관님\n- 환자분\n- 고질적인 환자');
-    expect(relationship?.body).toContain('### 무영 → 천령');
-    expect(relationship?.body).toContain('천령\n- 천령 선생\n- 선생님\n- 의료관님');
-    expect(relationship?.body).toContain('## 관계가 깊어진 뒤의 변화');
-    expect(relationship?.body).toContain('심각한 상황에서는 이름만 짧게 부른다');
-    expect(relationship?.body).toContain('감정이 흔들릴 때는 ‘천령’이라고만 부른다');
+    expect(relationshipBody).toContain('## 호칭');
+    expect(relationshipBody).toContain('### 천령 → 무영');
+    expect(relationshipBody).toContain('무영\n- 지휘관님\n- 우리 지휘관님\n- 환자분\n- 고질적인 환자');
+    expect(relationshipBody).toContain('### 무영 → 천령');
+    expect(relationshipBody).toContain('천령\n- 천령 선생\n- 선생님\n- 의료관님');
+    expect(relationshipBody).toContain('## 관계가 깊어진 뒤의 변화');
+    expect(relationshipBody).toContain('심각한 상황에서는 이름만 짧게 부른다');
+    expect(relationshipBody).toContain('감정이 흔들릴 때는 ‘천령’이라고만 부른다');
   });
 });
