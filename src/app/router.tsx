@@ -7,9 +7,9 @@ export function AppRouter(): JSX.Element {
     <HashRouter>
       <Routes>
         <Route element={<AppShell />}>
-          <Route index element={<div>{'\uF9E3\uC495\u0422'}</div>} />
-          <Route path="records" element={<div>{'\u6E72\uACD5\uC909\uF9E3?'}</div>} />
-          <Route path="archive" element={<div>{'?\uAFA9\uBB45?\uB300\uD215'}</div>} />
+          <Route index element={<div>{'\uCC9C\uBB34'}</div>} />
+          <Route path="records" element={<div>{'\uAE30\uB85D\uCCA0'}</div>} />
+          <Route path="archive" element={<div>{'\uC544\uCE74\uC774\uBE0C'}</div>} />
         </Route>
       </Routes>
     </HashRouter>
