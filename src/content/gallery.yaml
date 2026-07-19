@@ -1,0 +1,26 @@
+- id: cheonmu-full
+  title: 천무 전신
+  image: /images/cheonmu-full.png
+  alt: 천령과 무영의 전신 캐릭터 디자인
+  creator: 그루 (@gru_stump)
+  characters: [cheonryeong, muyeong]
+  tags: [전신, 캐릭터-디자인]
+  public: true
+
+- id: cheonmu-pair-template
+  title: 천무 페어틀
+  image: /images/cheonmu-pair-template.png
+  alt: 천령과 무영의 관계를 정리한 페어틀
+  creator: 그루 (@gru_stump)
+  characters: [cheonryeong, muyeong]
+  tags: [페어틀, 관계]
+  public: true
+
+- id: creator-profile
+  title: 제작자 프로필
+  image: /images/creator-profile.png
+  alt: 제작자 그루의 프로필과 천령 및 무영 소개
+  creator: 그루 (@gru_stump)
+  characters: [cheonryeong, muyeong]
+  tags: [제작자, 프로필]
+  public: true
