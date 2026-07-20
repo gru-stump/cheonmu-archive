@@ -323,4 +323,25 @@ describe('EditorApp', () => {
     expect(within(documentPreview).getByText('문서 작가')).toBeVisible();
     expect(within(documentPreview).getByRole('heading', { name: '관계' })).toBeVisible();
   });
+
+  it('renders the editor as navigation, form, preview, actions, and change regions', async () => {
+    const user = userEvent.setup();
+    const { container } = render(<EditorApp api={createApi()} />);
+    await openRecord(user);
+
+    expect(container.querySelector('.editor-shell')).toBeVisible();
+    expect(container.querySelector('.editor-header')).toBeVisible();
+    expect(container.querySelector('.editor-kind-nav')).toBeVisible();
+    expect(container.querySelector('.editor-entry-list')).toBeVisible();
+    expect(container.querySelector('.editor-workspace')).toBeVisible();
+    expect(container.querySelector('.editor-form-pane'))
+      .toContainElement(screen.getByRole('group', { name: '기록 정보' }));
+    expect(container.querySelector('.editor-actions'))
+      .toContainElement(screen.getByRole('button', { name: '저장' }));
+    expect(container.querySelector('.editor-preview-pane'))
+      .toContainElement(screen.getByRole('complementary', { name: '미리보기' }));
+    expect(container.querySelector('.editor-change-bar'))
+      .toHaveTextContent('src/content/records/first-contact.md');
+    expect(screen.getAllByLabelText('변경 파일')).toHaveLength(1);
+  });
 });

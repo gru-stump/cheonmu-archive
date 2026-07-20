@@ -4,10 +4,17 @@ import type { ArchiveDocument, ArchiveProfile, ArchiveRecord, DocumentMeta, Prof
 import type { EditorKind } from './api';
 
 export type EditorAction = '생성' | '수정' | '변경 없음' | '삭제 예정';
-type PreviewPaneProps = { kind: EditorKind; data: RecordMeta | ProfileMeta | DocumentMeta; body: string; path: string; action: EditorAction };
+type PreviewPaneProps = {
+  className?: string;
+  kind: EditorKind;
+  data: RecordMeta | ProfileMeta | DocumentMeta;
+  body: string;
+  path: string;
+  action: EditorAction;
+};
 
-export function PreviewPane({ kind, data, body, path, action }: PreviewPaneProps): JSX.Element {
-  return <aside aria-label="미리보기">
+export function PreviewPane({ className, kind, data, body, path, action }: PreviewPaneProps): JSX.Element {
+  return <aside className={className} aria-label="미리보기">
     <p>변경 파일: <code>{path}</code></p>
     <p>작업: {action}</p>
     <article className={kind === 'records' ? 'record-detail' : 'archive-detail'}>

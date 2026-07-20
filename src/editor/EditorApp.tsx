@@ -460,49 +460,82 @@ export function EditorApp({ api = editorApi }: { api?: EditorApiContract }): JSX
   }
 
   const currentDraft = galleryDraft ?? draft;
-  return <main>
-    <header><h1>천무 로컬 편집기</h1><p>저장 전 미리보기와 스키마 검증을 확인하세요.</p></header>
-    <nav aria-label="콘텐츠 종류">{sections.map((entryKind) => <button key={entryKind} type="button" disabled={pending !== null} aria-pressed={kind === entryKind} onClick={() => changeTab(entryKind)}>{labels[entryKind].tab}</button>)}</nav>
-    <section aria-label="콘텐츠 목록">
-      <label>검색<input disabled={pending !== null} value={query} onChange={(event) => setQuery(event.target.value)} /></label>
-      <button type="button" disabled={pending !== null} onClick={() => create(kind)}>{labels[kind].create}</button>
-      <ul>
-        {visibleEntries.map((entry) => <li key={entry.id}><button type="button" disabled={pending !== null} onClick={() => select(kind as EditorKind, entry)}>{titleFrom(kind as EditorKind, entry.source)} 편집</button></li>)}
-        {visibleGallery.map((item) => <li key={item.id}><button type="button" disabled={pending !== null} onClick={() => selectGallery(item)}>{item.title} 편집</button></li>)}
-      </ul>
-    </section>
-    {currentDraft && <section aria-label="편집 초안">
-      {hasUnsavedChanges && <p role="status">저장하지 않은 변경 사항이 있습니다.</p>}
-      {pending && <p role="status" aria-live="polite">{pending === 'delete' ? '삭제 중입니다.' : '저장 중입니다.'}</p>}
-      {draft && preview && <>
-        {draft.kind === 'records' && <RecordForm value={preview.data as RecordMeta} body={preview.body} errors={draft.validation.fields} recordIds={recordIds} idEditable={isNew} disabled={pending !== null} onChange={update} onBodyChange={(body) => update({}, body)} />}
-        {draft.kind === 'profiles' && <ProfileForm value={preview.data as ProfileMeta} body={preview.body} errors={draft.validation.fields} idEditable={isNew} disabled={pending !== null} onChange={update} onBodyChange={(body) => update({}, body)} />}
-        {draft.kind === 'documents' && <DocumentForm value={preview.data as DocumentMeta} body={preview.body} errors={draft.validation.fields} idEditable={isNew} disabled={pending !== null} onChange={update} onBodyChange={(body) => update({}, body)} />}
-        {!isNew && <button type="button" disabled={pending !== null} onClick={() => setDeleting((value) => !value)}>{deleting ? '삭제 취소' : '삭제 예정으로 표시'}</button>}
-        <button type="button" disabled={pending !== null || (deleting ? false : !draft.validation.valid)} onClick={() => void saveContent()}>{deleting ? '삭제 확인' : '저장'}</button>
-        <PreviewPane kind={draft.kind} data={preview.data} body={preview.body} path={`src/content/${draft.kind}/${draft.id}.md`} action={action} />
-      </>}
-      {galleryDraft && <>
-        <GalleryForm value={galleryDraft.item} errors={galleryDraft.validation.fields} idEditable={galleryDraft.isNew} disabled={pending !== null} selectedFile={selectedGalleryFile} selectedExtension={selectedGalleryExtension} savedPublic={galleryDraft.saved?.public} onChange={updateGallery} onFileChange={(file) => void chooseGalleryFile(file)} />
-        {galleryImagePending && <p role="status">이미지 확인 중입니다.</p>}
-        {galleryPlanPending && <p role="status">변경 파일 계획 확인 중입니다.</p>}
-        {galleryPlanError && <p role="alert">{galleryPlanError}</p>}
-        {!galleryDraft.isNew && <button type="button" disabled={pending !== null} onClick={() => setDeleting((value) => !value)}>{deleting ? '삭제 취소' : '삭제 예정으로 표시'}</button>}
-        <button
-          type="button"
-          disabled={pending !== null
-            || galleryPlanPending
-            || Boolean(galleryPlanError)
-            || ((galleryDraft.dirty || deleting) && !galleryPlan)
-            || (deleting ? false : galleryImagePending || !galleryDraft.validation.valid)}
-          onClick={() => void saveGallery()}
-        >{deleting ? '삭제 확인' : '저장'}</button>
-        <p>작업: {deleting ? '삭제 예정' : galleryDraft.isNew ? '생성' : galleryDraft.dirty ? '수정' : '변경 없음'}</p>
-        {galleryPlan && <ul aria-label="변경 파일">
-          {galleryPlan.changes.map((change, index) => <li key={`${change.action}-${change.path}-${index}`}>{galleryChangeText(change)}</li>)}
-        </ul>}
-      </>}
-    </section>}
-    {message && <p role="status">{message}</p>}
+  const contentPath = draft ? `src/content/${draft.kind}/${draft.id}.md` : null;
+  const changeLines = galleryPlan
+    ? galleryPlan.changes.map(galleryChangeText)
+    : contentPath
+      ? [`${action}: ${contentPath}`]
+      : [];
+
+  return <main className="editor-shell">
+    <header className="editor-header">
+      <div>
+        <p className="editor-eyebrow">CHEONMU ARCHIVE</p>
+        <h1>천무 로컬 편집기</h1>
+        <p>저장 전 미리보기와 스키마 검증을 확인하세요.</p>
+      </div>
+    </header>
+    <div className="editor-layout">
+      <aside className="editor-navigation">
+        <nav className="editor-kind-nav" aria-label="콘텐츠 종류">{sections.map((entryKind) => <button key={entryKind} type="button" disabled={pending !== null} aria-pressed={kind === entryKind} onClick={() => changeTab(entryKind)}>{labels[entryKind].tab}</button>)}</nav>
+        <section className="editor-entry-list" aria-label="콘텐츠 목록">
+          <label>검색<input disabled={pending !== null} value={query} onChange={(event) => setQuery(event.target.value)} /></label>
+          <button type="button" disabled={pending !== null} onClick={() => create(kind)}>{labels[kind].create}</button>
+          <ul>
+            {visibleEntries.map((entry) => <li key={entry.id}><button type="button" disabled={pending !== null} onClick={() => select(kind as EditorKind, entry)}>{titleFrom(kind as EditorKind, entry.source)} 편집</button></li>)}
+            {visibleGallery.map((item) => <li key={item.id}><button type="button" disabled={pending !== null} onClick={() => selectGallery(item)}>{item.title} 편집</button></li>)}
+          </ul>
+        </section>
+      </aside>
+      {currentDraft && <section className="editor-workspace" aria-label="편집 초안">
+        <div className={galleryDraft ? 'editor-form-pane editor-form-pane--gallery' : 'editor-form-pane'}>
+          {hasUnsavedChanges && <p role="status">저장하지 않은 변경 사항이 있습니다.</p>}
+          {pending && <p role="status" aria-live="polite">{pending === 'delete' ? '삭제 중입니다.' : '저장 중입니다.'}</p>}
+          {draft && preview && <>
+            {draft.kind === 'records' && <RecordForm value={preview.data as RecordMeta} body={preview.body} errors={draft.validation.fields} recordIds={recordIds} idEditable={isNew} disabled={pending !== null} onChange={update} onBodyChange={(body) => update({}, body)} />}
+            {draft.kind === 'profiles' && <ProfileForm value={preview.data as ProfileMeta} body={preview.body} errors={draft.validation.fields} idEditable={isNew} disabled={pending !== null} onChange={update} onBodyChange={(body) => update({}, body)} />}
+            {draft.kind === 'documents' && <DocumentForm value={preview.data as DocumentMeta} body={preview.body} errors={draft.validation.fields} idEditable={isNew} disabled={pending !== null} onChange={update} onBodyChange={(body) => update({}, body)} />}
+            <div className="editor-actions">
+              {!isNew && <button type="button" disabled={pending !== null} onClick={() => setDeleting((value) => !value)}>{deleting ? '삭제 취소' : '삭제 예정으로 표시'}</button>}
+              <button type="button" disabled={pending !== null || (deleting ? false : !draft.validation.valid)} onClick={() => void saveContent()}>{deleting ? '삭제 확인' : '저장'}</button>
+            </div>
+          </>}
+          {galleryDraft && <>
+            <GalleryForm value={galleryDraft.item} errors={galleryDraft.validation.fields} idEditable={galleryDraft.isNew} disabled={pending !== null} selectedFile={selectedGalleryFile} selectedExtension={selectedGalleryExtension} savedPublic={galleryDraft.saved?.public} onChange={updateGallery} onFileChange={(file) => void chooseGalleryFile(file)} />
+            {galleryImagePending && <p role="status">이미지 확인 중입니다.</p>}
+            {galleryPlanPending && <p role="status">변경 파일 계획 확인 중입니다.</p>}
+            {galleryPlanError && <p role="alert">{galleryPlanError}</p>}
+            <div className="editor-actions">
+              {!galleryDraft.isNew && <button type="button" disabled={pending !== null} onClick={() => setDeleting((value) => !value)}>{deleting ? '삭제 취소' : '삭제 예정으로 표시'}</button>}
+              <button
+                type="button"
+                disabled={pending !== null
+                  || galleryPlanPending
+                  || Boolean(galleryPlanError)
+                  || ((galleryDraft.dirty || deleting) && !galleryPlan)
+                  || (deleting ? false : galleryImagePending || !galleryDraft.validation.valid)}
+                onClick={() => void saveGallery()}
+              >{deleting ? '삭제 확인' : '저장'}</button>
+            </div>
+            <p>작업: {deleting ? '삭제 예정' : galleryDraft.isNew ? '생성' : galleryDraft.dirty ? '수정' : '변경 없음'}</p>
+          </>}
+        </div>
+        {draft && preview && <PreviewPane
+          className="editor-preview-pane"
+          kind={draft.kind}
+          data={preview.data}
+          body={preview.body}
+          path={`src/content/${draft.kind}/${draft.id}.md`}
+          action={action}
+        />}
+      </section>}
+    </div>
+    <footer className="editor-change-bar" aria-label="변경 상태">
+      <strong>{hasUnsavedChanges ? '저장되지 않은 변경' : '변경 없음'}</strong>
+      {changeLines.length > 0 && <ul aria-label="변경 파일">
+        {changeLines.map((line) => <li key={line}>{line}</li>)}
+      </ul>}
+    </footer>
+    {message && <p className="editor-toast" role="status">{message}</p>}
   </main>;
 }
