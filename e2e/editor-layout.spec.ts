@@ -75,4 +75,47 @@ for (const viewport of [
     console.info(`${viewport.name} geometry ${JSON.stringify(geometry)}`);
     await page.screenshot({ path: testInfo.outputPath(`${viewport.name}-${viewport.width}x${viewport.height}.png`), fullPage: true });
   });
+
+  test(`${viewport.name} gallery preview stays inside the editor form pane`, async ({ page }, testInfo) => {
+    await page.setViewportSize(viewport);
+    await page.goto('./');
+    await page.getByRole('button', { name: '화랑', exact: true }).click();
+    await page.locator('.editor-entry-list li button').first().click();
+
+    const form = page.locator('.editor-form-pane');
+    const image = form.locator('img');
+    await expect(form).toBeVisible();
+    await expect(image).toBeVisible();
+    await expect.poll(() => image.evaluate((element: HTMLImageElement) => element.naturalWidth)).toBeGreaterThan(0);
+
+    const geometry = await page.evaluate(() => {
+      const formPane = document.querySelector<HTMLElement>('.editor-form-pane')!;
+      const imageElement = formPane.querySelector<HTMLImageElement>('img')!;
+      const paneStyle = getComputedStyle(formPane);
+      const imageRect = imageElement.getBoundingClientRect();
+      const contentWidth = formPane.clientWidth
+        - Number.parseFloat(paneStyle.paddingLeft)
+        - Number.parseFloat(paneStyle.paddingRight);
+      return {
+        documentScrollWidth: document.documentElement.scrollWidth,
+        documentClientWidth: document.documentElement.clientWidth,
+        paneScrollWidth: formPane.scrollWidth,
+        paneClientWidth: formPane.clientWidth,
+        contentWidth,
+        imageWidth: imageRect.width,
+        imageNaturalWidth: imageElement.naturalWidth,
+      };
+    });
+
+    expect(geometry.imageNaturalWidth).toBeGreaterThan(0);
+    expect(geometry.imageWidth).toBeLessThanOrEqual(geometry.contentWidth + 1);
+    expect(geometry.paneScrollWidth).toBeLessThanOrEqual(geometry.paneClientWidth + 1);
+    expect(geometry.documentScrollWidth).toBeLessThanOrEqual(geometry.documentClientWidth + 1);
+    console.info(`${viewport.name} gallery geometry ${JSON.stringify(geometry)}`);
+    await testInfo.attach('gallery-geometry', {
+      body: JSON.stringify({ viewport, ...geometry }, null, 2),
+      contentType: 'application/json',
+    });
+    await page.screenshot({ path: testInfo.outputPath(`${viewport.name}-gallery-${viewport.width}x${viewport.height}.png`), fullPage: true });
+  });
 }

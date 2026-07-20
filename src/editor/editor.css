@@ -80,6 +80,7 @@
 
 .editor-form-pane { padding: 1rem; }
 .editor-form-pane--gallery { grid-column: 1 / -1; }
+.editor-form-pane img { display: block; max-width: 100%; height: auto; object-fit: contain; }
 .editor-preview-pane { padding: clamp(1rem, 2.5vw, 2rem); color: var(--ink); background: var(--paper-raised); }
 .editor-form-pane fieldset { display: grid; gap: 0.8rem; margin: 0; border: 0; padding: 0; }
 .editor-form-pane label { display: grid; gap: 0.3rem; color: #e5d9ca; font-size: 0.875rem; font-weight: 700; }
