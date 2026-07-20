@@ -7,6 +7,8 @@ import { build } from 'vite';
 import { afterEach, describe, expect, it } from 'vitest';
 import { publicGalleryPlugin } from './public-gallery';
 import { createGalleryStorage } from '../editor/gallery-storage';
+import { createEditorServer } from '../editor/server';
+import request from 'supertest';
 
 const roots: string[] = [];
 const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64');
@@ -103,6 +105,58 @@ describe('public gallery production filtering', () => {
     await expect(readFile(join(root, 'dist', 'images', 'legacy-private.png')))
       .rejects.toMatchObject({ code: 'ENOENT' });
     await expect(readFile(join(root, 'dist', 'images', 'private-work.png')))
+      .rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  it('keeps a staged POST replacement and final private bytes out of build artifacts', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'cheonmu-public-gallery-staged-'));
+    roots.push(root);
+    await Promise.all([
+      mkdir(join(root, 'src', 'content', 'private-images'), { recursive: true }),
+      mkdir(join(root, 'public', 'images'), { recursive: true }),
+      ...['records', 'profiles', 'documents'].map((kind) => mkdir(join(root, 'src', 'content', kind), { recursive: true })),
+    ]);
+    await writeFile(join(root, 'index.html'), '<script type="module" src="/src/main.ts"></script>', 'utf8');
+    await writeFile(join(root, 'src', 'main.ts'), "import source from 'virtual:public-gallery'; console.log(source);", 'utf8');
+    await writeFile(join(root, 'src', 'content', 'gallery.yaml'), `- id: private-work
+  title: Private work
+  image: /images/private-legacy.png
+  alt: Private image
+  creator: Artist
+  characters: [muyeong]
+  public: false
+`, 'utf8');
+    await writeFile(join(root, 'src', 'content', 'private-images', 'private-legacy.png'), png);
+    const replacement = Buffer.from([0xff, 0xd8, 0xff, 0xc0, 0x00, 0x11, 0x08, 0x00, 0x01, 0x00, 0x01, 0x03, 0x01, 0x11, 0x00, 0x02, 0x11, 0x00, 0x03, 0x11, 0x00, 0xff, 0xd9]);
+    const app = createEditorServer({ rootDir: root });
+    await request(app)
+      .post('/api/editor/gallery/image')
+      .set('Content-Type', 'application/octet-stream')
+      .set('X-Gallery-Id', 'private-work')
+      .set('X-File-Name', 'replacement.jpg')
+      .set('X-Confirm-Overwrite', 'true')
+      .send(replacement)
+      .expect(200, { path: '/images/private-work.jpg', width: 1, height: 1 });
+
+    const runBuild = () => build({
+      root,
+      logLevel: 'silent',
+      plugins: [publicGalleryPlugin(root)],
+      build: { sourcemap: true, outDir: 'dist' },
+    });
+    await runBuild();
+    await expect(readFile(join(root, 'dist', 'images', 'private-work.jpg')))
+      .rejects.toMatchObject({ code: 'ENOENT' });
+
+    const updatedItem = {
+      id: 'private-work', title: 'Private work', image: '/images/private-work.jpg', alt: 'Private image',
+      creator: 'Artist', characters: ['muyeong'], public: false,
+    };
+    await request(app).put('/api/editor/gallery/private-work').send(updatedItem).expect(200, updatedItem);
+    await runBuild();
+    await expect(readFile(join(root, 'dist', 'images', 'private-work.jpg')))
+      .rejects.toMatchObject({ code: 'ENOENT' });
+    await expect(readFile(join(root, 'public', 'images', 'private-work.jpg')))
       .rejects.toMatchObject({ code: 'ENOENT' });
   });
 });

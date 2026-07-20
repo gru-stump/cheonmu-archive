@@ -138,3 +138,32 @@ Final focused result: exit 0; 3 files passed, 33 tests passed. This includes the
 | `npm run e2e` | Exit 0; 6 Playwright tests passed. |
 | `rg -n '/api/editor|src/editor|PRIVATE_METADATA_MARKER|PRIVATE_IMAGE_BYTES|legacy-private' dist` | No matches; `DIST_PRIVATE_EDITOR_LEGACY_SCAN_CLEAN`. |
 | `git diff --check` | Exit 0. |
+
+## Original POST staging hardening addendum (2026-07-20)
+
+### Root cause and fix
+
+- The documented two-call flow installed POST bytes directly in `public/images`, trashing the old active image before metadata PUT. PUT then resolved the stale metadata path first and either failed with `ENOENT` or moved the wrong old bytes; private replacements were temporarily public and could enter `dist`.
+- POST now validates exactly as before but atomically stores only the normalized candidate under canonical `src/content/staged-images/`. Active public/private bytes and YAML remain untouched until PUT, and the staging directory is ignored by Git.
+- PUT consumes only the exact normalized staged path for the submitted item ID. Its compensating transaction trashes the old active image, links the stage into the visibility-selected root, removes the stage, and commits YAML; any failure restores the stage, active image, and original metadata so the same request can be retried.
+- If no stage exists and old metadata points to a missing file, PUT can recover only the exact submitted installed path from the canonical public/private roots. This repairs uploads interrupted under the pre-staging implementation without broadening candidate selection.
+- The combined image-plus-metadata endpoint remains unchanged and covered by its existing transaction tests.
+
+### Strict RED/GREEN evidence
+
+- Initial RED: the three full sequence regressions failed for the intended reasons. POST removed the legacy public file, POST removed the private legacy file, and a build after private POST contained the replacement JPEG.
+- Intermediate RED after POST staging: the build exposure regression passed, while both API sequences reached PUT and failed because it still selected the old PNG instead of the staged JPEG.
+- PUT RED: the injected staged-unlink failure was never reached because PUT ignored the stage, and the exact installed-path recovery case failed with `ENOENT` on stale metadata.
+- GREEN: the five focused regressions passed, covering public extension replacement, private replacement, interruption, failed PUT plus retry, pre-fix recovery, stage cleanup, recoverable old-image trash, and pre/post-PUT build filtering.
+
+### Final verification after POST staging hardening
+
+| Command/check | Result |
+| --- | --- |
+| `npm run test:run -- editor/gallery-storage.test.ts scripts/public-gallery.test.ts` | Exit 0; 2 files passed; 30 passed, 1 skipped (31 total). |
+| `npm run test:run` | Exit 0; 17 files passed; 122 passed, 2 skipped (124 total). The skips are Windows permission-gated symlink fixtures. |
+| `npm run validate` | Exit 0; `Content validation passed.` |
+| `npm run build` | Exit 0; TypeScript and Vite production build passed; 389 modules transformed. |
+| `npm run e2e` | Exit 0; 6 Playwright tests passed. |
+| `rg -n -i "staged-images|private-images|private-work|private-legacy" dist` | No matches. |
+| `git diff --check` | Exit 0. |

@@ -169,12 +169,16 @@ export function createGalleryStorage({ rootDir, now = () => new Date(), filesyst
     gallery: string;
     images: string;
     privateImages: string;
+    stagedImages: string;
   }> {
     const workspace = await realpath(resolvedRoot);
     const content = await checkedDirectory(join(workspace, 'src', 'content'), workspace);
     const privateImagesPath = join(content, 'private-images');
     await mkdir(privateImagesPath, { recursive: true });
     const privateImages = await checkedDirectory(privateImagesPath, content);
+    const stagedImagesPath = join(content, 'staged-images');
+    await mkdir(stagedImagesPath, { recursive: true });
+    const stagedImages = await checkedDirectory(stagedImagesPath, content);
     const publicRoot = await checkedDirectory(join(workspace, 'public'), workspace);
     const images = await checkedDirectory(join(publicRoot, 'images'), publicRoot);
     const gallery = join(content, 'gallery.yaml');
@@ -182,7 +186,7 @@ export function createGalleryStorage({ rootDir, now = () => new Date(), filesyst
     if (stats.isSymbolicLink() || !stats.isFile()) throw invalidPath();
     const canonicalGallery = await realpath(gallery);
     if (!isWithin(content, canonicalGallery)) throw invalidPath();
-    return { workspace, content, gallery: canonicalGallery, images, privateImages };
+    return { workspace, content, gallery: canonicalGallery, images, privateImages, stagedImages };
   }
 
   async function trashDirectory(workspace: string, kind: 'images' | 'gallery'): Promise<string> {
@@ -293,13 +297,47 @@ export function createGalleryStorage({ rootDir, now = () => new Date(), filesyst
     }
   }
 
+  async function optionalImagePath(imageRoot: string, publicPath: string): Promise<string | undefined> {
+    try {
+      return await checkedImagePath(imageRoot, publicPath, true);
+    } catch (error) {
+      if (errorCode(error) === 'ENOENT') return undefined;
+      throw error;
+    }
+  }
+
+  async function optionalStoredImagePath(
+    locations: Awaited<ReturnType<typeof roots>>,
+    item: GalleryItem,
+  ): Promise<string | undefined> {
+    try {
+      return await storedImagePath(locations, item);
+    } catch (error) {
+      if (errorCode(error) === 'ENOENT') return undefined;
+      throw error;
+    }
+  }
+
+  function validateImageExtension(path: string, info: ImageInfo): void {
+    const actualExtension = extname(path).slice(1).toLowerCase().replace('jpeg', 'jpg');
+    if (actualExtension !== info.extension) {
+      throw new GalleryStorageError('Gallery validation failed.', 'VALIDATION_ERROR', { image: 'Image extension does not match its contents.' });
+    }
+  }
+
   async function replacementCandidates(
     locations: Awaited<ReturnType<typeof roots>>,
     id: string,
     existingItem?: GalleryItem,
   ): Promise<Set<string>> {
     const candidates = new Set<string>();
-    if (existingItem) candidates.add(await storedImagePath(locations, existingItem));
+    if (existingItem) {
+      try {
+        candidates.add(await storedImagePath(locations, existingItem));
+      } catch (error) {
+        if (errorCode(error) !== 'ENOENT') throw error;
+      }
+    }
     for (const imageRoot of [locations.images, locations.privateImages]) {
       for (const extension of ['png', 'jpg', 'jpeg', 'webp']) {
         try {
@@ -307,6 +345,18 @@ export function createGalleryStorage({ rootDir, now = () => new Date(), filesyst
         } catch (error) {
           if (errorCode(error) !== 'ENOENT') throw error;
         }
+      }
+    }
+    return candidates;
+  }
+
+  async function normalizedImageCandidates(imageRoot: string, id: string): Promise<Set<string>> {
+    const candidates = new Set<string>();
+    for (const extension of ['png', 'jpg', 'jpeg', 'webp']) {
+      try {
+        candidates.add(await checkedImagePath(imageRoot, `/images/${id}.${extension}`, true));
+      } catch (error) {
+        if (errorCode(error) !== 'ENOENT') throw error;
       }
     }
     return candidates;
@@ -342,18 +392,60 @@ export function createGalleryStorage({ rootDir, now = () => new Date(), filesyst
       const locations = await roots();
       const items = await readItemsUnsafe(locations);
       const index = items.findIndex(({ id }) => id === item.id);
-      const previous = index >= 0 ? items[index] : item;
-      const imagePath = await storedImagePath(locations, previous);
-      const imageInfo = inspectImage(await readFile(imagePath));
-      const expectedExtension = imageInfo.extension;
-      const actualExtension = extname(imagePath).slice(1).toLowerCase().replace('jpeg', 'jpg');
-      if (actualExtension !== expectedExtension) {
-        throw new GalleryStorageError('Gallery validation failed.', 'VALIDATION_ERROR', { image: 'Image extension does not match its contents.' });
-      }
+      const previous = index >= 0 ? items[index] : undefined;
       if (index >= 0) items[index] = item;
       else items.push(item);
       const destinationRoot = item.public ? locations.images : locations.privateImages;
       const destination = await checkedImagePath(destinationRoot, item.image, false);
+      const normalizedSubmittedPath = ['png', 'jpg', 'jpeg', 'webp']
+        .some((extension) => item.image === `/images/${item.id}.${extension}`);
+      const stagedPath = normalizedSubmittedPath
+        ? await optionalImagePath(locations.stagedImages, item.image)
+        : undefined;
+
+      if (stagedPath) {
+        const imageInfo = inspectImage(await readFile(stagedPath));
+        validateImageExtension(item.image, imageInfo);
+        const previousPath = previous
+          ? await optionalStoredImagePath(locations, previous)
+          : undefined;
+        const existingDestination = await optionalImagePath(destinationRoot, item.image);
+        if (existingDestination && existingDestination !== previousPath) {
+          throw new GalleryStorageError('Gallery validation failed.', 'CONFLICT', { image: 'Destination image already exists.' });
+        }
+
+        let previousBackup: string | undefined;
+        let destinationLinked = false;
+        let stagedRemoved = false;
+        try {
+          if (previousPath) previousBackup = await moveImageToTrash(previousPath, locations);
+          await link(stagedPath, destination);
+          destinationLinked = true;
+          await unlinkPath(stagedPath);
+          stagedRemoved = true;
+          await writeItemsUnsafe(items, locations);
+        } catch (error) {
+          if (destinationLinked) {
+            if (stagedRemoved) await restoreImage(destination, stagedPath);
+            await unlinkPath(destination);
+          }
+          if (previousBackup && previousPath) await restoreImage(previousBackup, previousPath);
+          throw error;
+        }
+        return item;
+      }
+
+      const previousItem = previous ?? item;
+      let imagePath = await optionalStoredImagePath(locations, previousItem);
+      if (!imagePath && index >= 0) {
+        const preferred = item.public ? locations.images : locations.privateImages;
+        const alternate = item.public ? locations.privateImages : locations.images;
+        imagePath = await optionalImagePath(preferred, item.image)
+          ?? await optionalImagePath(alternate, item.image);
+      }
+      if (!imagePath) imagePath = await storedImagePath(locations, previousItem);
+      const imageInfo = inspectImage(await readFile(imagePath));
+      validateImageExtension(imagePath, imageInfo);
       const moving = destination !== imagePath;
       let destinationLinked = false;
       let sourceRemoved = false;
@@ -391,18 +483,19 @@ export function createGalleryStorage({ rootDir, now = () => new Date(), filesyst
       const items = await readItemsUnsafe(locations);
       const existingItem = items.find((entry) => entry.id === safeId);
       const publicPath = `/images/${safeId}.${info.extension}`;
-      const target = await checkedImagePath(locations.images, publicPath, false);
-      const candidates = await replacementCandidates(locations, safeId, existingItem);
-      if (candidates.size > 0 && !overwrite) {
+      const target = await checkedImagePath(locations.stagedImages, publicPath, false);
+      const activeCandidates = await replacementCandidates(locations, safeId, existingItem);
+      const stagedCandidates = await normalizedImageCandidates(locations.stagedImages, safeId);
+      if ((activeCandidates.size > 0 || stagedCandidates.size > 0) && !overwrite) {
         throw new GalleryStorageError('이미지가 이미 존재합니다. 덮어쓰기를 확인해 주세요.', 'CONFLICT', { image: 'Explicit overwrite confirmation is required.' });
       }
 
-      const temporary = join(locations.images, `.${safeId}.${randomUUID()}.tmp`);
+      const temporary = join(locations.stagedImages, `.${safeId}.${randomUUID()}.tmp`);
       const moved: Array<{ backup: string; destination: string }> = [];
       try {
         await writeFile(temporary, bytes, { flag: 'wx' });
         await roots();
-        for (const candidate of candidates) {
+        for (const candidate of stagedCandidates) {
           moved.push({ backup: await moveImageToTrash(candidate, locations), destination: candidate });
         }
         await rename(temporary, target);
