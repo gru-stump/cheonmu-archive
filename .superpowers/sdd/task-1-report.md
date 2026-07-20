@@ -45,3 +45,15 @@
 - `git diff --check afd39e0..HEAD` — exit 0.
 - `git diff --name-status afd39e0..HEAD` 검토 — Task 1 산출물 세 문서만 나열됨을 확인했다.
 - `git status --short` — 출력 없음.
+
+## Public archive secrecy implementation
+
+- The four private originals were moved with `git mv` to nested `_hidden` directories and remain byte-identical to their original blobs.
+- Source and production-build secrecy coverage was added, then verified with `npx vitest run src/content/content.test.ts scripts/public-world.test.ts` and `npm run validate`.
+
+### Review correction evidence
+
+- Restored the secrecy oracle in both tests to the six exact brief phrases: `천령은 인외`, `인외 의사`, `피는 독이자 약`, `흰 백사`, `실제 나이 불명`, and `독과 약으로`.
+- RED: `npx vitest run src/content/content.test.ts scripts/public-world.test.ts` produced 3 failures. CM-06 and CM-05 differed from the brief; the production-boundary test found `인외 의사` in the emitted public home-page lede.
+- Restored the three brief-provided sanitized files exactly, changed CM-05 only from the forbidden ability phrase to `천령의 치료로도 살리기 어려운 중상`, and changed the public home-page lede to remove `인외 의사`.
+- GREEN: `npx vitest run src/content/content.test.ts scripts/public-world.test.ts` passed 10/10 tests; `npm run validate` reported `Content validation passed.`

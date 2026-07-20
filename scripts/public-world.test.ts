@@ -8,8 +8,8 @@ import { build } from 'vite';
 
 const outputs: string[] = [];
 const FORBIDDEN_PUBLIC_SECRETS = [
-  '천령은 인간', '인간 의사', '피를 마시는 흡혈귀',
-  '백사', '실제 나이 불명', '과거와 능력으로',
+  '천령은 인외', '인외 의사', '피는 독이자 약',
+  '흰 백사', '실제 나이 불명', '독과 약으로',
 ];
 
 async function emittedText(directory: string): Promise<string> {

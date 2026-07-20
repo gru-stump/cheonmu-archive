@@ -6,13 +6,13 @@ stage: 6
 status: confirmed
 characters: [cheonryeong, muyeong]
 tags: [거리, 보호, 통제]
-# CM-07 공개 후 promise-to-return로 related 복원할 것
+# CM-07 공개 시 promise-to-return을 related에 복원할 것
 related: [fracture]
-quote: "네가 가버린다고 판단했어"
+quote: "누가 가볍다고 판단했어요?"
 cinematic: false
 ---
 
-**보호하기 위해 피하는 사람과, 통제 밖으로 벗어나는 것을 견디지 못하는 치료사.**
+**보호하기 위해 피하는 인간과, 통제 밖으로 벗어나는 것을 견디지 못하는 치료자.**
 
 > “요즘은 나한테 안 오네.”
 >

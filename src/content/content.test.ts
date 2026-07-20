@@ -15,12 +15,12 @@ const OLD_IMAGE_PATHS = [
 ];
 
 const FORBIDDEN_PUBLIC_SECRETS = [
-  '천령은 인간',
-  '인간 의사',
-  '피를 마시는 흡혈귀',
-  '백사',
+  '천령은 인외',
+  '인외 의사',
+  '피는 독이자 약',
+  '흰 백사',
   '실제 나이 불명',
-  '과거와 능력으로',
+  '독과 약으로',
 ];
 
 describe('initial Cheonmu archive content', () => {
@@ -81,7 +81,7 @@ describe('initial Cheonmu archive content', () => {
     expect(relationshipBody).toContain('### 무영 → 천령');
     expect(relationshipBody).toContain('천령\n- 천령 선생\n- 선생님\n- 의료관님');
     expect(relationshipBody).toContain('## 관계가 깊어진 뒤의 변화');
-    expect(relationshipBody).toContain('심각한 상황이나 감정이 흔들릴 때는 ‘무영’이라고만 부른다');
+    expect(relationshipBody).toContain('심각하거나 감정이 흔들리는 순간에는 ‘무영’이라고만 부른다');
     expect(relationshipBody).toContain('감정이 흔들릴 때는 ‘천령’이라고만 부른다');
   });
 });
@@ -105,14 +105,14 @@ describe('public archive secrecy', () => {
     const stageSix = loadAllContent().records.find((record) => record.stage === 6);
 
     expect(stageSix?.id).toBe('keeping-distance');
-    expect(stageSix?.body).toContain('통제 밖으로 벗어나는 것을 견디지 못하는 치료사');
-    expect(stageSix?.body).not.toContain('인간');
-    expect(stageSix?.quote).toBe('네가 가버린다고 판단했어');
+    expect(stageSix?.body).toContain('통제 밖으로 벗어나는 것을 견디지 못하는 치료자');
+    expect(stageSix?.body).not.toContain('인외');
+    expect(stageSix?.quote).toBe('누가 가볍다고 판단했어요?');
   });
 
   it('describes CM-05 treatment without confirming a hidden ability', () => {
     const stageFive = loadAllContent().records.find((record) => record.stage === 5);
-    expect(stageFive?.body).toContain('천령의 치료로도 돌이키기 어려운 증상');
+    expect(stageFive?.body).toContain('천령의 치료로도 살리기 어려운 중상');
     expect(stageFive?.body).not.toContain('천령의 능력');
   });
 });
