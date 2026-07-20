@@ -56,12 +56,14 @@ export type ProfileMeta = z.infer<typeof profileMetaSchema>;
 export type DocumentMeta = z.infer<typeof documentMetaSchema>;
 export type GalleryItem = z.infer<typeof galleryItemSchema>;
 
-export type ArchiveRecord = RecordMeta & { body: string };
+export type ArchiveScene = { id: string; body: string };
+export type ArchiveRecord = RecordMeta & { body: string; cinematicBody?: string };
 export type ArchiveProfile = ProfileMeta & { body: string };
 export type ArchiveDocument = DocumentMeta & { body: string };
 
 export interface ArchiveContent {
   records: ArchiveRecord[];
+  scenes: ArchiveScene[];
   profiles: ArchiveProfile[];
   documents: ArchiveDocument[];
   gallery: GalleryItem[];

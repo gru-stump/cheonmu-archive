@@ -11,6 +11,7 @@ import {
   profileMetaSchema,
   recordMetaSchema,
   type ArchiveContent,
+  type ArchiveScene,
 } from '../src/content/schema';
 
 const rootDirectory = resolveValidationRoot(import.meta.url);
@@ -29,6 +30,19 @@ function readMarkdownCollection<T>(
     .filter((fileName) => fileName.endsWith('.md'))
     .map((fileName) => parseMarkdown(readFileSync(join(directory, fileName), 'utf8'), schema))
     .map(({ data, body }) => ({ ...data, body }));
+}
+
+function readScenes(directory: string): ArchiveScene[] {
+  if (!existsSync(directory)) {
+    return [];
+  }
+
+  return readdirSync(directory)
+    .filter((fileName) => fileName.endsWith('.md'))
+    .map((fileName) => ({
+      id: fileName.replace(/\.md$/, ''),
+      body: readFileSync(join(directory, fileName), 'utf8').trim(),
+    }));
 }
 
 function allPublicImages(directory: string, current = ''): string[] {
@@ -50,6 +64,7 @@ const gallery = existsSync(galleryPath)
   : [];
 const content: ArchiveContent = {
   records: readMarkdownCollection(join(contentDirectory, 'records'), recordMetaSchema),
+  scenes: readScenes(join(contentDirectory, 'scenes')),
   profiles: readMarkdownCollection(join(contentDirectory, 'profiles'), profileMetaSchema),
   documents: readMarkdownCollection(join(contentDirectory, 'documents'), documentMetaSchema),
   gallery,

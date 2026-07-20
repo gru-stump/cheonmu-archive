@@ -31,6 +31,19 @@ export function validateArchiveContent(
     }
   }
 
+  for (const scene of content.scenes) {
+    if (!scene.body.trim()) {
+      errors.push(`Scene ${scene.id} is empty.`);
+    }
+
+    const record = content.records.find((item) => item.id === scene.id);
+    if (!record) {
+      errors.push(`Scene ${scene.id} has no matching record.`);
+    } else if (!record.cinematic) {
+      errors.push(`Scene ${scene.id} is attached to a non-cinematic record.`);
+    }
+  }
+
   const availableImages = new Set(options.publicImagePaths ?? []);
   for (const item of content.gallery) {
     if (item.public && !availableImages.has(item.image)) {

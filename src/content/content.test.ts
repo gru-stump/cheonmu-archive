@@ -24,6 +24,15 @@ describe('initial Cheonmu archive content', () => {
     expect(content.records.map((record) => record.status)).toEqual(Array(8).fill('confirmed'));
   });
 
+  it('keeps the public first-contact summary separate from the cinematic prose', () => {
+    const record = loadAllContent().records.find((item) => item.id === 'first-contact');
+
+    expect(record?.body).toContain('현장 임시 치료소');
+    expect(record?.body).not.toContain('그럼에도 이번만큼은, 그 판단을 의심할 힘이 남아 있지 않았다.');
+    expect(record?.cinematicBody).toContain('## 격리선 밖의 의사');
+    expect(record?.cinematicBody).toContain('그럼에도 이번만큼은, 그 판단을 의심할 힘이 남아 있지 않았다.');
+  });
+
   it('uses the canonical character heights without claiming Muyeong is taller', () => {
     const content = loadAllContent();
     const cheonryeong = content.profiles.find((profile) => profile.id === 'cheonryeong');

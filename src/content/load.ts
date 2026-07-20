@@ -10,6 +10,7 @@ import {
   type ArchiveDocument,
   type ArchiveProfile,
   type ArchiveRecord,
+  type ArchiveScene,
 } from './schema';
 import { validateArchiveContent as validateArchiveContentBase, type ValidationOptions } from './validation';
 
@@ -34,6 +35,7 @@ export function loadContentFromSources(
 ): ArchiveContent {
   const content: ArchiveContent = {
     records: [],
+    scenes: [],
     profiles: [],
     documents: [],
     gallery: [],
@@ -43,12 +45,25 @@ export function loadContentFromSources(
     if (path.includes('/records/')) {
       const parsed = parseMarkdown(source, recordMetaSchema);
       content.records.push({ ...parsed.data, body: parsed.body } satisfies ArchiveRecord);
+    } else if (path.includes('/scenes/')) {
+      const id = path.split('/').at(-1)?.replace(/\.md$/, '');
+      if (id) {
+        content.scenes.push({ id, body: source.trim() } satisfies ArchiveScene);
+      }
     } else if (path.includes('/profiles/')) {
       const parsed = parseMarkdown(source, profileMetaSchema);
       content.profiles.push({ ...parsed.data, body: parsed.body } satisfies ArchiveProfile);
     } else if (path.includes('/documents/')) {
       const parsed = parseMarkdown(source, documentMetaSchema);
       content.documents.push({ ...parsed.data, body: parsed.body } satisfies ArchiveDocument);
+    }
+  }
+
+  const scenesById = new Map(content.scenes.map((scene) => [scene.id, scene.body]));
+  for (const record of content.records) {
+    const cinematicBody = scenesById.get(record.id);
+    if (cinematicBody !== undefined) {
+      record.cinematicBody = cinematicBody;
     }
   }
 

@@ -9,6 +9,7 @@ import { ProfilePage } from './ProfilePage';
 
 const content: ArchiveContent = {
   records: [],
+  scenes: [],
   profiles: [
     { id: 'cheonryeong', title: '천령', height: '186cm', body: '## 의료관\n\n**치유**를 담당한다.' },
     { id: 'muyeong', title: '무영', height: '185cm', body: '## 지휘관\n\n현장을 지휘한다.' },
