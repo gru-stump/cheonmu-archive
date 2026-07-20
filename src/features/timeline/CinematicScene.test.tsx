@@ -13,6 +13,19 @@ const sceneFixtures = [
 afterEach(cleanup);
 
 describe('CinematicScene', () => {
+  it('uses a readable prose treatment only for long scene text', () => {
+    const longText = '무영은 대답하지 않은 채 치료실 문이 닫히는 소리를 들었다. '.repeat(12);
+    const { container, rerender } = render(
+      <CinematicScene title="첫 조우" scenes={[{ id: 'long-scene', text: longText }]} onClose={vi.fn()} />,
+    );
+
+    expect(container.querySelector('.cinematic-scene__text')).toHaveClass('cinematic-scene__text--prose');
+
+    rerender(<CinematicScene title="첫 조우" scenes={[sceneFixtures[0]]} onClose={vi.fn()} />);
+
+    expect(container.querySelector('.cinematic-scene__text')).not.toHaveClass('cinematic-scene__text--prose');
+  });
+
   it('labels the modal and moves through scenes without autoplaying', async () => {
     const user = userEvent.setup();
     render(<CinematicScene title="귀환의 약속" scenes={sceneFixtures} onClose={vi.fn()} />);

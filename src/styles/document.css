@@ -632,6 +632,16 @@
   text-wrap: balance;
 }
 
+.cinematic-scene__text--prose {
+  max-width: 46rem;
+  margin-inline: auto;
+  font-size: clamp(1.05rem, 2vw, 1.35rem);
+  line-height: 1.9;
+  text-align: left;
+  text-wrap: pretty;
+  white-space: pre-wrap;
+}
+
 .cinematic-scene__empty {
   color: var(--paper-shadow);
 }

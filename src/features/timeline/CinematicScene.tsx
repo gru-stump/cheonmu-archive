@@ -23,6 +23,8 @@ const focusableSelector = [
   '[tabindex]:not([tabindex="-1"])',
 ].join(',');
 
+const proseSceneMinimumLength = 120;
+
 export function CinematicScene({ title, scenes, onClose }: CinematicSceneProps): JSX.Element {
   const [sceneIndex, setSceneIndex] = useState(0);
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -30,6 +32,7 @@ export function CinematicScene({ title, scenes, onClose }: CinematicSceneProps):
   const previouslyFocusedRef = useRef<HTMLElement | null>(null);
   const titleId = useId();
   const scene = scenes[sceneIndex];
+  const isProseScene = (scene?.text.trim().length ?? 0) >= proseSceneMinimumLength;
 
   const restoreFocus = useCallback(() => {
     previouslyFocusedRef.current?.focus();
@@ -118,7 +121,9 @@ export function CinematicScene({ title, scenes, onClose }: CinematicSceneProps):
           {scene ? (
             <div key={scene.id} className="cinematic-scene__frame">
               {scene.speaker && <p className="cinematic-scene__speaker">{scene.speaker}</p>}
-              <p className="cinematic-scene__text">{scene.text}</p>
+              <p className={`cinematic-scene__text${isProseScene ? ' cinematic-scene__text--prose' : ''}`}>
+                {scene.text}
+              </p>
             </div>
           ) : (
             <p className="cinematic-scene__empty">재구성할 장면이 없습니다.</p>
