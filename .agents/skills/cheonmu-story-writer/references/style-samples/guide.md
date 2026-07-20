@@ -1,6 +1,6 @@
 # 문체 자료 안내
 
-다음 파일을 필요할 때 추가한다.
+다음 파일이 준비되어 있다. 필요하면 같은 양식으로 갱신하거나 추가한다.
 
 - `sensory-description.md`
 - `emotional-tension.md`
@@ -8,6 +8,8 @@
 - `action-scenes.md`
 - `restrained-romance.md`
 - `mystery-and-foreshadowing.md`
+
+이 폴더의 PDF 작법 자료는 성인 수위가 승인된 작업에서만 참조한다(SKILL.md `수위 운용` 참조). 기본 수위 작업에서는 열지 않는다.
 
 각 자료는 아래 필드를 사용한다.
 
