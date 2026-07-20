@@ -555,6 +555,11 @@
     var(--muyeong-black);
 }
 
+.cinematic-scene__dialog--prose {
+  grid-template-rows: auto 1fr;
+  overflow: visible;
+}
+
 .cinematic-scene__backdrop {
   position: absolute;
   z-index: -2;
@@ -612,6 +617,11 @@
   text-align: center;
 }
 
+.cinematic-scene__content--prose {
+  place-items: start center;
+  padding-block: clamp(2rem, 6vw, 4rem);
+}
+
 .cinematic-scene__frame {
   width: 100%;
 }
@@ -633,10 +643,10 @@
 }
 
 .cinematic-scene__text--prose {
-  max-width: 46rem;
+  max-width: 42rem;
   margin-inline: auto;
-  font-size: clamp(1.05rem, 2vw, 1.35rem);
-  line-height: 1.9;
+  font-size: clamp(0.95rem, 1.1vw, 1.0625rem);
+  line-height: 1.85;
   text-align: left;
   text-wrap: pretty;
   white-space: pre-wrap;

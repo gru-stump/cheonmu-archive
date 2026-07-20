@@ -10,8 +10,29 @@ type RecordDetailPageProps = {
 };
 
 const cinematicStages = new Set([1, 3, 5, 7]);
+const proseRecordMinimumLength = 600;
+
+function proseFromRecordBody(body: string): string {
+  return body
+    .split(/\n{2,}/)
+    .map((paragraph) => paragraph
+      .trim()
+      .replace(/^#{1,6}\s+/, '')
+      .replace(/^>\s?/gm, '')
+      .replace(/^\*\*(.+)\*\*$/s, '$1')
+      .trim())
+    .filter((paragraph) => paragraph && paragraph !== '---')
+    .join('\n\n');
+}
 
 function scenesFromRecord(record: ArchiveRecord): CinematicSceneItem[] {
+  if (record.body.trim().length >= proseRecordMinimumLength) {
+    return [{
+      id: `${record.id}-prose`,
+      text: proseFromRecordBody(record.body),
+    }];
+  }
+
   return record.body
     .split(/\n+/)
     .map((line) => line

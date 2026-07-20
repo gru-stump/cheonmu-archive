@@ -183,6 +183,26 @@ describe('RecordDetailPage', () => {
     expect(screen.queryByRole('button', { name: '장면 재구성 열기' })).not.toBeInTheDocument();
   });
 
+  it('presents a long record as one continuous prose reading view', async () => {
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter initialEntries={['/records/first-contact']}>
+        <Routes>
+          <Route path="records/:recordId" element={<RecordDetailPage records={actualRecords} />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await user.click(screen.getByRole('button', { name: '장면 재구성 열기' }));
+    const dialog = screen.getByRole('dialog', { name: '첫 조우 장면 재구성' });
+    const prose = dialog.querySelector('.cinematic-scene__text--prose');
+
+    expect(prose?.textContent).toContain('격리선 밖의 의사');
+    expect(prose?.textContent).toContain('격리문이 닫히기 직전');
+    expect(prose?.textContent).toContain('그 판단을 의심할 힘이 남아 있지 않았다');
+    expect(within(dialog).queryByLabelText('현재 장면')).not.toBeInTheDocument();
+  });
+
   it.each([
     {
       stage: 3,

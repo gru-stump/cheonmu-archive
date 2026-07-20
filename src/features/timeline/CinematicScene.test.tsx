@@ -26,6 +26,17 @@ describe('CinematicScene', () => {
     expect(container.querySelector('.cinematic-scene__text')).not.toHaveClass('cinematic-scene__text--prose');
   });
 
+  it('omits paging controls when prose is presented as one reading view', () => {
+    const longText = '무영은 치료소의 소음을 들으며 천령의 손끝을 바라보았다. '.repeat(12);
+    render(
+      <CinematicScene title="첫 조우" scenes={[{ id: 'prose', text: longText }]} onClose={vi.fn()} />,
+    );
+
+    expect(screen.queryByRole('button', { name: '이전 장면' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '다음 장면' })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('현재 장면')).not.toBeInTheDocument();
+  });
+
   it('labels the modal and moves through scenes without autoplaying', async () => {
     const user = userEvent.setup();
     render(<CinematicScene title="귀환의 약속" scenes={sceneFixtures} onClose={vi.fn()} />);

@@ -87,7 +87,7 @@ export function CinematicScene({ title, scenes, onClose }: CinematicSceneProps):
     <div className="cinematic-scene" role="presentation">
       <div
         ref={dialogRef}
-        className="cinematic-scene__dialog"
+        className={`cinematic-scene__dialog${isProseScene ? ' cinematic-scene__dialog--prose' : ''}`}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
@@ -117,7 +117,11 @@ export function CinematicScene({ title, scenes, onClose }: CinematicSceneProps):
           </button>
         </header>
 
-        <div className="cinematic-scene__content" aria-live="polite" aria-atomic="true">
+        <div
+          className={`cinematic-scene__content${isProseScene ? ' cinematic-scene__content--prose' : ''}`}
+          aria-live="polite"
+          aria-atomic="true"
+        >
           {scene ? (
             <div key={scene.id} className="cinematic-scene__frame">
               {scene.speaker && <p className="cinematic-scene__speaker">{scene.speaker}</p>}
@@ -130,25 +134,25 @@ export function CinematicScene({ title, scenes, onClose }: CinematicSceneProps):
           )}
         </div>
 
-        <footer className="cinematic-scene__controls">
-          <button
-            type="button"
-            onClick={() => setSceneIndex((current) => Math.max(0, current - 1))}
-            disabled={sceneIndex === 0}
-          >
-            이전 장면
-          </button>
-          <p aria-label="현재 장면">
-            {scenes.length === 0 ? '0 / 0' : `${sceneIndex + 1} / ${scenes.length}`}
-          </p>
-          <button
-            type="button"
-            onClick={() => setSceneIndex((current) => Math.min(scenes.length - 1, current + 1))}
-            disabled={scenes.length === 0 || sceneIndex === scenes.length - 1}
-          >
-            다음 장면
-          </button>
-        </footer>
+        {scenes.length > 1 && (
+          <footer className="cinematic-scene__controls">
+            <button
+              type="button"
+              onClick={() => setSceneIndex((current) => Math.max(0, current - 1))}
+              disabled={sceneIndex === 0}
+            >
+              이전 장면
+            </button>
+            <p aria-label="현재 장면">{`${sceneIndex + 1} / ${scenes.length}`}</p>
+            <button
+              type="button"
+              onClick={() => setSceneIndex((current) => Math.min(scenes.length - 1, current + 1))}
+              disabled={sceneIndex === scenes.length - 1}
+            >
+              다음 장면
+            </button>
+          </footer>
+        )}
       </div>
     </div>
   );
