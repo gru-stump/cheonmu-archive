@@ -1,4 +1,4 @@
-import { useState, type JSX } from 'react';
+import { useEffect, useRef, useState, type JSX } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { loadAllContent } from '../../content/load';
 import {
@@ -35,8 +35,17 @@ export function WorldPage({
 }: WorldPageProps): JSX.Element {
   const { documentId } = useParams();
   const [indexOpen, setIndexOpen] = useState(false);
+  const documentHeadingRef = useRef<HTMLHeadingElement>(null);
+  const pendingKeyboardFocusIdRef = useRef<string | null>(null);
   const selected = documents.find((item) => item.id === documentId) ?? documents[0];
   const invalidId = Boolean(documentId && selected?.id !== documentId);
+
+  useEffect(() => {
+    if (!indexOpen && pendingKeyboardFocusIdRef.current === selected?.id) {
+      documentHeadingRef.current?.focus();
+      pendingKeyboardFocusIdRef.current = null;
+    }
+  }, [indexOpen, selected?.id]);
 
   if (!selected) {
     return <section className="record-not-found"><h1>세계관 문서가 없습니다</h1></section>;
@@ -78,6 +87,11 @@ export function WorldPage({
                     key={item.id}
                     to={`/world/${item.id}`}
                     aria-current={item.id === selected.id ? 'page' : undefined}
+                    onKeyDown={(event) => {
+                      if (indexOpen && event.key === 'Enter') {
+                        pendingKeyboardFocusIdRef.current = item.id;
+                      }
+                    }}
                     onClick={() => setIndexOpen(false)}
                   >
                     <span>{item.documentNumber}</span>{item.title}
@@ -93,7 +107,7 @@ export function WorldPage({
               {selected.documentNumber} · {selected.clearance} · 상태 {STATUS_LABELS[selected.status]}
               {' · '}CM-{String(WORLD_PUBLIC_STAGE).padStart(2, '0')} 기준
             </p>
-            <h2>{selected.title}</h2>
+            <h2 ref={documentHeadingRef} tabIndex={-1}>{selected.title}</h2>
             <strong>{selected.summary}</strong>
           </header>
           <p className="world-explanation">쉽게 말하면 — {selected.explanation}</p>

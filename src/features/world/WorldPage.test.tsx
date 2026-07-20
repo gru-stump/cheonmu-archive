@@ -100,8 +100,34 @@ describe('WorldPage', () => {
     await user.click(toggle);
     expect(toggle).toHaveAttribute('aria-expanded', 'true');
 
-    await user.click(screen.getByRole('link', { name: /OB-01.*반복 관측 이상/ }));
+    const targetLink = screen.getByRole('link', { name: /OB-01.*반복 관측 이상/ });
+    await user.click(targetLink);
     expect(toggle).toHaveAttribute('aria-expanded', 'false');
-    expect(screen.getByRole('heading', { name: '반복 관측 이상' })).toBeInTheDocument();
+    const selectedHeading = screen.getByRole('heading', { name: '반복 관측 이상' });
+    expect(selectedHeading).toBeInTheDocument();
+    expect(selectedHeading).not.toHaveFocus();
+    expect(targetLink).toHaveFocus();
+  });
+
+  it('moves keyboard focus to the selected document heading after collapsing the mobile index', async () => {
+    const user = userEvent.setup();
+    renderWorldPage('/world');
+    const toggle = screen.getByRole('button', { name: '분류 색인' });
+
+    await user.tab();
+    expect(toggle).toHaveFocus();
+    await user.keyboard('{Enter}');
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+
+    await user.tab();
+    expect(screen.getByRole('link', { name: /WF-01.*특수재난관리청/ })).toHaveFocus();
+    await user.tab();
+    const targetLink = screen.getByRole('link', { name: /WF-02.*특수기동대/ });
+    expect(targetLink).toHaveFocus();
+    await user.keyboard('{Enter}');
+
+    const selectedHeading = screen.getByRole('heading', { name: '특수기동대' });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(document.activeElement).toBe(selectedHeading);
   });
 });

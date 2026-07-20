@@ -152,18 +152,86 @@ for (const viewport of [
     await page.setViewportSize(viewport);
     await page.goto('./#/world');
 
-    await expect(page.locator('.archive-navigation a')).toHaveText([
+    const topNavigation = page.locator('.archive-navigation');
+    const topNavigationLinks = topNavigation.getByRole('link');
+    await expect(topNavigationLinks).toHaveText([
       '천무',
       '기록철',
       '세계관',
       '아카이브',
     ]);
+    if (viewport.width === 390) {
+      const railBounds = await page.locator('.archive-rail').boundingBox();
+      const navigationBounds = await topNavigation.boundingBox();
+      const linkBounds = await topNavigationLinks.evaluateAll((links) => links.map((link) => {
+        const bounds = link.getBoundingClientRect();
+        return {
+          top: bounds.top,
+          right: bounds.right,
+          bottom: bounds.bottom,
+          left: bounds.left,
+        };
+      }));
+      const [documentOverflow, navigationOverflow, railOverflow] = await Promise.all([
+        page.evaluate(() => ({
+          clientWidth: document.documentElement.clientWidth,
+          scrollWidth: document.documentElement.scrollWidth,
+        })),
+        topNavigation.evaluate((navigation) => ({
+          clientWidth: navigation.clientWidth,
+          scrollWidth: navigation.scrollWidth,
+        })),
+        page.locator('.archive-rail').evaluate((rail) => ({
+          clientWidth: rail.clientWidth,
+          scrollWidth: rail.scrollWidth,
+        })),
+      ]);
+
+      expect(railBounds).not.toBeNull();
+      expect(navigationBounds).not.toBeNull();
+      await expect(topNavigationLinks).toHaveCount(4);
+      for (const link of await topNavigationLinks.all()) {
+        await expect(link).toBeVisible();
+      }
+      for (const bounds of linkBounds) {
+        expect(bounds.top).toBeGreaterThanOrEqual(navigationBounds!.y);
+        expect(bounds.bottom).toBeLessThanOrEqual(navigationBounds!.y + navigationBounds!.height);
+        expect(bounds.left).toBeGreaterThanOrEqual(navigationBounds!.x);
+        expect(bounds.right).toBeLessThanOrEqual(navigationBounds!.x + navigationBounds!.width);
+        expect(bounds.top).toBeGreaterThanOrEqual(railBounds!.y);
+        expect(bounds.bottom).toBeLessThanOrEqual(railBounds!.y + railBounds!.height);
+        expect(bounds.left).toBeGreaterThanOrEqual(railBounds!.x);
+        expect(bounds.right).toBeLessThanOrEqual(railBounds!.x + railBounds!.width);
+        expect(bounds.top).toBeGreaterThanOrEqual(0);
+        expect(bounds.bottom).toBeLessThanOrEqual(viewport.height);
+        expect(bounds.left).toBeGreaterThanOrEqual(0);
+        expect(bounds.right).toBeLessThanOrEqual(viewport.width);
+      }
+      expect(documentOverflow.scrollWidth).toBeLessThanOrEqual(documentOverflow.clientWidth);
+      expect(navigationOverflow.scrollWidth).toBeLessThanOrEqual(navigationOverflow.clientWidth);
+      expect(railOverflow.scrollWidth).toBeLessThanOrEqual(railOverflow.clientWidth);
+    }
     await expect(page.locator('.world-document')).toContainText('WF-01');
     await expect(page.getByRole('heading', { name: '특수재난관리청' })).toBeVisible();
 
     const indexToggle = page.getByRole('button', { name: '분류 색인' });
     if (viewport.width === 390) {
       await expect(indexToggle).toHaveAttribute('aria-expanded', 'false');
+      for (const link of await topNavigationLinks.all()) {
+        await page.keyboard.press('Tab');
+        await expect(link).toBeFocused();
+      }
+      await page.keyboard.press('Tab');
+      await expect(indexToggle).toBeFocused();
+      await page.keyboard.press('Enter');
+      await expect(indexToggle).toHaveAttribute('aria-expanded', 'true');
+      await page.keyboard.press('Tab');
+      await expect(page.getByRole('link', { name: /WF-01.*특수재난관리청/ })).toBeFocused();
+      await page.keyboard.press('Tab');
+      await expect(page.getByRole('link', { name: /WF-02.*특수기동대/ })).toBeFocused();
+      await page.keyboard.press('Enter');
+      await expect(indexToggle).toHaveAttribute('aria-expanded', 'false');
+      await expect(page.getByRole('heading', { name: '특수기동대' })).toBeFocused();
       await indexToggle.click();
       await expect(indexToggle).toHaveAttribute('aria-expanded', 'true');
     }
