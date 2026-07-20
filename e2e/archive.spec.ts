@@ -88,7 +88,7 @@ for (const viewport of [
     const finalProseSentence = readFileSync(
       new URL('../src/content/scenes/first-contact.md', import.meta.url),
       'utf8',
-    ).trim().split(/\n{2,}/).at(-1)!;
+    ).trim().split(/(?:\r?\n){2,}/).at(-1)!;
     const summarySentence = readFileSync(
       new URL('../src/content/records/01-first-contact.md', import.meta.url),
       'utf8',
