@@ -58,11 +58,11 @@ describe('initial Cheonmu archive content', () => {
 
     expect(relationshipBody).toContain('## 호칭');
     expect(relationshipBody).toContain('### 천령 → 무영');
-    expect(relationshipBody).toContain('무영\n- 지휘관님\n- 우리 지휘관님\n- 환자분\n- 고질적인 환자');
+    expect(relationshipBody).toContain('지휘관 씨\n- 지휘관님 / 우리 지휘관님 — 일부러 예의를 과장해 비꼬거나 장난칠 때만 사용\n- 환자분\n- 고질적인 환자');
     expect(relationshipBody).toContain('### 무영 → 천령');
     expect(relationshipBody).toContain('천령\n- 천령 선생\n- 선생님\n- 의료관님');
     expect(relationshipBody).toContain('## 관계가 깊어진 뒤의 변화');
-    expect(relationshipBody).toContain('심각한 상황에서는 이름만 짧게 부른다');
+    expect(relationshipBody).toContain('심각한 상황이나 감정이 흔들릴 때는 ‘무영’이라고만 부른다');
     expect(relationshipBody).toContain('감정이 흔들릴 때는 ‘천령’이라고만 부른다');
   });
 });
