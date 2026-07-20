@@ -7,7 +7,7 @@ description: Collaboratively plan and draft Cheonmu/천무 stories featuring Che
 
 ## 참조와 설정 판정
 
-다음 순서로 자료를 읽고, 뒤의 자료가 앞의 자료와 충돌하면 충돌을 보고한다.
+다음 순서로 자료를 읽는다. 앞에 열거된 출처는 충돌하지 않는 사실에 관해 뒤의 출처보다 높은 권위를 가진다.
 
 1. 있을 때만 `천무_캐릭터_프로필.md`
 2. `src/content/profiles/*.md`, `src/content/documents/*.md`
@@ -15,9 +15,11 @@ description: Collaboratively plan and draft Cheonmu/천무 stories featuring Che
 4. `references/narrative-principles.md`, `references/reveal-plan.md`, `references/style-samples/guide.md`
 5. 현재 요청
 
+낮은 우선순위 자료나 현재 요청이 높은 우선순위 자료와 충돌하면 어느 쪽도 조용히 덮어쓰거나 합치지 않는다. 두 값을 함께 보고하고 사용자 해소 전 멈춘다. 같은 우선순위의 출처끼리 충돌해도 멈춘다. 현재 요청은 canon을 조용히 다시 쓰지 않으며, 해소 전에는 `request-only`로만 취급한다.
+
 원본 프로필이 linked worktree에 없으면 조용히 무시하지 않는다. 공개 자료만으로 가능한 작업인지 판단하고, canon coverage가 축소됐음을 알린다. 핵심 판단에 원본이 필요하면 멈추고 사용자에게 요청한다.
 
-각 주장에 `confirmed`, `unresolved`, `conflicting`, `request-only` 중 하나를 붙인다. 동급 출처의 충돌은 임의로 해결하지 말고 보고한다. 문체 자료는 표현 안내일 뿐 사실, 사건, 역사, 대사 canon이 아니다.
+각 주장에 `confirmed`, `unresolved`, `conflicting`, `request-only` 중 하나를 붙인다. 문체 자료는 표현 안내일 뿐 사실, 사건, 역사, 대사 canon이 아니다.
 
 ## 집필 흐름
 
