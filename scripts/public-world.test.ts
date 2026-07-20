@@ -39,6 +39,10 @@ describe('public world production boundary', () => {
     });
     const bundle = await emittedText(outDir);
 
+    expect(bundle).toContain('특수재난관리청');
+    expect(bundle).toContain('신원 기록 일부 불일치');
+    expect(bundle).toContain('추가 기록 확인 후 해금');
+
     for (const phrase of FORBIDDEN_PUBLIC_SECRETS) {
       expect(bundle).not.toContain(phrase);
     }

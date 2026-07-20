@@ -31,6 +31,24 @@ export function validateArchiveContent(
     }
   }
 
+  const worldIds = new Set<string>();
+  const worldNumbers = new Set<string>();
+  for (const document of content.world) {
+    if (worldIds.has(document.id)) {
+      errors.push(`Duplicate world document ID: ${document.id}`);
+    }
+    if (worldNumbers.has(document.documentNumber)) {
+      errors.push(`Duplicate world document number: ${document.documentNumber}`);
+    }
+    worldIds.add(document.id);
+    worldNumbers.add(document.documentNumber);
+    for (const relatedId of document.relatedRecords) {
+      if (!recordIds.has(relatedId)) {
+        errors.push(`World document ${document.id} references missing record ID: ${relatedId}`);
+      }
+    }
+  }
+
   for (const scene of content.scenes) {
     if (!scene.body.trim()) {
       errors.push(`Scene ${scene.id} is empty.`);

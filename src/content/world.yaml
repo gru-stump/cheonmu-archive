@@ -1,0 +1,106 @@
+- id: special-disaster-agency
+  documentNumber: WF-01
+  title: 특수재난관리청
+  categories: [organization]
+  status: public
+  clearance: 공개 열람
+  basisStage: 1
+  summary: 미확인 개체와 특수재난을 관리하는 기관.
+  explanation: 현장 부서와 의료 부서를 함께 운용하는 특수재난 대응 기관이다.
+  sections:
+    - revealStage: 1
+      paragraphs: [현장 통제와 격리, 구조, 의료 지원을 담당한다.]
+  relatedRecords: [first-contact, field-accompaniment]
+
+- id: special-task-force
+  documentNumber: WF-02
+  title: 특수기동대
+  categories: [organization]
+  status: public
+  clearance: 공개 열람
+  basisStage: 1
+  summary: 고위험 현장에 투입되는 대응 부서.
+  explanation: 무영이 소속된 현장 대응 부서다.
+  sections:
+    - revealStage: 1
+      paragraphs: [지휘관은 철수 순서와 구조 인원의 안전을 확인하며 무영이 현장 지휘를 맡고 있다.]
+  relatedRecords: [first-contact, field-accompaniment]
+
+- id: third-medical-center
+  documentNumber: WF-03
+  title: 제3의료센터
+  categories: [medical]
+  status: public
+  clearance: 공개 열람
+  basisStage: 1
+  summary: 특수재난 부상자와 오염 노출자를 치료하고 관찰하는 의료 기관.
+  explanation: 천령이 근무하며 무영의 치료가 반복되는 곳이다.
+  sections:
+    - revealStage: 1
+      paragraphs: [천령이 의사이자 연구원으로 소속되어 현장 의료 지원에도 참여한다.]
+  relatedRecords: [first-contact, repeated-treatment]
+
+- id: containment-protocol
+  documentNumber: WF-04
+  title: 격리 및 철수 절차
+  categories: [field-response]
+  status: public
+  clearance: 공개 열람
+  basisStage: 1
+  summary: 미확인 개체가 관측된 현장은 격리선을 기준으로 통제된다.
+  explanation: 현장 인원을 살리기 위한 절차이며 두 사람의 판단이 자주 부딪치는 지점이다.
+  sections:
+    - revealStage: 1
+      paragraphs: [의료진도 철수 명령의 대상이지만 현장 판단과 충돌한 사례가 존재한다.]
+  relatedRecords: [first-contact, field-accompaniment]
+
+- id: contamination-treatment
+  documentNumber: WF-05
+  title: 오염과 치료
+  categories: [anomaly, medical]
+  status: partial
+  clearance: 부분 공개
+  basisStage: 5
+  summary: 오염은 일반 외상과 구분해 다뤄진다.
+  explanation: 특수재난 현장의 부상은 상처만 치료한다고 끝나지 않는다.
+  sections:
+    - revealStage: 1
+      paragraphs: [노출 정도에 따라 장비 측정과 의료 관찰이 이루어진다.]
+    - revealStage: 5
+      paragraphs: [치료 방식과 일부 회복 사례는 제한 정보로 분류되어 있다.]
+  relatedRecords: [first-contact, fracture]
+
+- id: recurring-anomalies
+  documentNumber: OB-01
+  title: 반복 관측 이상
+  categories: [observation]
+  status: partial
+  clearance: 부분 공개
+  basisStage: 5
+  summary: 서로 다른 현장에서 같은 종류의 이상이 반복되고 있다.
+  explanation: 원인을 확정하지 않고 기록철에서 관측된 사실만 연결한다.
+  sections:
+    - revealStage: 1
+      paragraphs: [천령의 낮은 체온과 불안정한 측정값이 기록되었다.]
+    - revealStage: 3
+      paragraphs: [현장 의료 지원 중에도 설명하기 어려운 반응이 반복되었다.]
+    - revealStage: 5
+      paragraphs: [심각한 오염과 치료 이후 일부 보고 수치가 정정되었다.]
+  relatedRecords: [first-contact, field-accompaniment, fracture]
+
+- id: cheonryeong-restricted
+  documentNumber: CL-01
+  title: 의료인 천령 관련 제한 기록
+  categories: [classified]
+  status: locked
+  clearance: 제한 열람
+  basisStage: 5
+  summary: 신원 및 의료 활동 관련 일부 기록의 열람이 제한되어 있다.
+  explanation: 현재 확인 가능한 것은 기록의 불일치와 반복 관측뿐이다.
+  sections:
+    - revealStage: 1
+      paragraphs: [신원 기록 일부 불일치.]
+    - revealStage: 5
+      paragraphs: [특정 오염 상황에서 비정상 반응 관측.]
+  relatedRecords: [first-contact, fracture]
+  lockLabel: 추가 기록 확인 후 해금

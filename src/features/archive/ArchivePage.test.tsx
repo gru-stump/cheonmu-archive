@@ -29,6 +29,7 @@ const content: ArchiveContent = {
       public: true,
     },
   ],
+  world: [],
 };
 
 afterEach(cleanup);

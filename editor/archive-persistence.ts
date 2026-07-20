@@ -7,12 +7,14 @@ import {
   gallerySchema,
   profileMetaSchema,
   recordMetaSchema,
+  worldSchema,
   type ArchiveContent,
   type ArchiveDocument,
   type ArchiveProfile,
   type ArchiveRecord,
   type ArchiveScene,
   type GalleryItem,
+  type WorldDocument,
 } from '../src/content/schema';
 import { validateArchiveContent } from '../src/content/validation';
 
@@ -122,6 +124,27 @@ async function loadGallery(contentRoot: string, mutation: ArchiveMutation): Prom
   return gallery;
 }
 
+async function loadWorld(contentRoot: string): Promise<WorldDocument[]> {
+  const path = join(contentRoot, 'world.yaml');
+  let stats: Awaited<ReturnType<typeof lstat>>;
+  try {
+    stats = await lstat(path);
+  } catch (error) {
+    if (typeof error === 'object' && error !== null && 'code' in error && error.code === 'ENOENT') {
+      return [];
+    }
+    throw error;
+  }
+  if (stats.isSymbolicLink() || !stats.isFile()) {
+    throw new Error('World content must be a regular file.');
+  }
+  const canonicalPath = await realpath(path);
+  if (!isWithin(contentRoot, canonicalPath)) {
+    throw new Error('World content must be within the content root.');
+  }
+  return worldSchema.parse(parseYaml(await readFile(canonicalPath, 'utf8')));
+}
+
 async function loadScenes(contentRoot: string): Promise<ArchiveScene[]> {
   const directory = join(contentRoot, 'scenes');
   let directoryStats: Awaited<ReturnType<typeof lstat>>;
@@ -206,16 +229,17 @@ export async function validateProspectiveArchive(
   try {
     const workspaceRoot = await realpath(resolve(rootDir));
     const contentRoot = await realpath(join(workspaceRoot, 'src', 'content'));
-    const [records, scenes, profiles, documents, gallery, publicImagePaths] = await Promise.all([
+    const [records, scenes, profiles, documents, gallery, world, publicImagePaths] = await Promise.all([
       loadMarkdownCollection(contentRoot, 'records', recordMetaSchema, mutation),
       loadScenes(contentRoot),
       loadMarkdownCollection(contentRoot, 'profiles', profileMetaSchema, mutation),
       loadMarkdownCollection(contentRoot, 'documents', documentMetaSchema, mutation),
       loadGallery(contentRoot, mutation),
+      loadWorld(contentRoot),
       listPublicImages(join(workspaceRoot, 'public')),
     ]);
 
-    const content: ArchiveContent = { records, scenes, profiles, documents, gallery };
+    const content: ArchiveContent = { records, scenes, profiles, documents, gallery, world };
     if (mutation.type === 'markdown-write') {
       content[mutation.kind].push(mutation.value as never);
     }

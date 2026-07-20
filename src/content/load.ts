@@ -1,11 +1,13 @@
 import { parse as parseYaml } from 'yaml';
 import publicGallerySource from 'virtual:public-gallery';
+import worldSource from './world.yaml?raw';
 import { parseMarkdown } from './frontmatter';
 import {
   documentMetaSchema,
   gallerySchema,
   profileMetaSchema,
   recordMetaSchema,
+  worldSchema,
   type ArchiveContent,
   type ArchiveDocument,
   type ArchiveProfile,
@@ -37,6 +39,7 @@ export function loadContentFromSources(
   markdown: RawContentModules,
   gallerySource?: string,
   includePrivateGallery = true,
+  rawWorldSource?: string,
 ): ArchiveContent {
   const content: ArchiveContent = {
     records: [],
@@ -44,6 +47,7 @@ export function loadContentFromSources(
     profiles: [],
     documents: [],
     gallery: [],
+    world: [],
   };
 
   for (const [path, source] of Object.entries(markdown)) {
@@ -75,6 +79,10 @@ export function loadContentFromSources(
     content.gallery = includePrivateGallery ? gallery : gallery.filter((item) => item.public);
   }
 
+  if (rawWorldSource) {
+    content.world = worldSchema.parse(parseYaml(rawWorldSource));
+  }
+
   content.records.sort((left, right) => left.stage - right.stage);
   return content;
 }
@@ -84,6 +92,7 @@ function loadContent(includePrivateGallery: boolean): ArchiveContent {
     markdownModules(),
     publicGallerySource,
     includePrivateGallery,
+    worldSource,
   );
 }
 

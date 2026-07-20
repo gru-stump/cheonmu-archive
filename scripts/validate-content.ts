@@ -10,6 +10,7 @@ import {
   gallerySchema,
   profileMetaSchema,
   recordMetaSchema,
+  worldSchema,
   type ArchiveContent,
   type ArchiveScene,
 } from '../src/content/schema';
@@ -68,6 +69,9 @@ const content: ArchiveContent = {
   profiles: readMarkdownCollection(join(contentDirectory, 'profiles'), profileMetaSchema),
   documents: readMarkdownCollection(join(contentDirectory, 'documents'), documentMetaSchema),
   gallery,
+  world: existsSync(join(contentDirectory, 'world.yaml'))
+    ? worldSchema.parse(parseYaml(readFileSync(join(contentDirectory, 'world.yaml'), 'utf8')))
+    : [],
 };
 const result = validateArchiveContent(content, { publicImagePaths: allPublicImages(publicDirectory) });
 

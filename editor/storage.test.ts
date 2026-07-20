@@ -268,6 +268,30 @@ describe('editor storage safety', () => {
       .filter((name) => name.includes('draft-event'))).toEqual([]);
   });
 
+  it('includes world record relationships in prospective archive validation', async () => {
+    const rootDir = await makeRoot();
+    await writeFile(join(rootDir, 'src', 'content', 'world.yaml'), `
+- id: broken-world
+  documentNumber: WF-99
+  title: Broken world
+  categories: [organization]
+  status: public
+  clearance: Public
+  basisStage: 1
+  summary: Summary
+  explanation: Explanation
+  sections: []
+  relatedRecords: [missing-record]
+`, 'utf8');
+    const storage = createEditorStorage({ rootDir });
+
+    await expect(storage.writeEntry('profiles', 'entry', simpleSource('entry')))
+      .rejects.toMatchObject({
+        code: 'VALIDATION_ERROR',
+        fields: { archive: expect.stringContaining('missing-record') },
+      });
+  });
+
   it('loads existing scene sidecars when validating a prospective record change', async () => {
     const rootDir = await makeRoot();
     const recordsDirectory = join(rootDir, 'src', 'content', 'records');

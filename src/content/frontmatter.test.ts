@@ -3,7 +3,12 @@ import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { parseMarkdown } from './frontmatter';
 import { loadContentFromSources, validateContent } from './load';
-import { recordMetaSchema, type ArchiveContent } from './schema';
+import {
+  recordMetaSchema,
+  visibleWorldSections,
+  type ArchiveContent,
+  type WorldDocument,
+} from './schema';
 
 describe('content Markdown discovery', () => {
   it('limits the Vite glob boundary to direct children of public content collections', () => {
@@ -92,6 +97,31 @@ Body`;
 });
 
 describe('loadContentFromSources', () => {
+  it('loads staged world documents and exposes only released sections', () => {
+    const content = loadContentFromSources({}, undefined, true, `
+- id: agency
+  documentNumber: WF-01
+  title: Agency
+  categories: [organization]
+  status: public
+  clearance: public
+  basisStage: 1
+  summary: Summary
+  explanation: Explanation
+  sections:
+    - revealStage: 1
+      paragraphs: [Visible]
+    - revealStage: 7
+      paragraphs: [Future]
+  relatedRecords: []
+`);
+
+    expect(content.world[0].sections).toHaveLength(2);
+    expect(visibleWorldSections(content.world[0])).toEqual([
+      { revealStage: 1, paragraphs: ['Visible'] },
+    ]);
+  });
+
   it('keeps a record summary separate from its full cinematic scene', () => {
     const content = loadContentFromSources({
       './records/01-first-contact.md': `---
@@ -141,6 +171,28 @@ Summary`,
 });
 
 describe('validateContent', () => {
+  it('rejects duplicate world identifiers and missing record links', () => {
+    const worldFixture = (overrides: Partial<WorldDocument> = {}): WorldDocument => ({
+      id: 'world-entry', documentNumber: 'WF-99', title: 'World entry',
+      categories: ['organization'], status: 'public', clearance: 'Public',
+      basisStage: 1, summary: 'Summary', explanation: 'Explanation',
+      sections: [], relatedRecords: [], ...overrides,
+    });
+    const result = validateContent({
+      records: [], scenes: [], profiles: [], documents: [], gallery: [],
+      world: [
+        worldFixture({ id: 'same', documentNumber: 'WF-01', relatedRecords: ['missing'] }),
+        worldFixture({ id: 'same', documentNumber: 'WF-01' }),
+      ],
+    });
+
+    expect(result.errors).toEqual(expect.arrayContaining([
+      'Duplicate world document ID: same',
+      'Duplicate world document number: WF-01',
+      'World document same references missing record ID: missing',
+    ]));
+  });
+
   it('reports a scene attached to a non-cinematic record', () => {
     const content = loadContentFromSources({
       './records/01-plain-record.md': `---
@@ -250,6 +302,7 @@ Summary`,
           public: true,
         },
       ],
+      world: [],
     } as unknown as ArchiveContent;
 
     const result = validateContent(content, { publicImagePaths: [] });
