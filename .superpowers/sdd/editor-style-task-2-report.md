@@ -67,3 +67,27 @@ Result: exit 1 with no output, the expected result when no editor-only strings a
 - All layout hooks use the `editor-` prefix, and control styling remains editor-scoped.
 - `src/editor/editor.css` contains no `@media` rule; responsive behavior remains Task 3 scope.
 - No files for Task 3 were created or changed.
+
+## Accessibility follow-up: editor focus ring
+
+Review found that the public global focus color `#315f69` was inherited by the newly dark editor controls. WCAG relative-luminance calculations showed only 2.35:1 contrast on the input background `#211e1c` and 1.75:1 on the button background `#3b332e`, below the required 3:1 non-text contrast. The scoped replacement `#f1c27d` measures 10.06:1 and 7.51:1 on those backgrounds respectively.
+
+### RED
+
+Command:
+
+```text
+npm run test:run -- src/editor/editor-style.test.ts -t "high-contrast focus ring"
+```
+
+Result before the CSS fix: exit 1; the new focus contract failed because `.editor-shell :focus-visible` was absent. One intended test failed and two tests were skipped by the filter.
+
+### GREEN and regression evidence
+
+- Targeted command after the fix: exit 0; 1 passed, 2 skipped.
+- `npm run test:run -- src/editor/EditorApp.test.tsx src/editor/editor-style.test.ts`: exit 0; 2 files and 21 tests passed.
+- `npm run build`: exit 0; TypeScript and Vite production build succeeded with 389 modules transformed.
+- Public `dist` isolation search: exit 1 with no matches, as expected.
+- `git diff --check`: exit 0.
+- The fix is limited to an explicit `0.2rem solid #f1c27d` outline and `0.2rem` offset under `.editor-shell :focus-visible` plus its style contract test.
+- Public global focus and `prefers-reduced-motion` behavior were not modified.

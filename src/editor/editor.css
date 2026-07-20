@@ -13,6 +13,11 @@
   box-sizing: border-box;
 }
 
+.editor-shell :focus-visible {
+  outline: 0.2rem solid #f1c27d;
+  outline-offset: 0.2rem;
+}
+
 .editor-header,
 .editor-change-bar {
   display: flex;

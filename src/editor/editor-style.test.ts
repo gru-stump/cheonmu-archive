@@ -25,4 +25,9 @@ describe('editor style entry', () => {
     expect(css).toContain('min-height: 100vh');
     expect(css).not.toMatch(/^\s*(input|button|fieldset|textarea|select)\s*\{/m);
   });
+
+  it('uses a high-contrast focus ring inside the dark editor shell', () => {
+    const css = read('./editor.css');
+    expect(css).toMatch(/\.editor-shell :focus-visible\s*\{[^}]*outline: 0\.2rem solid #f1c27d;[^}]*outline-offset: 0\.2rem;[^}]*\}/s);
+  });
 });
