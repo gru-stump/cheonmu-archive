@@ -39,3 +39,9 @@
 - `git diff --check` — exit 0.
 - `git diff --cached --check` — exit 0.
 - `git diff --cached --name-status` — 수정 대상은 `baseline.md`와 `task-1-report.md`뿐임을 확인했다.
+
+### Covering verification
+
+- `git diff --check afd39e0..HEAD` — exit 0.
+- `git diff --name-status afd39e0..HEAD` 검토 — Task 1 산출물 세 문서만 나열됨을 확인했다.
+- `git status --short` — 출력 없음.
