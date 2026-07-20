@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { expect, test } from 'playwright/test';
 
 const cheonryeongFullBodyAlt = '흰 머리를 길게 땋고 흰색 의료 가운을 입은 천령의 전신 일러스트';
@@ -78,6 +79,51 @@ test('long cinematic prose opens as one compact scrolling reading view', async (
   }));
   expect(readingView.scrollHeight).toBeGreaterThan(readingView.clientHeight);
 });
+
+for (const viewport of [
+  { width: 1440, height: 1000 },
+  { width: 390, height: 844 },
+]) {
+  test(`sidecar prose reader follows scroll direction at ${viewport.width}px`, async ({ page }) => {
+    const finalProseSentence = readFileSync(
+      new URL('../src/content/scenes/first-contact.md', import.meta.url),
+      'utf8',
+    ).trim().split(/\n{2,}/).at(-1)!;
+    const summarySentence = readFileSync(
+      new URL('../src/content/records/01-first-contact.md', import.meta.url),
+      'utf8',
+    ).split('---').at(-1)!.trim().split('\n')[0].replaceAll('**', '');
+    await page.setViewportSize(viewport);
+    await page.goto('./#/records/first-contact');
+
+    const detail = page.locator('.record-detail');
+    await expect(page.getByText(summarySentence, { exact: true })).toBeVisible();
+    await expect(detail).not.toContainText(finalProseSentence);
+
+    await page.locator('.cinematic-entry button').click();
+    const reader = page.locator('.cinematic-scene');
+    const prose = page.locator('.cinematic-scene__text--prose');
+    const header = page.locator('.cinematic-scene__header');
+    await expect(prose).toContainText(finalProseSentence);
+    await expect(page.getByRole('button', { name: '?ㅼ쓬 ?λ㈃' })).toHaveCount(0);
+
+    await reader.evaluate((element) => {
+      element.scrollTop = 500;
+      element.dispatchEvent(new Event('scroll', { bubbles: true }));
+    });
+    await expect(header).toHaveClass(/cinematic-scene__header--hidden/);
+
+    await reader.evaluate((element) => {
+      element.scrollTop = 300;
+      element.dispatchEvent(new Event('scroll', { bubbles: true }));
+    });
+    await expect(header).not.toHaveClass(/cinematic-scene__header--hidden/);
+
+    const fontSize = await prose.evaluate((element) => Number.parseFloat(getComputedStyle(element).fontSize));
+    expect(fontSize).toBeGreaterThanOrEqual(15);
+    expect(fontSize).toBeLessThanOrEqual(17);
+  });
+}
 
 test('mobile visitor opens a gallery image', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });

@@ -592,6 +592,20 @@
   border-bottom: 1px solid rgb(243 236 218 / 22%);
 }
 
+.cinematic-scene__header--sticky {
+  position: sticky;
+  z-index: 2;
+  top: 0;
+  background: var(--muyeong-black);
+  transition: opacity 180ms ease, transform 180ms ease;
+}
+
+.cinematic-scene__header--hidden {
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(-0.75rem);
+}
+
 .cinematic-scene__kicker {
   margin: 0 0 var(--space-xs);
   color: #c58986;
@@ -934,7 +948,8 @@
 
 @media (prefers-reduced-motion: reduce) {
   .cinematic-entry button,
-  .cinematic-scene button {
+  .cinematic-scene button,
+  .cinematic-scene__header--sticky {
     transition: none;
   }
 }

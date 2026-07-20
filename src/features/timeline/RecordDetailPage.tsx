@@ -10,7 +10,6 @@ type RecordDetailPageProps = {
 };
 
 const cinematicStages = new Set([1, 3, 5, 7]);
-const proseRecordMinimumLength = 600;
 
 function proseFromRecordBody(body: string): string {
   return body
@@ -26,13 +25,17 @@ function proseFromRecordBody(body: string): string {
 }
 
 function scenesFromRecord(record: ArchiveRecord): CinematicSceneItem[] {
-  if (record.body.trim().length >= proseRecordMinimumLength) {
+  if (record.cinematicBody) {
     return [{
       id: `${record.id}-prose`,
-      text: proseFromRecordBody(record.body),
+      text: proseFromRecordBody(record.cinematicBody),
     }];
   }
 
+  return scenesFromShortRecordBody(record);
+}
+
+function scenesFromShortRecordBody(record: ArchiveRecord): CinematicSceneItem[] {
   return record.body
     .split(/\n+/)
     .map((line) => line

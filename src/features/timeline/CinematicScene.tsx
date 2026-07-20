@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useRef, useState, type JSX, type KeyboardEvent } from 'react';
+import { useCallback, useEffect, useId, useRef, useState, type JSX, type KeyboardEvent, type UIEvent } from 'react';
 import { resolvePublicAssetUrl } from '../../lib/publicAssetUrl';
 
 export type CinematicSceneItem = {
@@ -27,9 +27,12 @@ const proseSceneMinimumLength = 120;
 
 export function CinematicScene({ title, scenes, onClose }: CinematicSceneProps): JSX.Element {
   const [sceneIndex, setSceneIndex] = useState(0);
+  const [isHeaderHidden, setIsHeaderHidden] = useState(false);
+  const readerRef = useRef<HTMLDivElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const previouslyFocusedRef = useRef<HTMLElement | null>(null);
+  const lastScrollTopRef = useRef(0);
   const titleId = useId();
   const scene = scenes[sceneIndex];
   const isProseScene = (scene?.text.trim().length ?? 0) >= proseSceneMinimumLength;
@@ -51,6 +54,26 @@ export function CinematicScene({ title, scenes, onClose }: CinematicSceneProps):
 
     return restoreFocus;
   }, [restoreFocus]);
+
+  useEffect(() => {
+    lastScrollTopRef.current = 0;
+    setIsHeaderHidden(false);
+  }, [scene?.id, isProseScene]);
+
+  function handleReaderScroll(event: UIEvent<HTMLDivElement>) {
+    if (!isProseScene) return;
+
+    const scrollTop = event.currentTarget.scrollTop;
+    const lastScrollTop = lastScrollTopRef.current;
+
+    if (scrollTop <= 24 || scrollTop < lastScrollTop) {
+      setIsHeaderHidden(false);
+    } else if (scrollTop > 72 && scrollTop > lastScrollTop) {
+      setIsHeaderHidden(true);
+    }
+
+    lastScrollTopRef.current = scrollTop;
+  }
 
   function handleKeyDown(event: KeyboardEvent<HTMLDivElement>) {
     if (event.key === 'Escape') {
@@ -84,7 +107,7 @@ export function CinematicScene({ title, scenes, onClose }: CinematicSceneProps):
   }
 
   return (
-    <div className="cinematic-scene" role="presentation">
+    <div ref={readerRef} className="cinematic-scene" role="presentation" onScroll={handleReaderScroll}>
       <div
         ref={dialogRef}
         className={`cinematic-scene__dialog${isProseScene ? ' cinematic-scene__dialog--prose' : ''}`}
@@ -101,7 +124,10 @@ export function CinematicScene({ title, scenes, onClose }: CinematicSceneProps):
             aria-hidden="true"
           />
         )}
-        <header className="cinematic-scene__header">
+        <header
+          className={`cinematic-scene__header${isProseScene ? ' cinematic-scene__header--sticky' : ''}${isProseScene && isHeaderHidden ? ' cinematic-scene__header--hidden' : ''}`}
+          onFocusCapture={isProseScene ? () => setIsHeaderHidden(false) : undefined}
+        >
           <div>
             <p className="cinematic-scene__kicker">Scene Reconstruction</p>
             <h2 id={titleId}>{title} 장면 재구성</h2>

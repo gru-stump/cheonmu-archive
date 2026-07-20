@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CinematicScene } from './CinematicScene';
@@ -35,6 +35,33 @@ describe('CinematicScene', () => {
     expect(screen.queryByRole('button', { name: '이전 장면' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '다음 장면' })).not.toBeInTheDocument();
     expect(screen.queryByLabelText('현재 장면')).not.toBeInTheDocument();
+  });
+
+  it('hides a prose header while scrolling down and reveals it when scrolling up or focusing it', () => {
+    const longText = 'Long prose scene for a continuous reading view. '.repeat(12);
+    const { container } = render(
+      <CinematicScene title="First contact" scenes={[{ id: 'prose', text: longText }]} onClose={vi.fn()} />,
+    );
+    const readingView = container.querySelector('.cinematic-scene');
+    const header = container.querySelector('.cinematic-scene__header');
+    const closeButton = container.querySelector<HTMLButtonElement>('.cinematic-scene__close');
+
+    expect(readingView).not.toBeNull();
+    expect(header).toHaveClass('cinematic-scene__header--sticky');
+
+    fireEvent.scroll(readingView!, { target: { scrollTop: 120 } });
+    expect(header).toHaveClass('cinematic-scene__header--hidden');
+
+    fireEvent.scroll(readingView!, { target: { scrollTop: 80 } });
+    expect(header).not.toHaveClass('cinematic-scene__header--hidden');
+
+    fireEvent.scroll(readingView!, { target: { scrollTop: 0 } });
+    expect(header).not.toHaveClass('cinematic-scene__header--hidden');
+
+    fireEvent.scroll(readingView!, { target: { scrollTop: 120 } });
+    expect(header).toHaveClass('cinematic-scene__header--hidden');
+    fireEvent.focus(closeButton!);
+    expect(header).not.toHaveClass('cinematic-scene__header--hidden');
   });
 
   it('labels the modal and moves through scenes without autoplaying', async () => {

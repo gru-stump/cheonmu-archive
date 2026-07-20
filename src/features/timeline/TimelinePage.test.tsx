@@ -203,6 +203,33 @@ describe('RecordDetailPage', () => {
     expect(within(dialog).queryByLabelText('현재 장면')).not.toBeInTheDocument();
   });
 
+  it('keeps sidecar prose out of the detail DOM and renders it as one prose scene', async () => {
+    const user = userEvent.setup();
+    const proseRecord: ArchiveRecord = {
+      ...records[1],
+      body: 'Short public summary sentence.',
+      cinematicBody: `## Sidecar opening sentence.\n\n${'The full prose continues in its dedicated scene source. '.repeat(3)}\n\nSidecar final prose sentence.`,
+    };
+    render(
+      <MemoryRouter initialEntries={['/records/first-contact']}>
+        <Routes>
+          <Route path="records/:recordId" element={<RecordDetailPage records={[proseRecord]} />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText('Short public summary sentence.')).toBeVisible();
+    expect(screen.queryByText('Sidecar final prose sentence.')).not.toBeInTheDocument();
+
+    await user.click(document.querySelector<HTMLButtonElement>('.cinematic-entry button')!);
+    const dialog = screen.getByRole('dialog');
+    const proseScenes = dialog.querySelectorAll('.cinematic-scene__text--prose');
+
+    expect(proseScenes).toHaveLength(1);
+    expect(proseScenes[0]?.textContent).toContain('Sidecar opening sentence.');
+    expect(proseScenes[0]?.textContent).toContain('Sidecar final prose sentence.');
+  });
+
   it.each([
     {
       stage: 3,
@@ -248,6 +275,38 @@ describe('RecordDetailPage', () => {
 
       if (index < scenes.length - 1) {
         await user.click(within(dialog).getByRole('button', { name: '다음 장면' }));
+      }
+    }
+  });
+
+  it('keeps the actual stage 5 short-scene fallback paged in source order', async () => {
+    const user = userEvent.setup();
+    const record = actualRecords.find((item) => item.stage === 5);
+    expect(record).toBeDefined();
+
+    render(
+      <MemoryRouter initialEntries={[`/records/${record!.id}`]}>
+        <Routes>
+          <Route path="records/:recordId" element={<RecordDetailPage records={actualRecords} />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    const expectedScenes = record!.body
+      .split(/\n+/)
+      .map((line) => line.trim().replace(/^>\s?/, '').replace(/^\*\*(.+)\*\*$/, '$1').trim())
+      .filter(Boolean);
+    await user.click(document.querySelector<HTMLButtonElement>('.cinematic-entry button')!);
+    const dialog = screen.getByRole('dialog');
+
+    expect(expectedScenes).toHaveLength(2);
+    expect(within(dialog).getByText(`1 / ${expectedScenes.length}`)).toBeVisible();
+
+    for (const [index, expectedText] of expectedScenes.entries()) {
+      expect(dialog.querySelector('.cinematic-scene__text')?.textContent?.trim()).toBe(expectedText);
+
+      if (index < expectedScenes.length - 1) {
+        await user.click(dialog.querySelectorAll<HTMLButtonElement>('.cinematic-scene__controls button')[1]!);
       }
     }
   });
