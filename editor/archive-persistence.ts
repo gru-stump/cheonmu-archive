@@ -11,6 +11,7 @@ import {
   type ArchiveDocument,
   type ArchiveProfile,
   type ArchiveRecord,
+  type ArchiveScene,
   type GalleryItem,
 } from '../src/content/schema';
 import { validateArchiveContent } from '../src/content/validation';
@@ -115,6 +116,26 @@ async function loadGallery(contentRoot: string, mutation: ArchiveMutation): Prom
   return gallery;
 }
 
+async function loadScenes(contentRoot: string): Promise<ArchiveScene[]> {
+  const directory = join(contentRoot, 'scenes');
+  let names: string[];
+  try {
+    names = await readdir(directory);
+  } catch (error) {
+    if (typeof error === 'object' && error !== null && 'code' in error && error.code === 'ENOENT') {
+      return [];
+    }
+    throw error;
+  }
+
+  return Promise.all(names
+    .filter((name) => extname(name).toLowerCase() === '.md')
+    .map(async (name) => ({
+      id: name.slice(0, -3),
+      body: (await readFile(join(directory, name), 'utf8')).trim(),
+    })));
+}
+
 async function listPublicImages(publicRoot: string, directory = publicRoot): Promise<string[]> {
   const paths: string[] = [];
   let entries;
@@ -159,15 +180,16 @@ export async function validateProspectiveArchive(
   try {
     const workspaceRoot = await realpath(resolve(rootDir));
     const contentRoot = await realpath(join(workspaceRoot, 'src', 'content'));
-    const [records, profiles, documents, gallery, publicImagePaths] = await Promise.all([
+    const [records, scenes, profiles, documents, gallery, publicImagePaths] = await Promise.all([
       loadMarkdownCollection(contentRoot, 'records', recordMetaSchema, mutation),
+      loadScenes(contentRoot),
       loadMarkdownCollection(contentRoot, 'profiles', profileMetaSchema, mutation),
       loadMarkdownCollection(contentRoot, 'documents', documentMetaSchema, mutation),
       loadGallery(contentRoot, mutation),
       listPublicImages(join(workspaceRoot, 'public')),
     ]);
 
-    const content: ArchiveContent = { records, profiles, documents, gallery };
+    const content: ArchiveContent = { records, scenes, profiles, documents, gallery };
     if (mutation.type === 'markdown-write') {
       content[mutation.kind].push(mutation.value as never);
     }

@@ -268,6 +268,27 @@ describe('editor storage safety', () => {
       .filter((name) => name.includes('draft-event'))).toEqual([]);
   });
 
+  it('loads existing scene sidecars when validating a prospective record change', async () => {
+    const rootDir = await makeRoot();
+    const recordsDirectory = join(rootDir, 'src', 'content', 'records');
+    const scenesDirectory = join(rootDir, 'src', 'content', 'scenes');
+    const existingSource = recordSource('draft-event').replace('cinematic: false', 'cinematic: true');
+    await mkdir(scenesDirectory, { recursive: true });
+    await Promise.all([
+      writeFile(join(recordsDirectory, 'draft-event.md'), existingSource, 'utf8'),
+      writeFile(join(scenesDirectory, 'draft-event.md'), 'Existing cinematic prose', 'utf8'),
+    ]);
+    const storage = createEditorStorage({ rootDir });
+
+    await expect(storage.writeEntry('records', 'draft-event', recordSource('draft-event')))
+      .rejects.toMatchObject({
+        code: 'VALIDATION_ERROR',
+        fields: { archive: expect.stringContaining('attached to a non-cinematic record') },
+      });
+
+    await expect(readFile(join(recordsDirectory, 'draft-event.md'), 'utf8')).resolves.toBe(existingSource);
+  });
+
   it('rejects a cross-kind duplicate ID before replacing disk content', async () => {
     const rootDir = await makeRoot();
     await writeFile(join(rootDir, 'src', 'content', 'profiles', 'shared-id.md'), simpleSource('shared-id'));
