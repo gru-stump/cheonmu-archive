@@ -103,3 +103,23 @@
 .editor-shell button[aria-pressed='true'] { border-color: #bd6e62; background: var(--muyeong-red); }
 .editor-shell button:disabled { cursor: not-allowed; opacity: 0.48; }
 .editor-shell button:not(:disabled):hover { background: #54463e; }
+
+@media (max-width: 1023px) {
+  .editor-layout { grid-template-columns: 1fr; }
+  .editor-navigation { border-right: 0; border-bottom: 1px solid rgb(184 170 144 / 28%); }
+  .editor-kind-nav { display: flex; overflow-x: auto; padding-bottom: 0.5rem; }
+  .editor-kind-nav button { flex: 0 0 auto; }
+  .editor-entry-list ul { display: flex; gap: 0.5rem; overflow-x: auto; }
+  .editor-entry-list li { flex: 0 0 auto; }
+  .editor-workspace { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+}
+
+@media (max-width: 699px) {
+  .editor-header,
+  .editor-change-bar { align-items: flex-start; flex-direction: column; padding: 1rem; }
+  .editor-workspace { grid-template-columns: 1fr; padding: 0.75rem; }
+  .editor-form-pane,
+  .editor-preview-pane { max-height: none; }
+  .editor-shell button { width: 100%; }
+  .editor-entry-list ul { display: grid; overflow: visible; }
+}

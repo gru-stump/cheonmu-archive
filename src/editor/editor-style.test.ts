@@ -41,4 +41,12 @@ describe('editor style entry', () => {
   outline-offset: 0.2rem;
 }`);
   });
+
+  it('defines the approved tablet and mobile breakpoints', () => {
+    const css = read('./editor.css');
+    expect(css).toContain('@media (max-width: 1023px)');
+    expect(css).toContain('@media (max-width: 699px)');
+    expect(css).toContain('grid-template-columns: minmax(0, 1fr) minmax(0, 1fr)');
+    expect(css).toContain('grid-template-columns: 1fr');
+  });
 });
