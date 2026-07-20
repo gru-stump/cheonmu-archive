@@ -11,6 +11,9 @@ const TimelinePage = lazy(() => import('../features/timeline/TimelinePage').then
 const RecordDetailPage = lazy(() => import('../features/timeline/RecordDetailPage').then((module) => ({
   default: module.RecordDetailPage,
 })));
+const WorldPage = lazy(() => import('../features/world/WorldPage').then((module) => ({
+  default: module.WorldPage,
+})));
 const ArchivePage = lazy(() => import('../features/archive/ArchivePage').then((module) => ({
   default: module.ArchivePage,
 })));
@@ -37,6 +40,8 @@ export function AppRouter(): JSX.Element {
             <Route index element={<HomePage />} />
             <Route path="records" element={<TimelinePage />} />
             <Route path="records/:recordId" element={<RecordDetailPage />} />
+            <Route path="world" element={<WorldPage />} />
+            <Route path="world/:documentId" element={<WorldPage />} />
             <Route path="archive" element={<ArchivePage />} />
             <Route path="archive/profiles/:id" element={<ProfilePage />} />
             <Route path="archive/documents/:id" element={<DocumentPage />} />

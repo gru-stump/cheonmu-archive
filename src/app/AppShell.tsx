@@ -8,6 +8,7 @@ export function AppShell(): JSX.Element {
         <nav className="archive-navigation" aria-label="Archive navigation">
           <NavLink to="/">{'\uCC9C\uBB34'}</NavLink>
           <NavLink to="/records">{'\uAE30\uB85D\uCCA0'}</NavLink>
+          <NavLink to="/world">세계관</NavLink>
           <NavLink to="/archive">{'\uC544\uCE74\uC774\uBE0C'}</NavLink>
         </nav>
       </header>

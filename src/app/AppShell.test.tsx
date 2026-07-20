@@ -7,11 +7,12 @@ import { RouteLoadingFallback } from './router';
 afterEach(cleanup);
 
 describe('AppShell', () => {
-  it('offers the three primary archive destinations', () => {
+  it('offers the four primary archive destinations in document order', () => {
     render(<MemoryRouter><AppShell /></MemoryRouter>);
-    expect(screen.getByRole('link', { name: '\uCC9C\uBB34' })).toHaveAttribute('href', '/');
-    expect(screen.getByRole('link', { name: '\uAE30\uB85D\uCCA0' })).toHaveAttribute('href', '/records');
-    expect(screen.getByRole('link', { name: '\uC544\uCE74\uC774\uBE0C' })).toHaveAttribute('href', '/archive');
+
+    expect(screen.getAllByRole('link').map((link) => link.textContent))
+      .toEqual(['천무', '기록철', '세계관', '아카이브']);
+    expect(screen.getByRole('link', { name: '세계관' })).toHaveAttribute('href', '/world');
   });
 });
 

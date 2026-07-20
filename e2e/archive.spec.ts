@@ -134,3 +134,63 @@ test('mobile visitor opens a gallery image', async ({ page }) => {
 
   await expect(page.getByRole('dialog', { name: '천령 전신', exact: true })).toBeVisible();
 });
+
+const forbiddenWorldLabels = [
+  '천령은 인외',
+  '인외 의사',
+  '피는 독이자 약',
+  '흰 백사',
+  '실제 나이 불명',
+  '독과 약으로',
+];
+
+for (const viewport of [
+  { width: 1440, height: 1000 },
+  { width: 390, height: 844 },
+]) {
+  test(`visitor uses the indexed world archive at ${viewport.width}px`, async ({ page }) => {
+    await page.setViewportSize(viewport);
+    await page.goto('./#/world');
+
+    await expect(page.locator('.archive-navigation a')).toHaveText([
+      '천무',
+      '기록철',
+      '세계관',
+      '아카이브',
+    ]);
+    await expect(page.locator('.world-document')).toContainText('WF-01');
+    await expect(page.getByRole('heading', { name: '특수재난관리청' })).toBeVisible();
+
+    const indexToggle = page.getByRole('button', { name: '분류 색인' });
+    if (viewport.width === 390) {
+      await expect(indexToggle).toHaveAttribute('aria-expanded', 'false');
+      await indexToggle.click();
+      await expect(indexToggle).toHaveAttribute('aria-expanded', 'true');
+    }
+
+    await page.getByRole('link', { name: /OB-01.*반복 관측 이상/ }).click();
+    if (viewport.width === 390) {
+      await expect(indexToggle).toHaveAttribute('aria-expanded', 'false');
+    }
+    await expect(page.locator('.world-document')).toContainText('OB-01');
+    await page.getByRole('link', { name: 'CM-05', exact: true }).click();
+    await expect(page).toHaveURL(/#\/records\/fracture$/);
+    await expect(page.getByRole('heading', { name: '균열' })).toBeVisible();
+
+    await page.goto('./#/world/cheonryeong-restricted');
+    const worldPage = page.locator('.world-page');
+    await expect(worldPage).toContainText('신원 기록 일부 불일치.');
+    await expect(worldPage).toContainText('특정 오염 상황에서 비정상 반응 관측.');
+    await expect(worldPage).toContainText('추가 기록 확인 후 해금');
+    for (const forbiddenLabel of forbiddenWorldLabels) {
+      await expect(worldPage).not.toContainText(forbiddenLabel);
+    }
+
+    if (viewport.width === 390) {
+      await indexToggle.click();
+      await page.getByRole('link', { name: /WF-02.*특수기동대/ }).click();
+      await expect(indexToggle).toHaveAttribute('aria-expanded', 'false');
+      await expect(page.locator('.world-document')).toContainText('WF-02');
+    }
+  });
+}
