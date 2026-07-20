@@ -2,6 +2,7 @@ import express, { type Express, type NextFunction, type Request, type Response }
 import { pathToFileURL } from 'node:url';
 import { createGalleryStorage, GalleryStorageError } from './gallery-storage';
 import { createEditorStorage, EditorStorageError } from './storage';
+import { ArchivePersistenceError } from './archive-persistence';
 
 export const EDITOR_HOST = '127.0.0.1';
 export const EDITOR_PORT = 4174;
@@ -14,6 +15,21 @@ export function createEditorServer({ rootDir }: EditorServerOptions): Express {
   const app = express();
   const storage = createEditorStorage({ rootDir });
   const gallery = createGalleryStorage({ rootDir });
+
+  app.use((request, response, next) => {
+    const host = request.get('Host') ?? '';
+    const trustedHost = host === '127.0.0.1:4174' || host === 'localhost:4174';
+    const supertestHost = process.env.NODE_ENV === 'test' && /^127\.0\.0\.1:\d+$/.test(host);
+    const origin = request.get('Origin');
+    const trustedOrigin = origin === undefined
+      ? request.get('Sec-Fetch-Site') !== 'cross-site'
+      : origin === 'http://127.0.0.1:5173' || origin === 'http://localhost:5173';
+    if ((!trustedHost && !supertestHost) || !trustedOrigin) {
+      response.status(403).json({ error: 'Editor request origin is not trusted.' });
+      return;
+    }
+    next();
+  });
 
   app.use(express.json({ limit: '2mb' }));
 
@@ -62,6 +78,31 @@ export function createEditorServer({ rootDir }: EditorServerOptions): Express {
   );
 
   app.put(
+    '/api/editor/gallery/:id/plan',
+    express.raw({ type: 'application/octet-stream', limit: '20mb' }),
+    async (request, response, next) => {
+      try {
+        const metadataHeader = request.get('X-Gallery-Metadata');
+        if (!Buffer.isBuffer(request.body) || !metadataHeader) {
+          throw new GalleryStorageError('Gallery validation failed.', 'VALIDATION_ERROR', { image: 'Image bytes and gallery metadata are required.' });
+        }
+        let metadata: { id?: string };
+        try {
+          metadata = JSON.parse(decodeURIComponent(metadataHeader)) as { id?: string };
+        } catch {
+          throw new GalleryStorageError('Gallery validation failed.', 'VALIDATION_ERROR', { gallery: 'Gallery metadata must be valid encoded JSON.' });
+        }
+        if (metadata.id !== request.params.id) {
+          throw new GalleryStorageError('Gallery validation failed.', 'VALIDATION_ERROR', { id: 'Gallery ID must match the requested item ID.' });
+        }
+        response.json(await gallery.planItemWithImage(metadata as Parameters<typeof gallery.planItemWithImage>[0], request.body));
+      } catch (error) {
+        next(error);
+      }
+    },
+  );
+
+  app.put(
     '/api/editor/gallery/:id/image',
     express.raw({ type: 'application/octet-stream', limit: '20mb' }),
     async (request, response, next) => {
@@ -70,7 +111,12 @@ export function createEditorServer({ rootDir }: EditorServerOptions): Express {
         if (!Buffer.isBuffer(request.body) || !metadataHeader) {
           throw new GalleryStorageError('Gallery validation failed.', 'VALIDATION_ERROR', { image: 'Image bytes and gallery metadata are required.' });
         }
-        const metadata = JSON.parse(decodeURIComponent(metadataHeader)) as { id?: string };
+        let metadata: { id?: string };
+        try {
+          metadata = JSON.parse(decodeURIComponent(metadataHeader)) as { id?: string };
+        } catch {
+          throw new GalleryStorageError('Gallery validation failed.', 'VALIDATION_ERROR', { gallery: 'Gallery metadata must be valid encoded JSON.' });
+        }
         if (metadata.id !== request.params.id) {
           throw new GalleryStorageError('Gallery validation failed.', 'VALIDATION_ERROR', { id: 'Gallery ID must match the requested item ID.' });
         }
@@ -164,6 +210,11 @@ export function createEditorServer({ rootDir }: EditorServerOptions): Express {
       return;
     }
 
+    if (error instanceof ArchivePersistenceError) {
+      response.status(422).json({ error: error.message, fields: error.fields });
+      return;
+    }
+
     if (error instanceof GalleryStorageError) {
       const status = error.code === 'VALIDATION_ERROR'
         ? 422
@@ -173,6 +224,11 @@ export function createEditorServer({ rootDir }: EditorServerOptions): Express {
             ? 404
             : 400;
       response.status(status).json({ error: error.message, fields: error.fields });
+      return;
+    }
+
+    if (typeof error === 'object' && error !== null && 'status' in error && error.status === 400) {
+      response.status(400).json({ error: 'Malformed request body.' });
       return;
     }
 

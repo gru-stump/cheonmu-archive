@@ -4,6 +4,7 @@ import { basename, extname, isAbsolute, join, relative, resolve, sep } from 'nod
 import { parse as parseYaml, stringify } from 'yaml';
 import { ZodError } from 'zod';
 import { galleryItemSchema, gallerySchema, type GalleryItem } from '../src/content/schema';
+import { coordinateArchiveMutation, validateProspectiveArchive } from './archive-persistence';
 
 const contentIdPattern = /^[a-z0-9-]+$/;
 const publicImagePattern = /^\/images\/[A-Za-z0-9_-]+\.(?:png|jpe?g|webp)$/i;
@@ -142,15 +143,16 @@ export interface PrivateGalleryImage {
   contentType: 'image/png' | 'image/jpeg' | 'image/webp';
 }
 
+export interface GalleryChangePlan {
+  item: GalleryItem;
+  changes: Array<{ action: 'write' | 'trash'; path: string; visibility: 'public' | 'private' | 'metadata' | 'trash' }>;
+}
+
 export function createGalleryStorage({ rootDir, now = () => new Date(), filesystem }: GalleryStorageOptions) {
   const resolvedRoot = resolve(rootDir);
   const unlinkPath = filesystem?.unlink ?? unlink;
-  let operations: Promise<void> = Promise.resolve();
-
   function enqueue<T>(operation: () => Promise<T>): Promise<T> {
-    const result = operations.then(operation, operation);
-    operations = result.then(() => undefined, () => undefined);
-    return result;
+    return coordinateArchiveMutation(resolvedRoot, operation);
   }
 
   function checkedId(id: string): string {
@@ -166,7 +168,7 @@ export function createGalleryStorage({ rootDir, now = () => new Date(), filesyst
     return canonical;
   }
 
-  async function roots(): Promise<{
+  async function roots(createAuxiliaryDirectories = true): Promise<{
     workspace: string;
     content: string;
     gallery: string;
@@ -177,11 +179,15 @@ export function createGalleryStorage({ rootDir, now = () => new Date(), filesyst
     const workspace = await realpath(resolvedRoot);
     const content = await checkedDirectory(join(workspace, 'src', 'content'), workspace);
     const privateImagesPath = join(content, 'private-images');
-    await mkdir(privateImagesPath, { recursive: true });
-    const privateImages = await checkedDirectory(privateImagesPath, content);
+    if (createAuxiliaryDirectories) await mkdir(privateImagesPath, { recursive: true });
+    const privateImages = createAuxiliaryDirectories
+      ? await checkedDirectory(privateImagesPath, content)
+      : privateImagesPath;
     const stagedImagesPath = join(content, 'staged-images');
-    await mkdir(stagedImagesPath, { recursive: true });
-    const stagedImages = await checkedDirectory(stagedImagesPath, content);
+    if (createAuxiliaryDirectories) await mkdir(stagedImagesPath, { recursive: true });
+    const stagedImages = createAuxiliaryDirectories
+      ? await checkedDirectory(stagedImagesPath, content)
+      : stagedImagesPath;
     const publicRoot = await checkedDirectory(join(workspace, 'public'), workspace);
     const images = await checkedDirectory(join(publicRoot, 'images'), publicRoot);
     const gallery = join(content, 'gallery.yaml');
@@ -489,7 +495,7 @@ export function createGalleryStorage({ rootDir, now = () => new Date(), filesyst
   function readPrivateImage(id: string): Promise<PrivateGalleryImage> {
     return enqueue(async () => {
       const safeId = checkedId(id);
-      const locations = await roots();
+      const locations = await roots(false);
       const items = await readItemsUnsafe(locations);
       const item = items.find((entry) => entry.id === safeId);
       if (!item || item.public) throw new GalleryStorageError('Gallery item not found.', 'NOT_FOUND');
@@ -509,7 +515,12 @@ export function createGalleryStorage({ rootDir, now = () => new Date(), filesyst
       } catch (error) {
         throw validationError(error);
       }
-      const locations = await roots();
+      await validateProspectiveArchive(resolvedRoot, {
+        type: 'gallery-write',
+        item,
+        futurePublicImagePaths: item.public ? [item.image] : [],
+      });
+      const locations = await roots(false);
       const items = await readItemsUnsafe(locations);
       const index = items.findIndex(({ id }) => id === item.id);
       const previous = index >= 0 ? items[index] : undefined;
@@ -526,6 +537,7 @@ export function createGalleryStorage({ rootDir, now = () => new Date(), filesyst
       if (stagedPath) {
         const imageInfo = inspectImage(await readFile(stagedPath));
         validateImageExtension(item.image, imageInfo);
+        await roots();
         const manifestPath = await optionalStageManifestPath(locations.stagedImages, item.id);
         const manifest = manifestPath
           ? parseStageManifest(await readFile(manifestPath, 'utf8'))
@@ -574,7 +586,8 @@ export function createGalleryStorage({ rootDir, now = () => new Date(), filesyst
       }
       if (!imagePath) imagePath = await storedImagePath(locations, previousItem);
       const imageInfo = inspectImage(await readFile(imagePath));
-      validateImageExtension(imagePath, imageInfo);
+      validateImageExtension(item.image, imageInfo);
+      await roots();
       const moving = destination !== imagePath;
       let destinationLinked = false;
       let sourceRemoved = false;
@@ -650,6 +663,44 @@ export function createGalleryStorage({ rootDir, now = () => new Date(), filesyst
     });
   }
 
+  function planItemWithImage(input: GalleryItem, bytes: Buffer): Promise<GalleryChangePlan> {
+    return enqueue(async () => {
+      let parsedItem: GalleryItem;
+      try {
+        parsedItem = galleryItemSchema.parse(input);
+      } catch (error) {
+        throw validationError(error);
+      }
+      const info = inspectImage(bytes);
+      const publicPath = `/images/${checkedId(parsedItem.id)}.${info.extension}`;
+      const item = { ...parsedItem, image: publicPath };
+      await validateProspectiveArchive(resolvedRoot, {
+        type: 'gallery-write',
+        item,
+        futurePublicImagePaths: item.public ? [item.image] : [],
+      });
+      const locations = await roots(false);
+      const items = await readItemsUnsafe(locations);
+      const existingItem = items.find((entry) => entry.id === item.id);
+      const candidates = await replacementCandidates(locations, items, item.id, existingItem);
+      const destination = item.public
+        ? `public${publicPath}`
+        : `src/content/private-images/${basename(publicPath)}`;
+      return {
+        item,
+        changes: [
+          { action: 'write', path: 'src/content/gallery.yaml', visibility: 'metadata' },
+          { action: 'write', path: destination, visibility: item.public ? 'public' : 'private' },
+          ...[...candidates].map((path) => ({
+            action: 'trash' as const,
+            path: relative(locations.workspace, path).split(sep).join('/'),
+            visibility: 'trash' as const,
+          })),
+        ],
+      };
+    });
+  }
+
   function writeItemWithImage(
     input: GalleryItem,
     bytes: Buffer,
@@ -664,11 +715,16 @@ export function createGalleryStorage({ rootDir, now = () => new Date(), filesyst
       }
       const safeId = checkedId(parsedItem.id);
       const info = inspectImage(bytes);
+      const publicPath = `/images/${safeId}.${info.extension}`;
+      const item = { ...parsedItem, image: publicPath };
+      await validateProspectiveArchive(resolvedRoot, {
+        type: 'gallery-write',
+        item,
+        futurePublicImagePaths: item.public ? [item.image] : [],
+      });
       const locations = await roots();
       const items = await readItemsUnsafe(locations);
       const existingItem = items.find((entry) => entry.id === safeId);
-      const publicPath = `/images/${safeId}.${info.extension}`;
-      const item = { ...parsedItem, image: publicPath };
       const destinationRoot = item.public ? locations.images : locations.privateImages;
       const target = await checkedImagePath(destinationRoot, publicPath, false);
       if (referencedByAnotherItem(items, safeId, publicPath)) {
@@ -708,6 +764,7 @@ export function createGalleryStorage({ rootDir, now = () => new Date(), filesyst
   function trashItem(id: string): Promise<void> {
     return enqueue(async () => {
       const safeId = checkedId(id);
+      await validateProspectiveArchive(resolvedRoot, { type: 'gallery-delete', id: safeId });
       const locations = await roots();
       const items = await readItemsUnsafe(locations);
       const index = items.findIndex((item) => item.id === safeId);
@@ -724,7 +781,7 @@ export function createGalleryStorage({ rootDir, now = () => new Date(), filesyst
     });
   }
 
-  return { listItems, readPrivateImage, writeItem, writeItemWithImage, registerImage, trashItem };
+  return { listItems, readPrivateImage, writeItem, writeItemWithImage, planItemWithImage, registerImage, trashItem };
 }
 
 export type GalleryStorage = ReturnType<typeof createGalleryStorage>;

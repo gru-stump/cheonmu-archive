@@ -78,6 +78,11 @@ export function GalleryForm({
       : `/api/editor/gallery/${encodeURIComponent(value.id)}/image`
     : null;
   const preview = localPreview ?? savedPreview;
+  const destination = resultingPath
+    ? value.public
+      ? `public${resultingPath}`
+      : `src/content/private-images/${resultingPath.slice('/images/'.length)}`
+    : '이미지를 선택하세요.';
 
   return <fieldset disabled={disabled}>
     <legend>화랑 정보</legend>
@@ -117,6 +122,7 @@ export function GalleryForm({
     /></label>
     {error('image')}
     {preview && <img src={preview} alt={selectedFile ? '선택한 이미지 미리보기' : value.alt} />}
-    <p>공개 경로: <output>{resultingPath || '이미지를 선택하세요.'}</output></p>
+    <p>갤러리 경로: <output>{resultingPath || '이미지를 선택하세요.'}</output></p>
+    <p>{value.public ? '공개 대상' : '비공개 대상'}: <output>{destination}</output></p>
   </fieldset>;
 }

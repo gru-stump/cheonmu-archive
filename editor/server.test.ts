@@ -25,6 +25,33 @@ afterEach(async () => {
 });
 
 describe('editor content API', () => {
+  it('rejects untrusted Host and cross-site Origin requests before routing', async () => {
+    const app = createEditorServer({ rootDir: await makeRoot() });
+
+    await request(app).get('/api/editor/documents').set('Host', 'evil.example').expect(403);
+    await request(app)
+      .get('/api/editor/documents')
+      .set('Host', 'localhost:4174')
+      .set('Origin', 'https://evil.example')
+      .set('Sec-Fetch-Site', 'cross-site')
+      .expect(403);
+  });
+
+  it('accepts the Vite proxy Host with a trusted development Origin', async () => {
+    await request(createEditorServer({ rootDir: await makeRoot() }))
+      .get('/api/editor/documents')
+      .set('Host', '127.0.0.1:4174')
+      .set('Origin', 'http://localhost:5173')
+      .expect(200);
+  });
+
+  it('returns 400 for malformed JSON instead of an internal error', async () => {
+    await request(createEditorServer({ rootDir: await makeRoot() }))
+      .put('/api/editor/documents/notes')
+      .set('Content-Type', 'application/json')
+      .send('{broken')
+      .expect(400);
+  });
   it('binds startup to the configured loopback host and port', async () => {
     const rootDir = await makeRoot();
     const server = startEditorServer({ rootDir });

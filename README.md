@@ -11,6 +11,21 @@ npm install
 npm run dev
 ```
 
+로컬 편집기는 별도 터미널에서 실행합니다.
+
+```powershell
+npm run editor
+```
+
+Vite 개발 서버는 `http://localhost:5173`, 편집 서비스는 IPv4 loopback 전용
+`http://127.0.0.1:4174`를 사용합니다. 편집 API는 정해진 loopback `Host`와 개발
+`Origin`만 허용하며 Vite 프록시를 통해 접근합니다.
+
+콘텐츠 원본은 `src/content/`, 공개 이미지는 `public/images/`, 비공개 이미지는
+`src/content/private-images/`에 저장됩니다. 삭제되거나 교체된 파일은 저장소 루트의
+`.trash/`로 이동하여 복구할 수 있습니다. 공개 갤러리는 `public: true`인 항목과 실제
+공개 이미지가 모두 준비되어야 하며, `npm run validate`를 통과한 뒤에만 게시합니다.
+
 공개 사이트 변경을 확인하기 전에 콘텐츠 검증, 단위 테스트, 프로덕션 빌드를 실행합니다.
 
 ```powershell

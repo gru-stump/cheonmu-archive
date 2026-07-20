@@ -27,6 +27,10 @@ function recordSource(id: string, related: string[] = []): string {
   ].join('\n');
 }
 
+function simpleSource(id: string, title = 'Entry'): string {
+  return ['---', `id: ${id}`, `title: ${title}`, '---', '', 'Body'].join('\n');
+}
+
 async function makeRoot(): Promise<string> {
   const rootDir = await mkdtemp(join(tmpdir(), 'cheonmu-editor-'));
   temporaryRoots.push(rootDir);
@@ -249,6 +253,64 @@ describe('editor storage safety', () => {
       fields: { status: expect.any(String) },
     });
     await expect(readFile(path, 'utf8')).resolves.toBe(recordSource('draft-event'));
+  });
+
+  it('rejects a prospective record with a missing related ID before writing any file', async () => {
+    const rootDir = await makeRoot();
+    const storage = createEditorStorage({ rootDir });
+    const target = join(rootDir, 'src', 'content', 'records', 'draft-event.md');
+
+    await expect(storage.writeEntry('records', 'draft-event', recordSource('draft-event', ['missing-record'])))
+      .rejects.toMatchObject({ code: 'VALIDATION_ERROR', fields: { related: expect.stringContaining('missing-record') } });
+
+    await expect(readFile(target, 'utf8')).rejects.toMatchObject({ code: 'ENOENT' });
+    expect((await readdir(join(rootDir, 'src', 'content', 'records')))
+      .filter((name) => name.includes('draft-event'))).toEqual([]);
+  });
+
+  it('rejects a cross-kind duplicate ID before replacing disk content', async () => {
+    const rootDir = await makeRoot();
+    await writeFile(join(rootDir, 'src', 'content', 'profiles', 'shared-id.md'), simpleSource('shared-id'));
+    const storage = createEditorStorage({ rootDir });
+
+    await expect(storage.writeEntry('documents', 'shared-id', simpleSource('shared-id')))
+      .rejects.toMatchObject({ code: 'VALIDATION_ERROR', fields: { id: expect.stringContaining('shared-id') } });
+
+    await expect(readFile(join(rootDir, 'src', 'content', 'documents', 'shared-id.md'), 'utf8'))
+      .rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  it('rejects deleting a record referenced by another record without creating trash', async () => {
+    const rootDir = await makeRoot();
+    const records = join(rootDir, 'src', 'content', 'records');
+    await writeFile(join(records, 'first.md'), recordSource('first', ['second']));
+    await writeFile(join(records, 'second.md'), recordSource('second'));
+    const storage = createEditorStorage({ rootDir });
+
+    await expect(storage.trashEntry('records', 'second'))
+      .rejects.toMatchObject({ code: 'VALIDATION_ERROR', fields: { related: expect.stringContaining('second') } });
+
+    await expect(readFile(join(records, 'second.md'), 'utf8')).resolves.toBe(recordSource('second'));
+    await expect(readdir(join(rootDir, '.trash', 'records'))).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  it('serializes prospective validation across separate storage instances', async () => {
+    const rootDir = await makeRoot();
+    const profileStorage = createEditorStorage({ rootDir });
+    const documentStorage = createEditorStorage({ rootDir });
+
+    const results = await Promise.allSettled([
+      profileStorage.writeEntry('profiles', 'shared-id', simpleSource('shared-id', 'Profile')),
+      documentStorage.writeEntry('documents', 'shared-id', simpleSource('shared-id', 'Document')),
+    ]);
+
+    expect(results.filter(({ status }) => status === 'fulfilled')).toHaveLength(1);
+    expect(results.filter(({ status }) => status === 'rejected')).toHaveLength(1);
+    const persisted = await Promise.all([
+      readFile(join(rootDir, 'src', 'content', 'profiles', 'shared-id.md'), 'utf8').then(() => true, () => false),
+      readFile(join(rootDir, 'src', 'content', 'documents', 'shared-id.md'), 'utf8').then(() => true, () => false),
+    ]);
+    expect(persisted.filter(Boolean)).toHaveLength(1);
   });
 
   it('moves deleted content into trash', async () => {

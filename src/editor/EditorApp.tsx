@@ -335,13 +335,19 @@ export function EditorApp({ api = editorApi }: { api?: EditorApiContract }): JSX
   }
 
   async function uploadGallery(item: GalleryItem, file: File) {
-    try {
-      return await api.saveGalleryWithImage({ item, file, overwrite: false });
-    } catch (error) {
-      if (!(error instanceof EditorApiError) || error.status !== 409) throw error;
-      if (!window.confirm('기존 이미지를 휴지통으로 옮기고 새 이미지로 교체하시겠습니까?')) throw error;
-      return api.saveGalleryWithImage({ item, file, overwrite: true });
+    const plan = api.planGalleryWithImage
+      ? await api.planGalleryWithImage({ item, file })
+      : { item, changes: [{ action: 'write' as const, path: 'src/content/gallery.yaml', visibility: 'metadata' as const }] };
+    const replacements = plan.changes.filter(({ action }) => action === 'trash');
+    if (replacements.length > 0) {
+      const summary = plan.changes
+        .map(({ action, path, visibility }) => `${action === 'write' ? '저장' : '휴지통'} [${visibility}] ${path}`)
+        .join('\n');
+      if (!window.confirm(`다음 파일 변경을 적용하시겠습니까?\n\n${summary}`)) {
+        throw new EditorApiError('이미지 교체가 취소되었습니다.');
+      }
     }
+    return api.saveGalleryWithImage({ item: plan.item, file, overwrite: replacements.length > 0 });
   }
 
   async function saveGallery() {
@@ -419,7 +425,17 @@ export function EditorApp({ api = editorApi }: { api?: EditorApiContract }): JSX
         {!galleryDraft.isNew && <button type="button" disabled={pending !== null} onClick={() => setDeleting((value) => !value)}>{deleting ? '삭제 취소' : '삭제 예정으로 표시'}</button>}
         <button type="button" disabled={pending !== null || (deleting ? false : galleryImagePending || !galleryDraft.validation.valid)} onClick={() => void saveGallery()}>{deleting ? '삭제 확인' : '저장'}</button>
         <p>작업: {deleting ? '삭제 예정' : galleryDraft.isNew ? '생성' : galleryDraft.dirty ? '수정' : '변경 없음'}</p>
-        <p>src/content/gallery.yaml</p>
+        <ul aria-label="변경 파일">
+          <li>메타데이터 저장: src/content/gallery.yaml</li>
+          <li>{galleryDraft.item.public ? '공개 저장' : '비공개 저장'}: {galleryDraft.item.public
+            ? `public${galleryDraft.item.image}`
+            : `src/content/private-images/${galleryDraft.item.image.slice('/images/'.length)}`}</li>
+          {galleryDraft.saved && (galleryDraft.saved.image !== galleryDraft.item.image || galleryDraft.saved.public !== galleryDraft.item.public) && <li>
+            휴지통 이동: {galleryDraft.saved.public
+              ? `public${galleryDraft.saved.image}`
+              : `src/content/private-images/${galleryDraft.saved.image.slice('/images/'.length)}`}
+          </li>}
+        </ul>
       </>}
     </section>}
     {message && <p role="status">{message}</p>}

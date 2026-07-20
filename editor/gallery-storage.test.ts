@@ -280,6 +280,22 @@ describe('gallery metadata storage', () => {
     await expect(storage.listItems()).resolves.toEqual([{ ...privateItem, public: true }]);
   });
 
+  it('rejects a metadata-only move whose submitted extension does not match the stored bytes', async () => {
+    const rootDir = await makeRoot();
+    const storage = createGalleryStorage({ rootDir });
+    await storage.writeItemWithImage(item, png, false);
+    const metadataBefore = await readFile(join(rootDir, 'src', 'content', 'gallery.yaml'), 'utf8');
+
+    await expect(storage.writeItem({ ...item, image: '/images/new-work.jpg' }))
+      .rejects.toMatchObject({ code: 'VALIDATION_ERROR', fields: { image: expect.any(String) } });
+
+    await expect(readFile(join(rootDir, 'public', 'images', 'new-work.png'))).resolves.toEqual(png);
+    await expect(readFile(join(rootDir, 'public', 'images', 'new-work.jpg')))
+      .rejects.toMatchObject({ code: 'ENOENT' });
+    await expect(readFile(join(rootDir, 'src', 'content', 'gallery.yaml'), 'utf8'))
+      .resolves.toBe(metadataBefore);
+  });
+
   it('removes legacy public bytes when a metadata-only update unpublishes the item', async () => {
     const legacyItem = { ...item, image: '/images/legacy-portrait.png' };
     const rootDir = await makeRoot(stringify([legacyItem]));
@@ -505,6 +521,39 @@ describe('gallery metadata storage', () => {
 });
 
 describe('gallery editor API', () => {
+  it('returns 422 for malformed percent-encoded gallery metadata', async () => {
+    await request(createEditorServer({ rootDir: await makeRoot() }))
+      .put('/api/editor/gallery/new-work/image')
+      .set('Content-Type', 'application/octet-stream')
+      .set('X-Gallery-Metadata', '%broken')
+      .send(png)
+      .expect(422);
+  });
+
+  it('plans the exact private destination and active file moved to trash without mutating', async () => {
+    const legacyItem = { ...item, image: '/images/legacy-work.png' };
+    const rootDir = await makeRoot(stringify([legacyItem]));
+    const legacyPath = join(rootDir, 'public', 'images', 'legacy-work.png');
+    await writeFile(legacyPath, png);
+    const metadataBefore = await readFile(join(rootDir, 'src', 'content', 'gallery.yaml'), 'utf8');
+
+    const response = await request(createEditorServer({ rootDir }))
+      .put('/api/editor/gallery/new-work/plan')
+      .set('Content-Type', 'application/octet-stream')
+      .set('X-Gallery-Metadata', encodeURIComponent(JSON.stringify({ ...legacyItem, public: false })))
+      .send(jpeg(4, 5))
+      .expect(200);
+
+    expect(response.body.changes).toEqual(expect.arrayContaining([
+      { action: 'write', path: 'src/content/gallery.yaml', visibility: 'metadata' },
+      { action: 'write', path: 'src/content/private-images/new-work.jpg', visibility: 'private' },
+      { action: 'trash', path: 'public/images/legacy-work.png', visibility: 'trash' },
+    ]));
+    await expect(readFile(legacyPath)).resolves.toEqual(png);
+    await expect(readFile(join(rootDir, 'src', 'content', 'gallery.yaml'), 'utf8')).resolves.toBe(metadataBefore);
+    expect(await readdir(join(rootDir, 'src', 'content'))).not.toEqual(expect.arrayContaining(['private-images', 'staged-images']));
+  });
+
   it('trashes every confirmed owned candidate when POST then PUT changes extension', async () => {
     const legacyItem = { ...item, id: 'work', image: '/images/legacy-work.png' };
     const rootDir = await makeRoot(stringify([legacyItem]));

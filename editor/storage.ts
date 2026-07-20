@@ -8,6 +8,7 @@ import {
   profileMetaSchema,
   recordMetaSchema,
 } from '../src/content/schema';
+import { coordinateArchiveMutation, validateProspectiveArchive } from './archive-persistence';
 
 export const CONTENT_KINDS = ['records', 'profiles', 'documents'] as const;
 
@@ -224,60 +225,77 @@ export function createEditorStorage({ rootDir, now = () => new Date() }: EditorS
       );
     }
 
-    const directory = await kindRoot(entry.kind);
-    const entryPath = await writableEntryPath(directory, entry.id);
-    const temporaryPath = join(directory.path, `.${id}.${randomUUID()}.tmp`);
-    await mkdir(directory.path, { recursive: true });
+    return coordinateArchiveMutation(resolvedRoot, async () => {
+      await validateProspectiveArchive(resolvedRoot, {
+        type: 'markdown-write',
+        kind: entry.kind,
+        id: entry.id,
+        value: { ...parsed.data, body: parsed.body } as never,
+      });
 
-    try {
-      await writeFile(temporaryPath, source, { encoding: 'utf8', flag: 'wx' });
-      await writableEntryPath(directory, entry.id);
-      await rename(temporaryPath, entryPath);
-    } catch (error) {
-      await rm(temporaryPath, { force: true });
-      throw error;
-    }
+      const directory = await kindRoot(entry.kind);
+      const entryPath = await writableEntryPath(directory, entry.id);
+      const temporaryPath = join(directory.path, `.${id}.${randomUUID()}.tmp`);
+      await mkdir(directory.path, { recursive: true });
 
-    return source;
+      try {
+        await writeFile(temporaryPath, source, { encoding: 'utf8', flag: 'wx' });
+        await writableEntryPath(directory, entry.id);
+        await rename(temporaryPath, entryPath);
+      } catch (error) {
+        await rm(temporaryPath, { force: true });
+        throw error;
+      }
+
+      return source;
+    });
   }
 
   async function trashEntry(kind: string, id: string): Promise<string> {
     const entry = checkedEntry(kind, id);
-    const directory = await kindRoot(entry.kind);
-    const entryPath = await existingEntryPath(directory, entry.id);
-    const trashDirectory = await trashRoot(directory.workspaceRoot, entry.kind);
+    return coordinateArchiveMutation(resolvedRoot, async () => {
+      await validateProspectiveArchive(resolvedRoot, {
+        type: 'markdown-delete',
+        kind: entry.kind,
+        id: entry.id,
+      });
 
-    for (let attempt = 0; attempt < 10; attempt += 1) {
-      const trashPath = join(
-        trashDirectory,
-        `${safeTimestamp(now())}-${randomUUID()}-${entry.id}.md`,
-      );
-      try {
-        if (!isWithin(trashDirectory, trashPath)) {
-          throw invalidPath();
+      const directory = await kindRoot(entry.kind);
+      const entryPath = await existingEntryPath(directory, entry.id);
+      const trashDirectory = await trashRoot(directory.workspaceRoot, entry.kind);
+
+      for (let attempt = 0; attempt < 10; attempt += 1) {
+        const trashPath = join(
+          trashDirectory,
+          `${safeTimestamp(now())}-${randomUUID()}-${entry.id}.md`,
+        );
+        try {
+          if (!isWithin(trashDirectory, trashPath)) {
+            throw invalidPath();
+          }
+          await link(entryPath, trashPath);
+          const trashStats = await lstat(trashPath);
+          const canonicalTrashPath = await realpath(trashPath);
+          if (
+            trashStats.isSymbolicLink()
+            || !trashStats.isFile()
+            || !isWithin(trashDirectory, canonicalTrashPath)
+          ) {
+            throw invalidPath();
+          }
+          await unlink(entryPath);
+          return trashPath;
+        } catch (error) {
+          if (typeof error === 'object' && error !== null && 'code' in error && error.code === 'EEXIST') {
+            continue;
+          }
+          await rm(trashPath, { force: true });
+          throw error;
         }
-        await link(entryPath, trashPath);
-        const trashStats = await lstat(trashPath);
-        const canonicalTrashPath = await realpath(trashPath);
-        if (
-          trashStats.isSymbolicLink()
-          || !trashStats.isFile()
-          || !isWithin(trashDirectory, canonicalTrashPath)
-        ) {
-          throw invalidPath();
-        }
-        await unlink(entryPath);
-        return trashPath;
-      } catch (error) {
-        if (typeof error === 'object' && error !== null && 'code' in error && error.code === 'EEXIST') {
-          continue;
-        }
-        await rm(trashPath, { force: true });
-        throw error;
       }
-    }
 
-    throw new Error('Unable to allocate a unique trash path.');
+      throw new Error('Unable to allocate a unique trash path.');
+    });
   }
 
   return { listEntries, readEntry, writeEntry, trashEntry };
