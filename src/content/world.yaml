@@ -57,7 +57,7 @@
 - id: contamination-treatment
   documentNumber: WF-05
   title: 오염과 치료
-  categories: [anomaly, medical]
+  categories: [anomaly]
   status: partial
   clearance: 부분 공개
   basisStage: 5

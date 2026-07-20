@@ -73,6 +73,12 @@ describe('WorldPage', () => {
       .toHaveAttribute('href', '/records/first-contact');
   });
 
+  it('lists WF-05 only once in the world index', () => {
+    renderWorldPage('/world/contamination-treatment');
+
+    expect(screen.getAllByRole('link', { name: /WF-05/ })).toHaveLength(1);
+  });
+
   it('shows approved CL-01 clues and its lock label without a direct secret', () => {
     const classified = content.world.find((document) => document.id === 'cheonryeong-restricted')!;
     const documents = content.world.map((document) => document.id === classified.id ? {
