@@ -96,6 +96,28 @@ Short summary`,
     expect(content.records[0].body.trim()).toBe('Short summary');
     expect(content.scenes).toEqual([{ id: 'first-contact', body: 'Full cinematic prose' }]);
   });
+
+  it('ignores scene Markdown nested below the flat scenes directory', () => {
+    const content = loadContentFromSources({
+      './records/01-nested-scene.md': `---
+id: nested-scene
+recordNumber: CM-01
+title: Nested scene
+stage: 1
+status: confirmed
+characters: [cheonryeong]
+tags: [nested]
+related: []
+quote: Nested.
+cinematic: true
+---
+Summary`,
+      './scenes/archive/nested-scene.md': 'Nested cinematic prose',
+    });
+
+    expect(content.scenes).toEqual([]);
+    expect(content.records[0]).not.toHaveProperty('cinematicBody');
+  });
 });
 
 describe('validateContent', () => {

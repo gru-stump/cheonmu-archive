@@ -37,35 +37,30 @@ describe('CinematicScene', () => {
     expect(screen.queryByLabelText('현재 장면')).not.toBeInTheDocument();
   });
 
-  it('hides a prose header while scrolling down and reveals it when scrolling up or focusing it', () => {
+  it('hides a prose header on the first downward scroll and reveals it on scroll up or keyboard focus', () => {
     const longText = 'Long prose scene for a continuous reading view. '.repeat(12);
     const { container } = render(
       <CinematicScene title="First contact" scenes={[{ id: 'prose', text: longText, isProse: true }]} onClose={vi.fn()} />,
     );
     const readingView = container.querySelector('.cinematic-scene');
+    const dialog = screen.getByRole('dialog');
     const header = container.querySelector('.cinematic-scene__header');
     const closeButton = container.querySelector<HTMLButtonElement>('.cinematic-scene__close');
 
     expect(readingView).not.toBeNull();
     expect(header).toHaveClass('cinematic-scene__header--sticky');
-    expect(closeButton).toHaveFocus();
+    expect(dialog).toHaveFocus();
 
     fireEvent.scroll(readingView!, { target: { scrollTop: 120 } });
-    expect(header).not.toHaveClass('cinematic-scene__header--hidden');
-
-    closeButton!.blur();
-    fireEvent.scroll(readingView!, { target: { scrollTop: 140 } });
     expect(header).toHaveClass('cinematic-scene__header--hidden');
 
     fireEvent.scroll(readingView!, { target: { scrollTop: 80 } });
     expect(header).not.toHaveClass('cinematic-scene__header--hidden');
 
-    fireEvent.scroll(readingView!, { target: { scrollTop: 0 } });
-    expect(header).not.toHaveClass('cinematic-scene__header--hidden');
-
     fireEvent.scroll(readingView!, { target: { scrollTop: 120 } });
     expect(header).toHaveClass('cinematic-scene__header--hidden');
-    fireEvent.focus(closeButton!);
+    fireEvent.keyDown(dialog, { key: 'Tab', shiftKey: true });
+    expect(closeButton).toHaveFocus();
     expect(header).not.toHaveClass('cinematic-scene__header--hidden');
   });
 

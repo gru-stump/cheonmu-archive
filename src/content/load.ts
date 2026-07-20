@@ -42,14 +42,12 @@ export function loadContentFromSources(
   };
 
   for (const [path, source] of Object.entries(markdown)) {
+    const scenePathMatch = /^\.\/scenes\/([^/]+)\.md$/.exec(path);
     if (path.includes('/records/')) {
       const parsed = parseMarkdown(source, recordMetaSchema);
       content.records.push({ ...parsed.data, body: parsed.body } satisfies ArchiveRecord);
-    } else if (path.includes('/scenes/')) {
-      const id = path.split('/').at(-1)?.replace(/\.md$/, '');
-      if (id) {
-        content.scenes.push({ id, body: source.trim() } satisfies ArchiveScene);
-      }
+    } else if (scenePathMatch) {
+      content.scenes.push({ id: scenePathMatch[1], body: source.trim() } satisfies ArchiveScene);
     } else if (path.includes('/profiles/')) {
       const parsed = parseMarkdown(source, profileMetaSchema);
       content.profiles.push({ ...parsed.data, body: parsed.body } satisfies ArchiveProfile);

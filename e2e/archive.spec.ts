@@ -105,9 +105,8 @@ for (const viewport of [
     const prose = page.locator('.cinematic-scene__text--prose');
     const header = page.locator('.cinematic-scene__header');
     await expect(prose).toContainText(finalProseSentence);
-    await expect(page.getByRole('button', { name: '?ㅼ쓬 ?λ㈃' })).toHaveCount(0);
+    await expect(page.locator('.cinematic-scene__controls')).toHaveCount(0);
 
-    await page.locator('.cinematic-scene__dialog').focus();
     await reader.evaluate((element) => {
       element.scrollTop = 500;
       element.dispatchEvent(new Event('scroll', { bubbles: true }));

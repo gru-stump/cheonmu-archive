@@ -49,7 +49,11 @@ export function CinematicScene({ title, scenes, onClose }: CinematicSceneProps):
     previouslyFocusedRef.current = document.activeElement instanceof HTMLElement
       ? document.activeElement
       : null;
-    closeButtonRef.current?.focus();
+    if (isProseScene) {
+      dialogRef.current?.focus();
+    } else {
+      closeButtonRef.current?.focus();
+    }
 
     return restoreFocus;
   }, [restoreFocus]);
@@ -97,7 +101,10 @@ export function CinematicScene({ title, scenes, onClose }: CinematicSceneProps):
     const firstElement = focusableElements[0];
     const lastElement = focusableElements[focusableElements.length - 1];
 
-    if (event.shiftKey && document.activeElement === firstElement) {
+    if (event.shiftKey && (
+      document.activeElement === firstElement
+      || document.activeElement === dialogRef.current
+    )) {
       event.preventDefault();
       lastElement.focus();
     } else if (!event.shiftKey && document.activeElement === lastElement) {
