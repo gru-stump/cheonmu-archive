@@ -1,7 +1,27 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { parseMarkdown } from './frontmatter';
 import { loadContentFromSources, validateContent } from './load';
 import { recordMetaSchema, type ArchiveContent } from './schema';
+
+describe('content Markdown discovery', () => {
+  it('limits the Vite glob boundary to direct children of public content collections', () => {
+    const loadSource = readFileSync(resolve('src/content/load.ts'), 'utf8');
+    const globCalls = Array.from(loadSource.matchAll(
+      /import\.meta\.glob\(\s*(\[[\s\S]*?\]|['"][^'"]+['"])\s*,/g,
+    ));
+
+    expect(globCalls).toHaveLength(1);
+    expect(Array.from(globCalls[0][1].matchAll(/['"]([^'"]+)['"]/g), (match) => match[1]))
+      .toEqual([
+        './records/*.md',
+        './scenes/*.md',
+        './profiles/*.md',
+        './documents/*.md',
+      ]);
+  });
+});
 
 describe('parseMarkdown', () => {
   it('parses a confirmed event record', () => {

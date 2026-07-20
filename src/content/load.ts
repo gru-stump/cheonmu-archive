@@ -17,7 +17,12 @@ import { validateArchiveContent as validateArchiveContentBase, type ValidationOp
 type RawContentModules = Record<string, string>;
 
 function markdownModules(): RawContentModules {
-  return import.meta.glob('./**/*.md', {
+  return import.meta.glob([
+    './records/*.md',
+    './scenes/*.md',
+    './profiles/*.md',
+    './documents/*.md',
+  ], {
     query: '?raw',
     import: 'default',
     eager: true,
