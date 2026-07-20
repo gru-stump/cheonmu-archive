@@ -40,11 +40,11 @@ export const documentMetaSchema = z.object({
 export const galleryItemSchema = z.object({
   id: contentId,
   title: nonEmptyText,
-  image: nonEmptyText,
+  image: nonEmptyText.regex(/^\/images\/[A-Za-z0-9_-]+\.(?:png|jpe?g|webp)$/i),
   alt: nonEmptyText,
   creator: nonEmptyText,
-  source: z.url().optional(),
-  characters: z.array(contentId),
+  source: z.url().refine((value) => new URL(value).protocol === 'https:', 'Source URL must use HTTPS.').optional(),
+  characters: z.array(contentId).min(1),
   tags: z.array(nonEmptyText).optional(),
   public: z.boolean(),
 });

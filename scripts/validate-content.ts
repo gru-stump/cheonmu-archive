@@ -4,7 +4,7 @@ import { parse as parseYaml } from 'yaml';
 import type { ZodType } from 'zod';
 import { resolveValidationRoot } from './content-validation-path';
 import { parseMarkdown } from '../src/content/frontmatter';
-import { validateArchiveContent } from '../src/content/load';
+import { validateArchiveContent } from '../src/content/validation';
 import {
   documentMetaSchema,
   gallerySchema,

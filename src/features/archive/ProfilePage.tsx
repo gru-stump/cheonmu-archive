@@ -1,6 +1,6 @@
 import type { JSX } from 'react';
-import ReactMarkdown from 'react-markdown';
 import { Link, useParams } from 'react-router-dom';
+import { ArchiveContentDisplay } from '../../components/ContentDisplay';
 import { loadAllContent } from '../../content/load';
 import type { ArchiveProfile } from '../../content/schema';
 
@@ -26,12 +26,7 @@ export function ProfilePage({ profiles = loadAllContent().profiles }: ProfilePag
   return (
     <article className="archive-detail">
       <Link className="back-link" to="/archive">← 아카이브</Link>
-      <header className="archive-detail__header">
-        <p className="document-kicker">Character Profile</p>
-        <h1>{profile.title}</h1>
-        {profile.height && <p>신장 {profile.height}</p>}
-      </header>
-      <div className="markdown-document"><ReactMarkdown>{profile.body}</ReactMarkdown></div>
+      <ArchiveContentDisplay kind="profile" content={profile} />
     </article>
   );
 }

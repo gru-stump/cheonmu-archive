@@ -83,6 +83,7 @@ describe('archive detail pages', () => {
     );
 
     expect(screen.getByRole('heading', { name: '의료관' })).toBeVisible();
+    expect(screen.getByTestId('profile-content-display')).toBeVisible();
     expect(screen.getByText('치유')).toHaveProperty('tagName', 'STRONG');
 
     unmount();
@@ -95,6 +96,7 @@ describe('archive detail pages', () => {
     );
 
     expect(screen.getByRole('heading', { name: '관계' })).toBeVisible();
+    expect(screen.getByTestId('document-content-display')).toBeVisible();
   });
 
   it.each([

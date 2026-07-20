@@ -1,6 +1,6 @@
 import type { JSX } from 'react';
-import ReactMarkdown from 'react-markdown';
 import { Link, useParams } from 'react-router-dom';
+import { ArchiveContentDisplay } from '../../components/ContentDisplay';
 import { loadAllContent } from '../../content/load';
 import type { ArchiveDocument } from '../../content/schema';
 
@@ -26,11 +26,7 @@ export function DocumentPage({ documents = loadAllContent().documents }: Documen
   return (
     <article className="archive-detail">
       <Link className="back-link" to="/archive">← 아카이브</Link>
-      <header className="archive-detail__header">
-        <p className="document-kicker">Reference Document</p>
-        <h1>{document.title}</h1>
-      </header>
-      <div className="markdown-document"><ReactMarkdown>{document.body}</ReactMarkdown></div>
+      <ArchiveContentDisplay kind="document" content={document} />
     </article>
   );
 }
