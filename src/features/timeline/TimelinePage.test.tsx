@@ -250,7 +250,8 @@ describe('RecordDetailPage', () => {
     expect(within(dialog).queryByLabelText('현재 장면')).not.toBeInTheDocument();
   });
 
-  it.each([
+  // CM-07이 records/_hidden/에서 복원되면 skip을 해제할 것.
+  it.skip.each([
     {
       stage: 7,
       scenes: [
@@ -289,36 +290,24 @@ describe('RecordDetailPage', () => {
     }
   });
 
-  it('keeps the actual stage 5 short-scene fallback paged in source order', async () => {
+  it('presents the actual stage 5 sidecar scene as one continuous prose reading view', async () => {
     const user = userEvent.setup();
-    const record = actualRecords.find((item) => item.stage === 5);
-    expect(record).toBeDefined();
-
     render(
-      <MemoryRouter initialEntries={[`/records/${record!.id}`]}>
+      <MemoryRouter initialEntries={['/records/fracture']}>
         <Routes>
           <Route path="records/:recordId" element={<RecordDetailPage records={actualRecords} />} />
         </Routes>
       </MemoryRouter>,
     );
 
-    const expectedScenes = record!.body
-      .split(/\n+/)
-      .map((line) => line.trim().replace(/^>\s?/, '').replace(/^\*\*(.+)\*\*$/, '$1').trim())
-      .filter(Boolean);
-    await user.click(document.querySelector<HTMLButtonElement>('.cinematic-entry button')!);
-    const dialog = screen.getByRole('dialog');
+    await user.click(screen.getByRole('button', { name: '장면 재구성 열기' }));
+    const dialog = screen.getByRole('dialog', { name: '균열 장면 재구성' });
+    const prose = dialog.querySelector('.cinematic-scene__text--prose');
 
-    expect(expectedScenes).toHaveLength(2);
-    expect(within(dialog).getByText(`1 / ${expectedScenes.length}`)).toBeVisible();
-
-    for (const [index, expectedText] of expectedScenes.entries()) {
-      expect(dialog.querySelector('.cinematic-scene__text')?.textContent?.trim()).toBe(expectedText);
-
-      if (index < expectedScenes.length - 1) {
-        await user.click(dialog.querySelectorAll<HTMLButtonElement>('.cinematic-scene__controls button')[1]!);
-      }
-    }
+    expect(prose?.textContent).toContain('망가지는 순서');
+    expect(prose?.textContent).toContain('“눈 떠. 지금 자면 안 돼.”');
+    expect(prose?.textContent).toContain('결심에는 이름을 붙이지 않았다');
+    expect(within(dialog).queryByLabelText('현재 장면')).not.toBeInTheDocument();
   });
 
   it('closes and resets the cinematic modal when the route record changes', async () => {
