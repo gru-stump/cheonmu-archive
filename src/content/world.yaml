@@ -9,7 +9,13 @@
   explanation: 현장 부서와 의료 부서를 함께 운용하는 특수재난 대응 기관이다.
   sections:
     - revealStage: 1
-      paragraphs: [현장 통제와 격리, 구조, 의료 지원을 담당한다.]
+      paragraphs:
+        - 현장 통제와 격리, 구조, 의료 지원을 담당한다.
+        - 산하에 현장 대응 부서인 특수기동대, 치료와 관찰을 맡는 의료센터, 그리고 사건을 문서로 남기는 기록 부서를 둔다.
+        - 모든 특수재난 사건은 종결 후 기록철에 등재되며, 문서 번호가 붙은 기록만 정식 사건으로 인정된다.
+    - revealStage: 5
+      paragraphs:
+        - 사건 보고서의 측정값과 판정은 사후 정정될 수 있으나, 정정에는 담당 의료인 또는 지휘관의 서명이 필요하다.
   relatedRecords: [first-contact, field-accompaniment]
 
 - id: special-task-force
@@ -23,8 +29,16 @@
   explanation: 무영이 소속된 현장 대응 부서다.
   sections:
     - revealStage: 1
-      paragraphs: [지휘관은 철수 순서와 구조 인원의 안전을 확인하며 무영이 현장 지휘를 맡고 있다.]
-  relatedRecords: [first-contact, field-accompaniment]
+      paragraphs:
+        - 지휘관은 철수 순서와 구조 인원의 안전을 확인하며 무영이 현장 지휘를 맡고 있다.
+        - 위험 현장에서는 지휘관이 가장 먼저 진입하고 가장 마지막에 철수하는 것이 부대의 오랜 관행이다.
+    - revealStage: 3
+      paragraphs:
+        - 고위험 작전에는 의료 지원 인력이 점검선까지 동행하는 편성이 정착되어 있다.
+    - revealStage: 5
+      paragraphs:
+        - 대원을 대신해 위험 요소에 노출된 지휘관의 사례가 보고되어 있으며, 해당 인원의 현장 복귀는 의료 판정을 따른다.
+  relatedRecords: [first-contact, field-accompaniment, fracture]
 
 - id: third-medical-center
   documentNumber: WF-03
@@ -37,8 +51,15 @@
   explanation: 천령이 근무하며 무영의 치료가 반복되는 곳이다.
   sections:
     - revealStage: 1
-      paragraphs: [천령이 의사이자 연구원으로 소속되어 현장 의료 지원에도 참여한다.]
-  relatedRecords: [first-contact, repeated-treatment]
+      paragraphs:
+        - 천령이 의사이자 연구원으로 소속되어 현장 의료 지원에도 참여한다.
+    - revealStage: 2
+      paragraphs:
+        - 반복 내원하는 환자에게는 전담 의사가 배정된다. 전담 배정은 공식 제도라기보다 반복되는 배정이 굳어진 관행에 가깝다.
+    - revealStage: 5
+      paragraphs:
+        - 일부 치료 기록은 담당 의료인 전담으로 잠기며, 다른 의료진은 열람할 수 없다. 전담 잠금의 사유는 차트에 남지 않는다.
+  relatedRecords: [first-contact, repeated-treatment, fracture]
 
 - id: containment-protocol
   documentNumber: WF-04
@@ -51,8 +72,13 @@
   explanation: 현장 인원을 살리기 위한 절차이며 두 사람의 판단이 자주 부딪치는 지점이다.
   sections:
     - revealStage: 1
-      paragraphs: [의료진도 철수 명령의 대상이지만 현장 판단과 충돌한 사례가 존재한다.]
-  relatedRecords: [first-contact, field-accompaniment]
+      paragraphs:
+        - 의료진도 철수 명령의 대상이지만 현장 판단과 충돌한 사례가 존재한다.
+        - 격리문은 다중 잠금쇠 구조이며, 마지막 잠금의 확인은 현장 지휘관의 몫이다. 격리선 안에 인원이 남은 상태의 폐쇄는 지휘관 권한으로만 가능하다.
+    - revealStage: 5
+      paragraphs:
+        - 오염 농도가 철수 기준을 넘으면 전 인원 철수가 원칙이다. 기준 초과 후 잔류한 인원은 사후 보고 대상이 되지만, 실제로 보고까지 이어진 사례는 드물다.
+  relatedRecords: [first-contact, field-accompaniment, fracture]
 
 - id: contamination-treatment
   documentNumber: WF-05
@@ -65,10 +91,71 @@
   explanation: 특수재난 현장의 부상은 상처만 치료한다고 끝나지 않는다.
   sections:
     - revealStage: 1
-      paragraphs: [노출 정도에 따라 장비 측정과 의료 관찰이 이루어진다.]
+      paragraphs:
+        - 노출 정도에 따라 장비 측정과 의료 관찰이 이루어진다.
+        - 오염은 열상이나 골절과 달리 노출 직후에는 겉으로 드러나지 않는 경우가 있어, 무증상 인원도 관찰 기간을 거친다.
     - revealStage: 5
-      paragraphs: [치료 방식과 일부 회복 사례는 제한 정보로 분류되어 있다.]
+      paragraphs:
+        - 치료 방식과 일부 회복 사례는 제한 정보로 분류되어 있다.
+        - 고농도 오염 물질은 검은 액상으로 관측되며, 접촉한 구조물 표면을 하얗게 일으키고 방호복 섬유를 침식한 사례가 있다.
+        - 오염 강도 측정값이 사후 하향 정정된 사건이 존재한다. 정정 사유는 초기 계측 오류로 기재되어 있다.
   relatedRecords: [first-contact, fracture]
+
+- id: unidentified-entities
+  documentNumber: WF-06
+  title: 미확인 개체
+  categories: [anomaly]
+  status: partial
+  clearance: 부분 공개
+  basisStage: 5
+  summary: 격리와 제압의 대상이 되는 미확인 개체에 관한 개요.
+  explanation: 특수재난의 원인이 되는 존재들로, 관측되는 즉시 격리선이 설정된다.
+  sections:
+    - revealStage: 1
+      paragraphs:
+        - 미확인 개체는 형태와 성질이 일정하지 않아 개별 사건 단위로 분류된다. 관측 즉시 격리선이 설정되고 민간인 접근이 통제된다.
+        - 제압보다 격리가 우선이며, 제압은 격리 유지가 불가능하다고 판단된 경우에만 승인된다.
+    - revealStage: 5
+      paragraphs:
+        - 폐쇄 시설에 장기간 머문 개체는 내부에 오염 물질을 축적하며, 제압 과정에서 이를 방출한 사례가 보고되어 있다.
+  relatedRecords: [first-contact, fracture]
+
+- id: medical-field-attachment
+  documentNumber: WF-07
+  title: 현장 의료 지원 배속
+  categories: [field-response]
+  status: public
+  clearance: 공개 열람
+  basisStage: 3
+  summary: 의료센터 인력이 현장 작전에 배속되는 제도.
+  explanation: 치료실의 의사가 현장까지 나오게 된 제도적 배경이다.
+  sections:
+    - revealStage: 1
+      paragraphs:
+        - 초기에는 부상자를 후방 치료 시설로 이송하는 것이 원칙이었다. 그러나 이송 중 상태가 악화되는 사례가 누적되며 의료 인력의 현장 배속이 도입되었다.
+    - revealStage: 3
+      paragraphs:
+        - 배속 의료 인력은 통제선 밖 점검선에 위치하며, 철수 명령의 적용 대상이다. 다만 환자 발생 시 의료적 판단과 지휘 판단의 우선순위는 명문화되어 있지 않다.
+        - 특정 부대와 특정 의료인의 배속 조합이 반복되는 경우, 편성 담당은 이를 관행으로 존중하는 편이다.
+  relatedRecords: [field-accompaniment]
+
+- id: personnel-registry
+  documentNumber: WF-08
+  title: 인사 기록과 등록 제도
+  categories: [organization]
+  status: partial
+  clearance: 부분 공개
+  basisStage: 5
+  summary: 특재청 소속 인원의 등록과 기록 관리에 관한 제도.
+  explanation: 소속 인원의 이력이 어떻게 기록되고, 어떤 기록이 잠기는지에 대한 문서다.
+  sections:
+    - revealStage: 1
+      paragraphs:
+        - 모든 소속 인원은 등록 절차를 거치며, 인사 기록과 의무 기록이 함께 관리된다. 현장 인원의 부상 이력은 의무 기록에 누적된다.
+    - revealStage: 5
+      paragraphs:
+        - 일부 인원의 등록 기록에서 불일치가 보고되어 해당 기록은 제한 문서로 이관되었다. 이관 사유는 공개되지 않는다.
+  relatedRecords: [repeated-treatment, fracture]
 
 - id: recurring-anomalies
   documentNumber: OB-01
@@ -87,6 +174,26 @@
     - revealStage: 5
       paragraphs: [심각한 오염과 치료 이후 일부 보고 수치가 정정되었다.]
   relatedRecords: [first-contact, field-accompaniment, fracture]
+
+- id: medic-outside-ward
+  documentNumber: OB-02
+  title: 치료실 밖의 의료관
+  categories: [observation]
+  status: partial
+  clearance: 부분 공개
+  basisStage: 5
+  summary: 현장에 배속된 의료관에 대한 대원들의 관측 모음.
+  explanation: 공식 판정이 아니라, 함께 현장에 선 사람들이 남긴 관측 기록이다.
+  sections:
+    - revealStage: 3
+      paragraphs:
+        - 경보음과 진동에 반응하지 않는 태연함이 여러 대원에 의해 관측되었다. 응급 의료 경력에 따른 둔감화로 설명되어 있다.
+        - 현장 기준을 웃도는 처치 속도가 기록되었다. 보조 인력이 손을 따라가지 못한 사례가 복수 존재하며, 숙련도로 설명되어 있다.
+    - revealStage: 5
+      paragraphs:
+        - 철수 기준 초과 후에도 처치 위치를 지킨 사례가 있다. 해당 건은 보고되지 않았다.
+        - 중증 환자의 집중 치료 이후 담당 의료관에게서 뚜렷한 소모가 관측되었다. 사흘간 병상을 떠나지 않은 근무 기록이 남아 있다.
+  relatedRecords: [field-accompaniment, fracture]
 
 - id: cheonryeong-restricted
   documentNumber: CL-01
