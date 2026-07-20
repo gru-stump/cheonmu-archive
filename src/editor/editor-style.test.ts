@@ -49,4 +49,26 @@ describe('editor style entry', () => {
     expect(css).toContain('grid-template-columns: minmax(0, 1fr) minmax(0, 1fr)');
     expect(css).toContain('grid-template-columns: 1fr');
   });
+
+  it('defines balanced navigation and mobile tab spacing', () => {
+    const css = read('./editor.css');
+    expect(css).toContain(`.editor-entry-list > label {
+  display: grid;
+  gap: 0.375rem;
+}`);
+    expect(css).toContain(`.editor-entry-list > button {
+  width: 100%;
+  margin-top: 0.625rem;
+}`);
+    expect(css).toContain(`.editor-entry-list li > button {
+  width: 100%;
+  text-align: left;
+}`);
+    expect(css).toContain('grid-template-columns: repeat(2, minmax(0, 1fr));');
+    expect(css).toContain(`.editor-kind-nav {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    overflow: visible;
+  }`);
+  });
 });

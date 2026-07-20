@@ -119,3 +119,42 @@ for (const viewport of [
     await page.screenshot({ path: testInfo.outputPath(`${viewport.name}-gallery-${viewport.width}x${viewport.height}.png`), fullPage: true });
   });
 }
+
+test('mobile navigation shows all content kinds and separates search actions', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('./');
+
+  const kinds = page.getByRole('navigation', { name: '콘텐츠 종류' }).getByRole('button');
+  await expect(kinds).toHaveCount(4);
+  const kindBoxes = await kinds.evaluateAll((buttons) => buttons.map((button) => button.getBoundingClientRect().toJSON()));
+  expect(kindBoxes.every((box) => box.left >= 0 && box.right <= 390)).toBe(true);
+  expect(new Set(kindBoxes.map((box) => Math.round(box.top))).size).toBe(2);
+
+  const search = page.getByRole('textbox', { name: '검색' });
+  const create = page.getByRole('button', { name: '새 기록' });
+  const searchBox = await search.boundingBox();
+  const createBox = await create.boundingBox();
+  expect(searchBox).not.toBeNull();
+  expect(createBox).not.toBeNull();
+  expect(createBox!.y).toBeGreaterThanOrEqual(searchBox!.y + searchBox!.height + 9);
+});
+
+test('tablet entry list keeps its horizontal scroll affordance', async ({ page }) => {
+  await page.setViewportSize({ width: 768, height: 900 });
+  await page.goto('./');
+
+  const affordance = await page.locator('.editor-entry-list').evaluate((list) => {
+    const style = getComputedStyle(list, '::after');
+    return {
+      content: style.content,
+      display: style.display,
+      pointerEvents: style.pointerEvents,
+      backgroundImage: style.backgroundImage,
+    };
+  });
+
+  expect(affordance.content).not.toBe('none');
+  expect(affordance.display).not.toBe('none');
+  expect(affordance.pointerEvents).toBe('none');
+  expect(affordance.backgroundImage).toContain('linear-gradient');
+});
