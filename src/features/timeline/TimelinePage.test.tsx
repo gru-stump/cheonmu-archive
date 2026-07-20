@@ -230,17 +230,27 @@ describe('RecordDetailPage', () => {
     expect(proseScenes[0]?.textContent).toContain('Sidecar final prose sentence.');
   });
 
+  it('presents the actual stage 3 sidecar scene as one continuous prose reading view', async () => {
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter initialEntries={['/records/field-accompaniment']}>
+        <Routes>
+          <Route path="records/:recordId" element={<RecordDetailPage records={actualRecords} />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await user.click(screen.getByRole('button', { name: '장면 재구성 열기' }));
+    const dialog = screen.getByRole('dialog', { name: '현장 동행 장면 재구성' });
+    const prose = dialog.querySelector('.cinematic-scene__text--prose');
+
+    expect(prose?.textContent).toContain('먼저 나가요, 지휘관 씨');
+    expect(prose?.textContent).toContain('“환자가 아직 안 나왔는데 내가 어떻게 가.”');
+    expect(prose?.textContent).toContain('그 생각의 이름은 붙이지 않았다');
+    expect(within(dialog).queryByLabelText('현재 장면')).not.toBeInTheDocument();
+  });
+
   it.each([
-    {
-      stage: 3,
-      scenes: [
-        '명령이 통하지 않는 지휘관과 의료 지원 인력.',
-        '“의료진은 철수하십시오.”',
-        '“환자가 아직 안 나왔는데 내가 어떻게 가.”',
-        '“나는 환자가 아닙니다.”',
-        '“그건 내가 정해요.”',
-      ],
-    },
     {
       stage: 7,
       scenes: [
