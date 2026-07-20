@@ -24,7 +24,7 @@ Command:
 
 `npm run test:run -- editor/gallery-storage.test.ts src/editor/GalleryForm.test.tsx`
 
-The first sandboxed run hit the known Windows worktree `EPERM` at `C:\Users\thdus`; the approved external rerun exited 1. Both suites failed for the intended missing-feature reason: `./gallery-storage` and `./GalleryForm` could not be resolved.
+The first sandboxed run hit the known Windows worktree `EPERM` at `<workspace-parent>`; the approved external rerun exited 1. Both suites failed for the intended missing-feature reason: `./gallery-storage` and `./GalleryForm` could not be resolved.
 
 ### GREEN 1
 

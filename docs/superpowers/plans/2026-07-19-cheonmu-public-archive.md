@@ -10,7 +10,7 @@
 
 ## Global Constraints
 
-- Public site is read-only and deploys to `https://thdus4320.github.io/cheonmu-archive/`.
+- Public site is read-only and deploys to `https://<github-user>.github.io/cheonmu-archive/`.
 - Use `HashRouter`; every detail route must survive direct access and refresh on GitHub Pages.
 - PC, tablet, and mobile expose the same content and functions.
 - Visually distinguish `confirmed` records from `draft` records.

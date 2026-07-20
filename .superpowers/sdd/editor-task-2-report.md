@@ -14,7 +14,7 @@
 2. Ran `npm run test:run -- src/editor/EditorApp.test.tsx`.
 3. Result: exit 1; Vitest failed to resolve `./EditorApp` because the editor UI did not exist. This is the expected missing-feature RED state.
 
-The first sandboxed invocation could not resolve the Windows workspace path (`EPERM` on `C:\Users\thdus`); the same read-only test was rerun with the approved external test permission and produced the intended RED result above.
+The first sandboxed invocation could not resolve the Windows workspace path (`EPERM` on `<workspace-parent>`); the same read-only test was rerun with the approved external test permission and produced the intended RED result above.
 
 ### GREEN
 

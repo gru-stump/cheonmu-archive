@@ -290,7 +290,7 @@ Your own writing may be included at length. For another writer's work, prefer a 
 Run:
 
 ```powershell
-python C:\Users\thdus\.codex\skills\.system\skill-creator\scripts\generate_openai_yaml.py .agents\skills\cheonmu-story-writer --interface display_name="천무 서사작가" --interface short_description="천무 에피소드 공동 집필과 설정 연속성 검사" --interface default_prompt="Use $cheonmu-story-writer to plan a new Cheonmu episode with me before drafting it."
+python <codex-home>\skills\.system\skill-creator\scripts\generate_openai_yaml.py .agents\skills\cheonmu-story-writer --interface display_name="천무 서사작가" --interface short_description="천무 에피소드 공동 집필과 설정 연속성 검사" --interface default_prompt="Use $cheonmu-story-writer to plan a new Cheonmu episode with me before drafting it."
 ```
 
 Expected: `.agents/skills/cheonmu-story-writer/agents/openai.yaml`이 생성되고 모든 문자열이 따옴표로 감싸진다.
@@ -300,7 +300,7 @@ Expected: `.agents/skills/cheonmu-story-writer/agents/openai.yaml`이 생성되�
 Run:
 
 ```powershell
-python C:\Users\thdus\.codex\skills\.system\skill-creator\scripts\quick_validate.py .agents\skills\cheonmu-story-writer
+python <codex-home>\skills\.system\skill-creator\scripts\quick_validate.py .agents\skills\cheonmu-story-writer
 ```
 
 Expected: validation success, frontmatter와 이름 오류 없음.
@@ -367,7 +367,7 @@ Expected: 즉시 본문을 쓰지 않고 첫 번째 방향 결정 질문을 한�
 Run:
 
 ```powershell
-python C:\Users\thdus\.codex\skills\.system\skill-creator\scripts\quick_validate.py .agents\skills\cheonmu-story-writer
+python <codex-home>\skills\.system\skill-creator\scripts\quick_validate.py .agents\skills\cheonmu-story-writer
 git diff --check
 npm run validate
 npm run test:run

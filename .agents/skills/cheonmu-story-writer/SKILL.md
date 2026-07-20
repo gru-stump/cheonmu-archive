@@ -1,6 +1,6 @@
 ---
 name: cheonmu-story-writer
-description: Collaboratively plan and draft Cheonmu/천무 stories featuring Cheonryeong/천령 and Muyeong/무영. Use for a Cheonmu episode, scene, dialogue, romance, foreshadowing, character voice, or continuity request.
+description: Collaboratively plan, draft, review continuity, and revise Cheonmu/천무 stories featuring Cheonryeong/천령 and Muyeong/무영. Use for a new episode, approved draft, localized feedback revision, scene, dialogue, romance, foreshadowing, character voice, or continuity-only review.
 ---
 
 # 천무 서사 집필
@@ -12,23 +12,31 @@ description: Collaboratively plan and draft Cheonmu/천무 stories featuring Che
 1. 있을 때만 `천무_캐릭터_프로필.md`
 2. `src/content/profiles/*.md`, `src/content/documents/*.md`
 3. `src/content/records/*.md`
-4. `references/narrative-principles.md`, `references/reveal-plan.md`, `references/style-samples/guide.md`
+4. `references/narrative-principles.md`, `references/reveal-plan.md`, `references/style-samples/` 아래의 관련 Markdown 파일
 5. 현재 요청
 
 낮은 우선순위 자료나 현재 요청이 높은 우선순위 자료와 충돌하면 어느 쪽도 조용히 덮어쓰거나 합치지 않는다. 두 값을 함께 보고하고 사용자 해소 전 멈춘다. 같은 우선순위의 출처끼리 충돌해도 멈춘다. 현재 요청은 canon을 조용히 다시 쓰지 않으며, 해소 전에는 `request-only`로만 취급한다.
 
 원본 프로필이 linked worktree에 없으면 조용히 무시하지 않는다. 공개 자료만으로 가능한 작업인지 판단하고, canon coverage가 축소됐음을 알린다. 핵심 판단에 원본이 필요하면 멈추고 사용자에게 요청한다.
 
-각 주장에 `confirmed`, `unresolved`, `conflicting`, `request-only` 중 하나를 붙인다. 문체 자료는 표현 안내일 뿐 사실, 사건, 역사, 대사 canon이 아니다.
+각 주장에 `confirmed`, `unresolved`, `conflicting`, `request-only` 중 하나를 붙인다. `references/style-samples/`를 재귀적으로 탐색해 `*.md` 목록을 확인하고, `guide.md`와 현재 요청에 관련된 Markdown 파일을 모두 읽는다. 이 폴더의 문체 자료는 표현 안내일 뿐 사실, 사건, 역사, 대사 canon이 아니다.
 
-## 집필 흐름
+## 요청 라우팅
+
+요청을 먼저 다음 한 경로로 분류한다.
+
+- **새 에피소드:** 아래 `새 에피소드 흐름`의 질문 → scene plan → 승인 → 초안 → 연속성 점검 순서를 따른다.
+- **연속성만 검토:** 새 장면이나 수정문을 쓰지 않는다. 설정, 말투·호칭, 시점, 관계 속도, 부상 비용, 숨긴 정보 gate, 미회수 요소의 발견 사항과 필요한 최소 수정 범위만 보고한다.
+- **승인 초안 수정:** 사용자가 지적한 구간과 그 직접 영향 범위만 수정하고 나머지 승인 문장은 그대로 보존한다. 사용자가 전체 재작성을 명시한 경우에만 전면 수정한다. 수정 뒤 설정·시점·호칭·관계 단계·미회수 요소에 끼친 연속성 영향을 짧게 보고한다. 제공된 초안과 canon으로 관계 단계를 확인할 수 없으면 임의로 단계명을 붙이지 말고 `unresolved`로 보고한다.
+
+## 새 에피소드 흐름
 
 1. 요청과 현재 관계 단계를 짧게 요약한다.
 2. 방향을 바꾸는 질문 2~4개를 한 번에 하나씩 묻는다.
 3. 제목, 시점과 이유, 타임라인, 톤, 3~5개 장면, 감정의 시작과 끝, **callbacks(반복·회수할 요소)**, **계획 자체에 명시한 3,000~5,000자 분량**, 로맨스 경계, 미해결 canon과 **이번 요청 전용(request-only) 설정**을 담은 scene plan을 제시한다.
 4. scene plan의 명시적 승인을 받을 때까지 본문을 쓰지 않는다.
-5. 승인 뒤 3,000~5,000자 초안을 쓴다. 장면별 시점은 고정하고, 감정 전환점에서만 문장 밀도를 높인다.
-6. 짧은 continuity check와 local feedback을 제공한다.
+5. 승인 뒤 3,000~5,000자 초안을 쓴다. 장면별 시점을 고정하고, 아래 서사 제약을 지킨다.
+6. 설정 충돌, 말투·호칭, 시점, 관계 속도, 부상 비용, 숨긴 정보 gate, 미회수 요소를 확인한 짧은 continuity check와 local feedback을 제공한다.
 
 초안 승인은 채팅 상태일 뿐이다. 사용자가 단순히 초안을 승인하면, 저장이나 배포를 시작하지 말고 “승인은 채팅에서의 초안 승인으로만 처리했습니다. 사이트 저장이나 배포는 별도의 명시적 요청이 필요합니다.”라는 취지로 분명히 알린다. 파일 저장이나 배포는 명시적으로 site-save 또는 deploy를 요청받은 경우에만 한다.
 
@@ -40,6 +48,12 @@ description: Collaboratively plan and draft Cheonmu/천무 stories featuring Che
 - 기본 수위는 키스까지다. 성인물은 별도 요청과 경계 승인이 있어야 한다.
 
 살아 있는 작가의 고유 문체를 모방하지 않는다. 요청된 문체는 절제, 감각, 문장 리듬처럼 높은 수준의 craft traits로 바꾼다.
+
+## 서사 제약
+
+- 기본 문체는 절제된 서정체다. 감정 전환점에서만 내면과 감각 묘사의 밀도를 높이고, 그 밖의 문장은 사건과 행동을 선명하게 운반한다.
+- 부상과 치료에는 이후 행동 제한, 통증, 회복 시간, 선택의 대가 같은 비용이나 결과를 남긴다. 치료 한 번으로 비용을 지우지 않는다.
+- 두 사람의 생명관과 자기희생을 둘러싼 중심 갈등을 한 번의 대화로 완전히 이해하거나 해결하지 않는다.
 
 ## 숨긴 정보와 중단 조건
 
