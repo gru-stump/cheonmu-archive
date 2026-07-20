@@ -107,6 +107,7 @@ for (const viewport of [
     await expect(prose).toContainText(finalProseSentence);
     await expect(page.getByRole('button', { name: '?ㅼ쓬 ?λ㈃' })).toHaveCount(0);
 
+    await page.locator('.cinematic-scene__dialog').focus();
     await reader.evaluate((element) => {
       element.scrollTop = 500;
       element.dispatchEvent(new Event('scroll', { bubbles: true }));

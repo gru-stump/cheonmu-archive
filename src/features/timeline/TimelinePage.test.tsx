@@ -208,7 +208,7 @@ describe('RecordDetailPage', () => {
     const proseRecord: ArchiveRecord = {
       ...records[1],
       body: 'Short public summary sentence.',
-      cinematicBody: `## Sidecar opening sentence.\n\n${'The full prose continues in its dedicated scene source. '.repeat(3)}\n\nSidecar final prose sentence.`,
+      cinematicBody: '## Sidecar opening sentence.\n\nSidecar final prose sentence.',
     };
     render(
       <MemoryRouter initialEntries={['/records/first-contact']}>

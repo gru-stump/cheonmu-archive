@@ -3,6 +3,7 @@ import { resolvePublicAssetUrl } from '../../lib/publicAssetUrl';
 
 export type CinematicSceneItem = {
   id: string;
+  isProse?: boolean;
   speaker?: string;
   text: string;
   backdrop?: string;
@@ -23,19 +24,17 @@ const focusableSelector = [
   '[tabindex]:not([tabindex="-1"])',
 ].join(',');
 
-const proseSceneMinimumLength = 120;
-
 export function CinematicScene({ title, scenes, onClose }: CinematicSceneProps): JSX.Element {
   const [sceneIndex, setSceneIndex] = useState(0);
   const [isHeaderHidden, setIsHeaderHidden] = useState(false);
-  const readerRef = useRef<HTMLDivElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
+  const headerRef = useRef<HTMLElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const previouslyFocusedRef = useRef<HTMLElement | null>(null);
   const lastScrollTopRef = useRef(0);
   const titleId = useId();
   const scene = scenes[sceneIndex];
-  const isProseScene = (scene?.text.trim().length ?? 0) >= proseSceneMinimumLength;
+  const isProseScene = scene?.isProse === true;
 
   const restoreFocus = useCallback(() => {
     previouslyFocusedRef.current?.focus();
@@ -65,8 +64,9 @@ export function CinematicScene({ title, scenes, onClose }: CinematicSceneProps):
 
     const scrollTop = event.currentTarget.scrollTop;
     const lastScrollTop = lastScrollTopRef.current;
+    const headerContainsFocus = headerRef.current?.contains(document.activeElement) ?? false;
 
-    if (scrollTop <= 24 || scrollTop < lastScrollTop) {
+    if (scrollTop <= 24 || scrollTop < lastScrollTop || headerContainsFocus) {
       setIsHeaderHidden(false);
     } else if (scrollTop > 72 && scrollTop > lastScrollTop) {
       setIsHeaderHidden(true);
@@ -107,7 +107,7 @@ export function CinematicScene({ title, scenes, onClose }: CinematicSceneProps):
   }
 
   return (
-    <div ref={readerRef} className="cinematic-scene" role="presentation" onScroll={handleReaderScroll}>
+    <div className="cinematic-scene" role="presentation" onScroll={handleReaderScroll}>
       <div
         ref={dialogRef}
         className={`cinematic-scene__dialog${isProseScene ? ' cinematic-scene__dialog--prose' : ''}`}
@@ -125,6 +125,7 @@ export function CinematicScene({ title, scenes, onClose }: CinematicSceneProps):
           />
         )}
         <header
+          ref={headerRef}
           className={`cinematic-scene__header${isProseScene ? ' cinematic-scene__header--sticky' : ''}${isProseScene && isHeaderHidden ? ' cinematic-scene__header--hidden' : ''}`}
           onFocusCapture={isProseScene ? () => setIsHeaderHidden(false) : undefined}
         >

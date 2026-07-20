@@ -13,10 +13,10 @@ const sceneFixtures = [
 afterEach(cleanup);
 
 describe('CinematicScene', () => {
-  it('uses a readable prose treatment only for long scene text', () => {
+  it('uses a readable prose treatment only for explicitly marked prose scenes', () => {
     const longText = '무영은 대답하지 않은 채 치료실 문이 닫히는 소리를 들었다. '.repeat(12);
     const { container, rerender } = render(
-      <CinematicScene title="첫 조우" scenes={[{ id: 'long-scene', text: longText }]} onClose={vi.fn()} />,
+      <CinematicScene title="첫 조우" scenes={[{ id: 'long-scene', text: longText, isProse: true }]} onClose={vi.fn()} />,
     );
 
     expect(container.querySelector('.cinematic-scene__text')).toHaveClass('cinematic-scene__text--prose');
@@ -29,7 +29,7 @@ describe('CinematicScene', () => {
   it('omits paging controls when prose is presented as one reading view', () => {
     const longText = '무영은 치료소의 소음을 들으며 천령의 손끝을 바라보았다. '.repeat(12);
     render(
-      <CinematicScene title="첫 조우" scenes={[{ id: 'prose', text: longText }]} onClose={vi.fn()} />,
+      <CinematicScene title="첫 조우" scenes={[{ id: 'prose', text: longText, isProse: true }]} onClose={vi.fn()} />,
     );
 
     expect(screen.queryByRole('button', { name: '이전 장면' })).not.toBeInTheDocument();
@@ -40,7 +40,7 @@ describe('CinematicScene', () => {
   it('hides a prose header while scrolling down and reveals it when scrolling up or focusing it', () => {
     const longText = 'Long prose scene for a continuous reading view. '.repeat(12);
     const { container } = render(
-      <CinematicScene title="First contact" scenes={[{ id: 'prose', text: longText }]} onClose={vi.fn()} />,
+      <CinematicScene title="First contact" scenes={[{ id: 'prose', text: longText, isProse: true }]} onClose={vi.fn()} />,
     );
     const readingView = container.querySelector('.cinematic-scene');
     const header = container.querySelector('.cinematic-scene__header');
@@ -48,8 +48,13 @@ describe('CinematicScene', () => {
 
     expect(readingView).not.toBeNull();
     expect(header).toHaveClass('cinematic-scene__header--sticky');
+    expect(closeButton).toHaveFocus();
 
     fireEvent.scroll(readingView!, { target: { scrollTop: 120 } });
+    expect(header).not.toHaveClass('cinematic-scene__header--hidden');
+
+    closeButton!.blur();
+    fireEvent.scroll(readingView!, { target: { scrollTop: 140 } });
     expect(header).toHaveClass('cinematic-scene__header--hidden');
 
     fireEvent.scroll(readingView!, { target: { scrollTop: 80 } });

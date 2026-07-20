@@ -28,6 +28,7 @@ function scenesFromRecord(record: ArchiveRecord): CinematicSceneItem[] {
   if (record.cinematicBody) {
     return [{
       id: `${record.id}-prose`,
+      isProse: true,
       text: proseFromRecordBody(record.cinematicBody),
     }];
   }
