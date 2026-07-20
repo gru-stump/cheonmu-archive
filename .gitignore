@@ -6,3 +6,4 @@ playwright-report/
 test-results/
 .trash/
 /src/content/staged-images/
+.agents/skills/cheonmu-story-writer/references/style-samples/*.pdf
