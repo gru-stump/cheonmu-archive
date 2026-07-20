@@ -50,12 +50,12 @@ npm run e2e
 
 ## 천무 서사작가
 
-문체·묘사 참고 자료는 `.agents/skills/cheonmu-story-writer/references/style-samples/`에 Markdown으로 추가합니다. 이 자료는 표현을 위한 참고일 뿐이며, 사건·설정·인물 정보의 정본(canon)이 아닙니다.
+서사작가 스킬의 정본은 `.agents/skills/cheonmu-story-writer/`에 있으며, Claude Code와 Codex 등 여러 도구가 공유합니다. 문체·묘사 참고 자료는 `.agents/skills/cheonmu-story-writer/references/style-samples/`에 Markdown으로 추가합니다. 이 자료는 표현을 위한 참고일 뿐이며, 사건·설정·인물 정보의 정본(canon)이 아닙니다.
 
-명시적으로 호출하려면 다음처럼 요청합니다.
+Claude Code에서는 슬래시 명령으로 호출합니다(`.claude/skills/cheonmu-story-writer/`의 래퍼가 정본을 불러옵니다).
 
 ```text
-$cheonmu-story-writer로 천무 중편 에피소드를 함께 기획해줘.
+/cheonmu-story-writer 새 에피소드를 함께 기획해줘.
 ```
 
 서사작가는 방향을 바꾸는 질문을 먼저 받고, 장면 계획을 제시해 승인을 받은 뒤에만 초안을 작성합니다. 초안 승인만으로는 파일 저장·사이트 갱신·배포가 실행되지 않습니다.

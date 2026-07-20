@@ -1,6 +1,7 @@
 ---
 name: cheonmu-story-writer
 description: Collaboratively plan, draft, review continuity, and revise Cheonmu/천무 stories featuring Cheonryeong/천령 and Muyeong/무영. Use for a new episode, approved draft, localized feedback revision, scene, dialogue, romance, foreshadowing, character voice, or continuity-only review.
+argument-hint: "[새 에피소드 | 연속성 검토 | 초안 수정 | site-save]"
 ---
 
 # 천무 서사 집필
