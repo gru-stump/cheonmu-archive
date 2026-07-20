@@ -4,6 +4,7 @@ import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promis
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { build } from 'vite';
+import { stringify } from 'yaml';
 import { afterEach, describe, expect, it } from 'vitest';
 import { publicGalleryPlugin } from './public-gallery';
 import { createGalleryStorage } from '../editor/gallery-storage';
@@ -157,6 +158,49 @@ describe('public gallery production filtering', () => {
     await expect(readFile(join(root, 'dist', 'images', 'private-work.jpg')))
       .rejects.toMatchObject({ code: 'ENOENT' });
     await expect(readFile(join(root, 'public', 'images', 'private-work.jpg')))
+      .rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  it('removes a confirmed orphan candidate before the next public build', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'cheonmu-public-gallery-orphan-'));
+    roots.push(root);
+    await Promise.all([
+      mkdir(join(root, 'public', 'images'), { recursive: true }),
+      ...['records', 'profiles', 'documents'].map((kind) => mkdir(join(root, 'src', 'content', kind), { recursive: true })),
+    ]);
+    await writeFile(join(root, 'index.html'), '<script type="module" src="/src/main.ts"></script>', 'utf8');
+    await writeFile(join(root, 'src', 'main.ts'), "import source from 'virtual:public-gallery'; console.log(source);", 'utf8');
+    const legacyItem = {
+      id: 'work', title: 'Work', image: '/images/legacy-work.png', alt: 'Work image',
+      creator: 'Artist', characters: ['muyeong'], public: true,
+    };
+    await writeFile(join(root, 'src', 'content', 'gallery.yaml'), stringify([legacyItem]), 'utf8');
+    await writeFile(join(root, 'public', 'images', 'legacy-work.png'), png);
+    await writeFile(join(root, 'public', 'images', 'work.png'), png);
+    const app = createEditorServer({ rootDir: root });
+    const replacement = Buffer.from([0xff, 0xd8, 0xff, 0xc0, 0x00, 0x11, 0x08, 0x00, 0x01, 0x00, 0x01, 0x03, 0x01, 0x11, 0x00, 0x02, 0x11, 0x00, 0x03, 0x11, 0x00, 0xff, 0xd9]);
+
+    await request(app)
+      .post('/api/editor/gallery/image')
+      .set('Content-Type', 'application/octet-stream')
+      .set('X-Gallery-Id', 'work')
+      .set('X-File-Name', 'replacement.jpg')
+      .set('X-Confirm-Overwrite', 'true')
+      .send(replacement)
+      .expect(200, { path: '/images/work.jpg', width: 1, height: 1 });
+    const updatedItem = { ...legacyItem, image: '/images/work.jpg' };
+    await request(app).put('/api/editor/gallery/work').send(updatedItem).expect(200, updatedItem);
+    await build({
+      root,
+      logLevel: 'silent',
+      plugins: [publicGalleryPlugin(root)],
+      build: { sourcemap: true, outDir: 'dist' },
+    });
+
+    await expect(readFile(join(root, 'dist', 'images', 'work.jpg'))).resolves.toEqual(replacement);
+    await expect(readFile(join(root, 'dist', 'images', 'work.png')))
+      .rejects.toMatchObject({ code: 'ENOENT' });
+    await expect(readFile(join(root, 'dist', 'images', 'legacy-work.png')))
       .rejects.toMatchObject({ code: 'ENOENT' });
   });
 });

@@ -1,5 +1,6 @@
 // @vitest-environment node
 
+import { createHash } from 'node:crypto';
 import { mkdtemp, mkdir, readFile, readdir, rm, symlink, unlink as unlinkFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -311,6 +312,74 @@ describe('gallery metadata storage', () => {
     await expect(readFile(stagedPath)).rejects.toMatchObject({ code: 'ENOENT' });
   });
 
+  it('restores every confirmed candidate when staged PUT fails before retry', async () => {
+    const legacyItem = { ...item, id: 'work', image: '/images/legacy-work.png' };
+    const updatedItem = { ...legacyItem, image: '/images/work.jpg' };
+    const rootDir = await makeRoot(stringify([legacyItem]));
+    const legacyPath = join(rootDir, 'public', 'images', 'legacy-work.png');
+    const orphanPath = join(rootDir, 'public', 'images', 'work.png');
+    const stagedPath = join(rootDir, 'src', 'content', 'staged-images', 'work.jpg');
+    const destination = join(rootDir, 'public', 'images', 'work.jpg');
+    await writeFile(legacyPath, png);
+    await writeFile(orphanPath, png);
+    let injected = false;
+    const storage = createGalleryStorage({
+      rootDir,
+      filesystem: {
+        unlink: async (path) => {
+          if (!injected && path === stagedPath) {
+            injected = true;
+            throw Object.assign(new Error('injected staged unlink failure'), { code: 'EACCES' });
+          }
+          await unlinkFile(path);
+        },
+      },
+    });
+    await storage.registerImage({ id: 'work', originalName: 'replacement.jpg', bytes: jpeg(4, 5), overwrite: true });
+
+    await expect(storage.writeItem(updatedItem)).rejects.toThrow('injected staged unlink failure');
+    await expect(readFile(legacyPath)).resolves.toEqual(png);
+    await expect(readFile(orphanPath)).resolves.toEqual(png);
+    await expect(readFile(stagedPath)).resolves.toEqual(jpeg(4, 5));
+    await expect(readFile(join(rootDir, 'src', 'content', 'staged-images', 'work.json')))
+      .resolves.toEqual(expect.any(Buffer));
+    await expect(readFile(destination)).rejects.toMatchObject({ code: 'ENOENT' });
+    await expect(storage.listItems()).resolves.toEqual([legacyItem]);
+    const failureTrash = await readdir(join(rootDir, '.trash', 'images'));
+    expect(failureTrash.some((name) => name.endsWith('-legacy-work.png'))).toBe(true);
+    expect(failureTrash.some((name) => name.endsWith('-work.png'))).toBe(true);
+
+    await createGalleryStorage({ rootDir }).writeItem(updatedItem);
+    await expect(readFile(destination)).resolves.toEqual(jpeg(4, 5));
+    await expect(readFile(legacyPath)).rejects.toMatchObject({ code: 'ENOENT' });
+    await expect(readFile(orphanPath)).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  it('ignores a tampered manifest candidate outside the current ID and previous metadata path', async () => {
+    const legacyItem = { ...item, id: 'work', image: '/images/legacy-work.png' };
+    const updatedItem = { ...legacyItem, image: '/images/work.jpg' };
+    const rootDir = await makeRoot(stringify([legacyItem]));
+    const legacyPath = join(rootDir, 'public', 'images', 'legacy-work.png');
+    const unrelatedPath = join(rootDir, 'public', 'images', 'unrelated.png');
+    await writeFile(legacyPath, png);
+    await writeFile(unrelatedPath, png);
+    const storage = createGalleryStorage({ rootDir });
+    await storage.registerImage({ id: 'work', originalName: 'replacement.jpg', bytes: jpeg(4, 5), overwrite: true });
+    const manifestPath = join(rootDir, 'src', 'content', 'staged-images', 'work.json');
+    const manifest = JSON.parse(await readFile(manifestPath, 'utf8')) as { candidates: unknown[] };
+    manifest.candidates.push({
+      root: 'public',
+      path: '/images/unrelated.png',
+      sha256: createHash('sha256').update(png).digest('hex'),
+    });
+    await writeFile(manifestPath, JSON.stringify({ version: 1, candidates: manifest.candidates }), 'utf8');
+
+    await storage.writeItem(updatedItem);
+
+    await expect(readFile(unrelatedPath)).resolves.toEqual(png);
+    await expect(readFile(legacyPath)).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
   it('recovers a pre-staging interrupted upload from the exact submitted installed path', async () => {
     const legacyItem = { ...item, image: '/images/legacy-portrait.png' };
     const updatedItem = { ...legacyItem, image: '/images/new-work.jpg', public: false };
@@ -384,6 +453,68 @@ describe('gallery metadata storage', () => {
 });
 
 describe('gallery editor API', () => {
+  it('trashes every confirmed owned candidate when POST then PUT changes extension', async () => {
+    const legacyItem = { ...item, id: 'work', image: '/images/legacy-work.png' };
+    const rootDir = await makeRoot(stringify([legacyItem]));
+    await Promise.all(['records', 'profiles', 'documents'].map((kind) => (
+      mkdir(join(rootDir, 'src', 'content', kind), { recursive: true })
+    )));
+    const legacyPath = join(rootDir, 'public', 'images', 'legacy-work.png');
+    const orphanPath = join(rootDir, 'public', 'images', 'work.png');
+    await writeFile(legacyPath, png);
+    await writeFile(orphanPath, png);
+    const app = createEditorServer({ rootDir });
+    const replacement = jpeg(4, 5);
+
+    const upload = await request(app)
+      .post('/api/editor/gallery/image')
+      .set('Content-Type', 'application/octet-stream')
+      .set('X-Gallery-Id', 'work')
+      .set('X-File-Name', 'replacement.jpg')
+      .set('X-Confirm-Overwrite', 'true')
+      .send(replacement)
+      .expect(200, { path: '/images/work.jpg', width: 4, height: 5 });
+
+    await expect(readFile(legacyPath)).resolves.toEqual(png);
+    await expect(readFile(orphanPath)).resolves.toEqual(png);
+    const updatedItem = { ...legacyItem, image: upload.body.path };
+    await request(app).put('/api/editor/gallery/work').send(updatedItem).expect(200, updatedItem);
+
+    await expect(readFile(join(rootDir, 'public', 'images', 'work.jpg'))).resolves.toEqual(replacement);
+    await expect(readFile(legacyPath)).rejects.toMatchObject({ code: 'ENOENT' });
+    await expect(readFile(orphanPath)).rejects.toMatchObject({ code: 'ENOENT' });
+    await expect(readFile(join(rootDir, 'src', 'content', 'staged-images', 'work.json')))
+      .rejects.toMatchObject({ code: 'ENOENT' });
+    const trash = await readdir(join(rootDir, '.trash', 'images'));
+    expect(trash.some((name) => name.endsWith('-legacy-work.png'))).toBe(true);
+    expect(trash.some((name) => name.endsWith('-work.png'))).toBe(true);
+  });
+
+  it('does not trash a normalized candidate referenced by another gallery item', async () => {
+    const owner = { ...item, id: 'other-work', image: '/images/work.png' };
+    const newItem = { ...item, id: 'work', image: '/images/work.jpg' };
+    const rootDir = await makeRoot(stringify([owner]));
+    await Promise.all(['records', 'profiles', 'documents'].map((kind) => (
+      mkdir(join(rootDir, 'src', 'content', kind), { recursive: true })
+    )));
+    const ownedPath = join(rootDir, 'public', 'images', 'work.png');
+    await writeFile(ownedPath, png);
+    const app = createEditorServer({ rootDir });
+
+    await request(app)
+      .post('/api/editor/gallery/image')
+      .set('Content-Type', 'application/octet-stream')
+      .set('X-Gallery-Id', 'work')
+      .set('X-File-Name', 'replacement.jpg')
+      .set('X-Confirm-Overwrite', 'true')
+      .send(jpeg(4, 5))
+      .expect(200, { path: '/images/work.jpg', width: 4, height: 5 });
+    await request(app).put('/api/editor/gallery/work').send(newItem).expect(200, newItem);
+
+    await expect(readFile(ownedPath)).resolves.toEqual(png);
+    await request(app).get('/api/editor/gallery').expect(200, [owner, newItem]);
+  });
+
   it('completes POST then PUT for a legacy public item across an extension change', async () => {
     const legacyItem = { ...item, image: '/images/legacy-portrait.png' };
     const rootDir = await makeRoot(stringify([legacyItem]));

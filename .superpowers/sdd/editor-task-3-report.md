@@ -167,3 +167,31 @@ Final focused result: exit 0; 3 files passed, 33 tests passed. This includes the
 | `npm run e2e` | Exit 0; 6 Playwright tests passed. |
 | `rg -n -i "staged-images|private-images|private-work|private-legacy" dist` | No matches. |
 | `git diff --check` | Exit 0. |
+
+## Confirmed candidate cleanup addendum (2026-07-20)
+
+### Root cause and fix
+
+- POST discovered active normalized PNG/JPG/JPEG/WebP candidates in both roots only for overwrite confirmation, then discarded that set. Staged PUT moved only the exact previous metadata file, so a confirmed orphan such as `public/images/work.png` survived a JPEG replacement and was copied into `dist`.
+- POST now writes a canonical non-public `<id>.json` manifest beside the staged image. Each entry records the public/private root, logical image path, and SHA-256 fingerprint actually observed when overwrite was confirmed.
+- PUT accepts manifest entries only when they are the current ID's normalized path or exact previous metadata path, are not referenced by another gallery item, still resolve canonically in the recorded root, and retain the recorded fingerprint.
+- The staged PUT transaction moves every accepted candidate plus the exact current previous image to recoverable trash before installing the replacement. Any failure restores the stage and every moved candidate; successful metadata commit removes the stage manifest.
+- Another item's image reference is protected even when its basename matches the current ID. A tampered manifest cannot expand cleanup to an arbitrary unreferenced path, and a path whose bytes changed after POST is not treated as the confirmed candidate.
+
+### Strict RED/GREEN evidence
+
+- Initial RED: the API sequence left `public/images/work.png`, the injected failure/retry sequence left it after retry, and an actual Vite build emitted `dist/images/work.png`. The unrelated-owner protection case already passed and remained a guardrail.
+- GREEN: the four candidate regressions passed after manifest-backed cleanup: successful multi-candidate trash, complete failure rollback plus retry, unrelated metadata ownership preservation, and real build artifact absence.
+- Safety RED: a hand-edited manifest with the correct fingerprint deleted `/images/unrelated.png`. GREEN: constraining accepted paths to normalized current-ID candidates or the exact previous metadata path preserved it.
+
+### Final verification after confirmed candidate cleanup
+
+| Command/check | Result |
+| --- | --- |
+| `npm run test:run -- editor/gallery-storage.test.ts scripts/public-gallery.test.ts` | Exit 0; 2 files passed; 35 passed, 1 skipped (36 total). |
+| `npm run test:run` | Exit 0; 17 files passed; 127 passed, 2 skipped (129 total). The skips are Windows permission-gated symlink fixtures. |
+| `npm run validate` | Exit 0; `Content validation passed.` |
+| `npm run build` | Exit 0; TypeScript and Vite production build passed; 389 modules transformed. |
+| `npm run e2e` | Exit 0; 6 Playwright tests passed. |
+| `rg -n -i "staged-images|private-images|legacy-work|/images/work\\.png|work\\.json" dist` | No matches. |
+| `git diff --check` | Exit 0. |

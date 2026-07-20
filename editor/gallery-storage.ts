@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { link, lstat, mkdir, readFile, realpath, rename, rm, unlink, writeFile } from 'node:fs/promises';
 import { basename, extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { parse as parseYaml, stringify } from 'yaml';
@@ -49,6 +49,9 @@ function errorCode(error: unknown): string | undefined {
 }
 
 type ImageInfo = { extension: 'png' | 'jpg' | 'webp'; width: number; height: number };
+type ImageRootName = 'public' | 'private';
+type ConfirmedImageCandidate = { root: ImageRootName; path: string; sha256: string };
+type StageManifest = { version: 1; candidates: ConfirmedImageCandidate[] };
 
 function positiveDimensions(extension: ImageInfo['extension'], width: number, height: number): ImageInfo | null {
   return width > 0 && height > 0 ? { extension, width, height } : null;
@@ -214,6 +217,49 @@ export function createGalleryStorage({ rootDir, now = () => new Date(), filesyst
     }
   }
 
+  async function checkedStageManifestPath(stagedImages: string, id: string, mustExist: boolean): Promise<string> {
+    const path = join(stagedImages, `${checkedId(id)}.json`);
+    if (!isWithin(stagedImages, path)) throw invalidPath();
+    try {
+      const stats = await lstat(path);
+      if (stats.isSymbolicLink() || !stats.isFile()) throw invalidPath();
+      const canonical = await realpath(path);
+      if (!isWithin(stagedImages, canonical)) throw invalidPath();
+      return canonical;
+    } catch (error) {
+      if (!mustExist && errorCode(error) === 'ENOENT') return path;
+      throw error;
+    }
+  }
+
+  function imageFingerprint(bytes: Buffer): string {
+    return createHash('sha256').update(bytes).digest('hex');
+  }
+
+  function parseStageManifest(source: string): StageManifest {
+    let value: unknown;
+    try {
+      value = JSON.parse(source);
+    } catch (error) {
+      throw validationError(error);
+    }
+    if (typeof value !== 'object' || value === null || !('version' in value) || value.version !== 1
+      || !('candidates' in value) || !Array.isArray(value.candidates)) {
+      throw new GalleryStorageError('Gallery validation failed.', 'VALIDATION_ERROR', { image: 'Invalid staged image manifest.' });
+    }
+    const candidates: ConfirmedImageCandidate[] = [];
+    for (const candidate of value.candidates) {
+      if (typeof candidate !== 'object' || candidate === null
+        || !('root' in candidate) || (candidate.root !== 'public' && candidate.root !== 'private')
+        || !('path' in candidate) || typeof candidate.path !== 'string' || !publicImagePattern.test(candidate.path)
+        || !('sha256' in candidate) || typeof candidate.sha256 !== 'string' || !/^[a-f0-9]{64}$/.test(candidate.sha256)) {
+        throw new GalleryStorageError('Gallery validation failed.', 'VALIDATION_ERROR', { image: 'Invalid staged image manifest.' });
+      }
+      candidates.push({ root: candidate.root, path: candidate.path, sha256: candidate.sha256 });
+    }
+    return { version: 1, candidates };
+  }
+
   async function readItemsUnsafe(locations?: Awaited<ReturnType<typeof roots>>): Promise<GalleryItem[]> {
     const current = locations ?? await roots();
     try {
@@ -362,6 +408,77 @@ export function createGalleryStorage({ rootDir, now = () => new Date(), filesyst
     return candidates;
   }
 
+  function referencedByAnotherItem(items: GalleryItem[], id: string, publicPath: string): boolean {
+    return items.some((entry) => entry.id !== id && entry.image.toLowerCase() === publicPath.toLowerCase());
+  }
+
+  async function confirmedActiveCandidates(
+    locations: Awaited<ReturnType<typeof roots>>,
+    items: GalleryItem[],
+    id: string,
+    existingItem?: GalleryItem,
+  ): Promise<ConfirmedImageCandidate[]> {
+    const candidates = new Map<string, ConfirmedImageCandidate>();
+    const addCandidate = async (root: ImageRootName, publicPath: string, owned: boolean): Promise<void> => {
+      if (!owned && referencedByAnotherItem(items, id, publicPath)) return;
+      const imageRoot = root === 'public' ? locations.images : locations.privateImages;
+      const imagePath = await optionalImagePath(imageRoot, publicPath);
+      if (!imagePath) return;
+      try {
+        const sha256 = imageFingerprint(await readFile(imagePath));
+        candidates.set(`${root}:${publicPath.toLowerCase()}`, { root, path: publicPath, sha256 });
+      } catch (error) {
+        if (errorCode(error) !== 'ENOENT') throw error;
+      }
+    };
+
+    if (existingItem) {
+      const existingPath = await optionalStoredImagePath(locations, existingItem);
+      if (existingPath) {
+        const root: ImageRootName = isWithin(locations.images, existingPath) ? 'public' : 'private';
+        await addCandidate(root, existingItem.image, true);
+      }
+    }
+    for (const extension of ['png', 'jpg', 'jpeg', 'webp']) {
+      const publicPath = `/images/${id}.${extension}`;
+      await addCandidate('public', publicPath, false);
+      await addCandidate('private', publicPath, false);
+    }
+    return [...candidates.values()];
+  }
+
+  async function optionalStageManifestPath(stagedImages: string, id: string): Promise<string | undefined> {
+    try {
+      return await checkedStageManifestPath(stagedImages, id, true);
+    } catch (error) {
+      if (errorCode(error) === 'ENOENT') return undefined;
+      throw error;
+    }
+  }
+
+  async function confirmedCandidatePaths(
+    locations: Awaited<ReturnType<typeof roots>>,
+    items: GalleryItem[],
+    id: string,
+    manifest: StageManifest,
+    previousPublicPath?: string,
+  ): Promise<Set<string>> {
+    const paths = new Set<string>();
+    for (const candidate of manifest.candidates) {
+      const normalized = ['png', 'jpg', 'jpeg', 'webp']
+        .some((extension) => candidate.path.toLowerCase() === `/images/${id}.${extension}`);
+      const exactPrevious = previousPublicPath?.toLowerCase() === candidate.path.toLowerCase();
+      if (!normalized && !exactPrevious) continue;
+      if (referencedByAnotherItem(items, id, candidate.path)) continue;
+      const imageRoot = candidate.root === 'public' ? locations.images : locations.privateImages;
+      const imagePath = await optionalImagePath(imageRoot, candidate.path);
+      if (!imagePath) continue;
+      const sha256 = imageFingerprint(await readFile(imagePath));
+      if (sha256 === candidate.sha256) paths.add(imagePath);
+    }
+    return paths;
+  }
+
   function listItems(): Promise<GalleryItem[]> {
     return enqueue(async () => readItemsUnsafe());
   }
@@ -406,19 +523,27 @@ export function createGalleryStorage({ rootDir, now = () => new Date(), filesyst
       if (stagedPath) {
         const imageInfo = inspectImage(await readFile(stagedPath));
         validateImageExtension(item.image, imageInfo);
+        const manifestPath = await optionalStageManifestPath(locations.stagedImages, item.id);
+        const manifest = manifestPath
+          ? parseStageManifest(await readFile(manifestPath, 'utf8'))
+          : { version: 1, candidates: [] } satisfies StageManifest;
+        const candidates = await confirmedCandidatePaths(locations, items, item.id, manifest, previous?.image);
         const previousPath = previous
           ? await optionalStoredImagePath(locations, previous)
           : undefined;
+        if (previousPath) candidates.add(previousPath);
         const existingDestination = await optionalImagePath(destinationRoot, item.image);
-        if (existingDestination && existingDestination !== previousPath) {
+        if (existingDestination && !candidates.has(existingDestination)) {
           throw new GalleryStorageError('Gallery validation failed.', 'CONFLICT', { image: 'Destination image already exists.' });
         }
 
-        let previousBackup: string | undefined;
+        const moved: Array<{ backup: string; destination: string }> = [];
         let destinationLinked = false;
         let stagedRemoved = false;
         try {
-          if (previousPath) previousBackup = await moveImageToTrash(previousPath, locations);
+          for (const candidate of candidates) {
+            moved.push({ backup: await moveImageToTrash(candidate, locations), destination: candidate });
+          }
           await link(stagedPath, destination);
           destinationLinked = true;
           await unlinkPath(stagedPath);
@@ -429,9 +554,10 @@ export function createGalleryStorage({ rootDir, now = () => new Date(), filesyst
             if (stagedRemoved) await restoreImage(destination, stagedPath);
             await unlinkPath(destination);
           }
-          if (previousBackup && previousPath) await restoreImage(previousBackup, previousPath);
+          for (const entry of moved.reverse()) await restoreImage(entry.backup, entry.destination);
           throw error;
         }
+        if (manifestPath) await rm(manifestPath, { force: true }).catch(() => undefined);
         return item;
       }
 
@@ -484,24 +610,37 @@ export function createGalleryStorage({ rootDir, now = () => new Date(), filesyst
       const existingItem = items.find((entry) => entry.id === safeId);
       const publicPath = `/images/${safeId}.${info.extension}`;
       const target = await checkedImagePath(locations.stagedImages, publicPath, false);
-      const activeCandidates = await replacementCandidates(locations, safeId, existingItem);
+      const manifestTarget = await checkedStageManifestPath(locations.stagedImages, safeId, false);
+      const activeCandidates = await confirmedActiveCandidates(locations, items, safeId, existingItem);
       const stagedCandidates = await normalizedImageCandidates(locations.stagedImages, safeId);
-      if ((activeCandidates.size > 0 || stagedCandidates.size > 0) && !overwrite) {
+      const stagedManifest = await optionalStageManifestPath(locations.stagedImages, safeId);
+      if ((activeCandidates.length > 0 || stagedCandidates.size > 0 || stagedManifest) && !overwrite) {
         throw new GalleryStorageError('이미지가 이미 존재합니다. 덮어쓰기를 확인해 주세요.', 'CONFLICT', { image: 'Explicit overwrite confirmation is required.' });
       }
 
       const temporary = join(locations.stagedImages, `.${safeId}.${randomUUID()}.tmp`);
+      const manifestTemporary = join(locations.stagedImages, `.${safeId}.${randomUUID()}.json.tmp`);
       const moved: Array<{ backup: string; destination: string }> = [];
+      let targetInstalled = false;
+      let manifestInstalled = false;
       try {
         await writeFile(temporary, bytes, { flag: 'wx' });
+        await writeFile(manifestTemporary, JSON.stringify({ version: 1, candidates: activeCandidates } satisfies StageManifest), { flag: 'wx' });
         await roots();
         for (const candidate of stagedCandidates) {
           moved.push({ backup: await moveImageToTrash(candidate, locations), destination: candidate });
         }
+        if (stagedManifest) moved.push({ backup: await moveImageToTrash(stagedManifest, locations), destination: stagedManifest });
         await rename(temporary, target);
+        targetInstalled = true;
+        await rename(manifestTemporary, manifestTarget);
+        manifestInstalled = true;
       } catch (error) {
         await rm(temporary, { force: true });
-        for (const entry of moved) await restoreImage(entry.backup, entry.destination);
+        await rm(manifestTemporary, { force: true });
+        if (targetInstalled) await rm(target, { force: true });
+        if (manifestInstalled) await rm(manifestTarget, { force: true });
+        for (const entry of moved.reverse()) await restoreImage(entry.backup, entry.destination);
         throw error;
       }
       return { path: publicPath, width: info.width, height: info.height };
