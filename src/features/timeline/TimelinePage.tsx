@@ -32,7 +32,7 @@ export function TimelinePage({ records = loadAllContent().records }: TimelinePag
         <div>
           <p className="document-kicker">Chronological Case Records</p>
           <h1 id="timeline-title">관계 기록철</h1>
-          <p>첫 조우에서 귀환의 약속까지, 두 사람 사이에 남은 기록.</p>
+          <p>첫 조우 이후, 두 사람 사이에 남은 기록.</p>
         </div>
         <p className="timeline-count" aria-label={`${visibleRecords.length}개 기록`}>
           <b>{visibleRecords.length.toString().padStart(2, '0')}</b>

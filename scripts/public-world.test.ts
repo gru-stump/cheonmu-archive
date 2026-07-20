@@ -12,6 +12,8 @@ const FORBIDDEN_PUBLIC_SECRETS = [
   '흰 백사', '실제 나이 불명', '독과 약으로',
 ];
 
+const FORBIDDEN_FUTURE_RECORD_MARKERS = ['CM-07', 'promise-to-return', '귀환의 약속'];
+
 async function emittedText(directory: string): Promise<string> {
   const entries = await readdir(directory, { withFileTypes: true });
   const chunks = await Promise.all(entries.map(async (entry) => {
@@ -45,6 +47,9 @@ describe('public world production boundary', () => {
 
     for (const phrase of FORBIDDEN_PUBLIC_SECRETS) {
       expect(bundle).not.toContain(phrase);
+    }
+    for (const marker of FORBIDDEN_FUTURE_RECORD_MARKERS) {
+      expect(bundle).not.toContain(marker);
     }
   }, 30_000);
 });

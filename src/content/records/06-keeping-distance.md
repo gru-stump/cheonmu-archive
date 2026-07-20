@@ -6,7 +6,6 @@ stage: 6
 status: confirmed
 characters: [cheonryeong, muyeong]
 tags: [거리, 보호, 통제]
-# CM-07 공개 시 promise-to-return을 related에 복원할 것
 related: [fracture]
 quote: "누가 가볍다고 판단했어요?"
 cinematic: false
