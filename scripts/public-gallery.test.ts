@@ -203,4 +203,42 @@ describe('public gallery production filtering', () => {
     await expect(readFile(join(root, 'dist', 'images', 'legacy-work.png')))
       .rejects.toMatchObject({ code: 'ENOENT' });
   });
+
+  it('keeps both public owners intact after a combined save and production build', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'cheonmu-public-gallery-combined-owner-'));
+    roots.push(root);
+    await Promise.all([
+      mkdir(join(root, 'public', 'images'), { recursive: true }),
+      ...['records', 'profiles', 'documents'].map((kind) => mkdir(join(root, 'src', 'content', kind), { recursive: true })),
+    ]);
+    await writeFile(join(root, 'index.html'), '<script type="module" src="/src/main.ts"></script>', 'utf8');
+    await writeFile(join(root, 'src', 'main.ts'), "import source from 'virtual:public-gallery'; console.log(source);", 'utf8');
+    const owner = {
+      id: 'other-work', title: 'COMBINED_OWNER_MARKER', image: '/images/work.png', alt: 'Owner image',
+      creator: 'Artist', characters: ['muyeong'], public: true,
+    };
+    const newItem = {
+      id: 'work', title: 'COMBINED_NEW_MARKER', image: '/images/ignored.png', alt: 'New image',
+      creator: 'Artist', characters: ['muyeong'], public: true,
+    };
+    await writeFile(join(root, 'src', 'content', 'gallery.yaml'), stringify([owner]), 'utf8');
+    await writeFile(join(root, 'public', 'images', 'work.png'), png);
+    const replacement = Buffer.from([0xff, 0xd8, 0xff, 0xc0, 0x00, 0x11, 0x08, 0x00, 0x01, 0x00, 0x01, 0x03, 0x01, 0x11, 0x00, 0x02, 0x11, 0x00, 0x03, 0x11, 0x00, 0xff, 0xd9]);
+
+    await createGalleryStorage({ rootDir: root }).writeItemWithImage(newItem, replacement, true);
+    await build({
+      root,
+      logLevel: 'silent',
+      plugins: [publicGalleryPlugin(root)],
+      build: { sourcemap: true, outDir: 'dist' },
+    });
+
+    await expect(readFile(join(root, 'dist', 'images', 'work.png'))).resolves.toEqual(png);
+    await expect(readFile(join(root, 'dist', 'images', 'work.jpg'))).resolves.toEqual(replacement);
+    const emitted = (await Promise.all((await readdir(join(root, 'dist', 'assets')))
+      .filter((name) => name.endsWith('.js'))
+      .map((name) => readFile(join(root, 'dist', 'assets', name), 'utf8')))).join('\n');
+    expect(emitted).toContain('COMBINED_OWNER_MARKER');
+    expect(emitted).toContain('COMBINED_NEW_MARKER');
+  });
 });

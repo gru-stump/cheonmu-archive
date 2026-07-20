@@ -195,3 +195,29 @@ Final focused result: exit 0; 3 files passed, 33 tests passed. This includes the
 | `npm run e2e` | Exit 0; 6 Playwright tests passed. |
 | `rg -n -i "staged-images|private-images|legacy-work|/images/work\\.png|work\\.json" dist` | No matches. |
 | `git diff --check` | Exit 0. |
+
+## Combined endpoint ownership addendum (2026-07-20)
+
+### Root cause and fix
+
+- The actual editor UI uses the combined image-plus-metadata endpoint. Its `replacementCandidates()` still added every normalized ID candidate from both roots without consulting gallery metadata, so saving `work.jpg` recoverably trashed `/images/work.png` even when `other-work` owned that path.
+- The combined resolver now receives the current item list. It always keeps the current item's exact prior image eligible, but skips each normalized public/private candidate when another metadata item references its logical path. Unreferenced normalized orphans remain eligible and the existing reverse-order compensation remains intact.
+- Review of the focused result exposed a same-extension edge: after excluding another owner's target from trash, Windows `rename` could overwrite that target and later rollback could delete it. Combined save now rejects another-owned target paths before writing any temporary or destination bytes.
+
+### Strict RED/GREEN evidence
+
+- RED: storage and combined API saves removed the owner PNG, and an actual production build omitted `dist/images/work.png`. The unowned-orphan cleanup and metadata-failure rollback guards passed.
+- GREEN: all five focused regressions passed after ownership filtering, proving owner preservation, combined API integrity, unowned orphan cleanup, metadata-failure safety, and both public images/metadata in a real build.
+- Existing-suite RED: the previous same-extension rollback test lost the protected target under Windows rename semantics. GREEN: pre-mutation target ownership validation restored the full related suite.
+
+### Final verification after combined ownership hardening
+
+| Command/check | Result |
+| --- | --- |
+| `npm run test:run -- editor/gallery-storage.test.ts scripts/public-gallery.test.ts` | Exit 0; 2 files passed; 40 passed, 1 skipped (41 total). |
+| `npm run test:run` | Exit 0; 17 files passed; 132 passed, 2 skipped (134 total). The skips are Windows permission-gated symlink fixtures. |
+| `npm run validate` | Exit 0; `Content validation passed.` |
+| `npm run build` | Exit 0; TypeScript and Vite production build passed; 389 modules transformed. |
+| `npm run e2e` | Exit 0; 6 Playwright tests passed. |
+| `rg -n -i "staged-images|private-images|COMBINED_OWNER_MARKER|COMBINED_NEW_MARKER|legacy-work|work\\.json" dist` | No matches. |
+| `git diff --check` | Exit 0. |

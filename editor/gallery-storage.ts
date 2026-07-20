@@ -373,6 +373,7 @@ export function createGalleryStorage({ rootDir, now = () => new Date(), filesyst
 
   async function replacementCandidates(
     locations: Awaited<ReturnType<typeof roots>>,
+    items: GalleryItem[],
     id: string,
     existingItem?: GalleryItem,
   ): Promise<Set<string>> {
@@ -386,8 +387,10 @@ export function createGalleryStorage({ rootDir, now = () => new Date(), filesyst
     }
     for (const imageRoot of [locations.images, locations.privateImages]) {
       for (const extension of ['png', 'jpg', 'jpeg', 'webp']) {
+        const publicPath = `/images/${id}.${extension}`;
+        if (referencedByAnotherItem(items, id, publicPath)) continue;
         try {
-          candidates.add(await checkedImagePath(imageRoot, `/images/${id}.${extension}`, true));
+          candidates.add(await checkedImagePath(imageRoot, publicPath, true));
         } catch (error) {
           if (errorCode(error) !== 'ENOENT') throw error;
         }
@@ -668,7 +671,10 @@ export function createGalleryStorage({ rootDir, now = () => new Date(), filesyst
       const item = { ...parsedItem, image: publicPath };
       const destinationRoot = item.public ? locations.images : locations.privateImages;
       const target = await checkedImagePath(destinationRoot, publicPath, false);
-      const candidates = await replacementCandidates(locations, safeId, existingItem);
+      if (referencedByAnotherItem(items, safeId, publicPath)) {
+        throw new GalleryStorageError('Gallery validation failed.', 'VALIDATION_ERROR', { image: 'Gallery image paths must be unique.' });
+      }
+      const candidates = await replacementCandidates(locations, items, safeId, existingItem);
       if (candidates.size > 0 && !overwrite) {
         throw new GalleryStorageError('이미지가 이미 존재합니다. 덮어쓰기를 확인해 주세요.', 'CONFLICT', { image: 'Explicit overwrite confirmation is required.' });
       }

@@ -214,6 +214,58 @@ describe('gallery metadata storage', () => {
     }]);
   });
 
+  it('preserves a normalized candidate owned by another item during combined save', async () => {
+    const owner = { ...item, id: 'other-work', image: '/images/work.png', title: 'Owner work' };
+    const newItem = { ...item, id: 'work', image: '/images/ignored.png', title: 'New work' };
+    const rootDir = await makeRoot(stringify([owner]));
+    const ownerPath = join(rootDir, 'public', 'images', 'work.png');
+    await writeFile(ownerPath, png);
+    const storage = createGalleryStorage({ rootDir });
+
+    await expect(storage.writeItemWithImage(newItem, jpeg(4, 5), true)).resolves.toEqual({
+      item: { ...newItem, image: '/images/work.jpg' },
+      image: { path: '/images/work.jpg', width: 4, height: 5 },
+    });
+
+    await expect(readFile(ownerPath)).resolves.toEqual(png);
+    await expect(readFile(join(rootDir, 'public', 'images', 'work.jpg'))).resolves.toEqual(jpeg(4, 5));
+    await expect(storage.listItems()).resolves.toEqual([owner, { ...newItem, image: '/images/work.jpg' }]);
+  });
+
+  it('still trashes unowned normalized orphans during combined replacement', async () => {
+    const legacyItem = { ...item, id: 'work', image: '/images/legacy-work.png' };
+    const rootDir = await makeRoot(stringify([legacyItem]));
+    const legacyPath = join(rootDir, 'public', 'images', 'legacy-work.png');
+    const orphanPath = join(rootDir, 'public', 'images', 'work.png');
+    await writeFile(legacyPath, png);
+    await writeFile(orphanPath, png);
+    const storage = createGalleryStorage({ rootDir });
+
+    await storage.writeItemWithImage(legacyItem, jpeg(4, 5), true);
+
+    await expect(readFile(legacyPath)).rejects.toMatchObject({ code: 'ENOENT' });
+    await expect(readFile(orphanPath)).rejects.toMatchObject({ code: 'ENOENT' });
+    await expect(readFile(join(rootDir, 'public', 'images', 'work.jpg'))).resolves.toEqual(jpeg(4, 5));
+  });
+
+  it('preserves another owner and rolls back the combined target when metadata fails', async () => {
+    const owner = { ...item, id: 'other-work', image: '/images/work.png' };
+    const blocker = { ...item, id: 'blocked-work', image: '/images/work.jpg' };
+    const originalSource = stringify([owner, blocker]);
+    const rootDir = await makeRoot(originalSource);
+    const ownerPath = join(rootDir, 'public', 'images', 'work.png');
+    await writeFile(ownerPath, png);
+    const storage = createGalleryStorage({ rootDir });
+
+    await expect(storage.writeItemWithImage({ ...item, id: 'work' }, jpeg(4, 5), true))
+      .rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+
+    await expect(readFile(ownerPath)).resolves.toEqual(png);
+    await expect(readFile(join(rootDir, 'public', 'images', 'work.jpg')))
+      .rejects.toMatchObject({ code: 'ENOENT' });
+    await expect(readFile(join(rootDir, 'src', 'content', 'gallery.yaml'), 'utf8')).resolves.toBe(originalSource);
+  });
+
   it('moves an image between private and public roots when visibility changes', async () => {
     const rootDir = await makeRoot();
     const storage = createGalleryStorage({ rootDir });
@@ -674,6 +726,31 @@ describe('gallery editor API', () => {
 
     await expect(readFile(join(rootDir, 'src', 'content', 'private-images', 'new-work.png')))
       .resolves.toEqual(png);
+  });
+
+  it('preserves another item image through the combined API save', async () => {
+    const owner = { ...item, id: 'other-work', image: '/images/work.png', title: 'Owner work' };
+    const newItem = { ...item, id: 'work', image: '/images/ignored.png', title: 'New work' };
+    const rootDir = await makeRoot(stringify([owner]));
+    await Promise.all(['records', 'profiles', 'documents'].map((kind) => (
+      mkdir(join(rootDir, 'src', 'content', kind), { recursive: true })
+    )));
+    const ownerPath = join(rootDir, 'public', 'images', 'work.png');
+    await writeFile(ownerPath, png);
+
+    await request(createEditorServer({ rootDir }))
+      .put('/api/editor/gallery/work/image')
+      .set('Content-Type', 'application/octet-stream')
+      .set('X-Gallery-Metadata', encodeURIComponent(JSON.stringify(newItem)))
+      .set('X-Confirm-Overwrite', 'true')
+      .send(jpeg(4, 5))
+      .expect(200, {
+        item: { ...newItem, image: '/images/work.jpg' },
+        image: { path: '/images/work.jpg', width: 4, height: 5 },
+      });
+
+    await expect(readFile(ownerPath)).resolves.toEqual(png);
+    await expect(readFile(join(rootDir, 'public', 'images', 'work.jpg'))).resolves.toEqual(jpeg(4, 5));
   });
 
   it('reports the 20 MB upload limit accurately', async () => {
