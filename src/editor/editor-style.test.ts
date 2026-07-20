@@ -26,8 +26,19 @@ describe('editor style entry', () => {
     expect(css).not.toMatch(/^\s*(input|button|fieldset|textarea|select)\s*\{/m);
   });
 
-  it('uses a high-contrast focus ring inside the dark editor shell', () => {
+  it('uses background-aware focus rings in dark editor zones and the light preview', () => {
     const css = read('./editor.css');
-    expect(css).toMatch(/\.editor-shell :focus-visible\s*\{[^}]*outline: 0\.2rem solid #f1c27d;[^}]*outline-offset: 0\.2rem;[^}]*\}/s);
+    expect(css).not.toMatch(/\.editor-shell :focus-visible\s*\{/);
+    expect(css).toContain(`.editor-header :focus-visible,
+.editor-navigation :focus-visible,
+.editor-form-pane :focus-visible,
+.editor-change-bar :focus-visible {
+  outline: 0.2rem solid #f1c27d;
+  outline-offset: 0.2rem;
+}`);
+    expect(css).toContain(`.editor-preview-pane :focus-visible {
+  outline: 0.2rem solid #315f69;
+  outline-offset: 0.2rem;
+}`);
   });
 });

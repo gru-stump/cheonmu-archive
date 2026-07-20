@@ -91,3 +91,27 @@ Result before the CSS fix: exit 1; the new focus contract failed because `.edito
 - `git diff --check`: exit 0.
 - The fix is limited to an explicit `0.2rem solid #f1c27d` outline and `0.2rem` offset under `.editor-shell :focus-visible` plus its style contract test.
 - Public global focus and `prefers-reduced-motion` behavior were not modified.
+
+## Accessibility re-review: background-aware focus scope
+
+Re-review showed that the blanket `.editor-shell :focus-visible` follow-up fixed the dark controls but also forced the light ring into `.editor-preview-pane`. Relative-luminance verification showed `#f1c27d` has only 1.54:1 contrast on the preview background `#fbf7eb`. The public dark focus color `#315f69` has 6.60:1 contrast on that light background. The bright `#f1c27d` ring remains appropriate for the dark editor zones at 10.06:1 on `#211e1c` inputs and 7.51:1 on `#3b332e` buttons.
+
+### RED
+
+Command:
+
+```text
+npm run test:run -- src/editor/editor-style.test.ts -t "background-aware focus rings"
+```
+
+Result before selector separation: exit 1; the contract failed because the blanket `.editor-shell :focus-visible` rule still existed. One intended test failed and two tests were skipped by the filter.
+
+### GREEN and regression evidence
+
+- Targeted command after selector separation: exit 0; 1 passed, 2 skipped.
+- `npm run test:run -- src/editor/EditorApp.test.tsx src/editor/editor-style.test.ts`: exit 0; 2 files and 21 tests passed.
+- `npm run build`: exit 0; TypeScript and Vite production build succeeded with 389 modules transformed.
+- Public `dist` isolation search: exit 1 with no matches, as expected.
+- `git diff --check`: exit 0.
+- The blanket selector was removed. Dark header, navigation, form, and change-bar zones explicitly use `#f1c27d`; `.editor-preview-pane :focus-visible` explicitly restores `#315f69`. Both retain the global `0.2rem` width and `0.2rem` offset.
+- Public global focus and `prefers-reduced-motion` behavior remain unchanged.
