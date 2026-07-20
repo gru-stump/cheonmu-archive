@@ -1,4 +1,5 @@
 import { parse as parseYaml } from 'yaml';
+import publicGallerySource from 'virtual:public-gallery';
 import { parseMarkdown } from './frontmatter';
 import {
   documentMetaSchema,
@@ -9,14 +10,10 @@ import {
   type ArchiveDocument,
   type ArchiveProfile,
   type ArchiveRecord,
-  type ValidationResult,
 } from './schema';
+import { validateArchiveContent as validateArchiveContentBase, type ValidationOptions } from './validation';
 
 type RawContentModules = Record<string, string>;
-
-export interface ValidationOptions {
-  publicImagePaths?: readonly string[];
-}
 
 function markdownModules(): RawContentModules {
   return import.meta.glob('./**/*.md', {
@@ -26,17 +23,8 @@ function markdownModules(): RawContentModules {
   }) as RawContentModules;
 }
 
-function galleryModules(): RawContentModules {
-  return import.meta.glob('./gallery.yaml', {
-    query: '?raw',
-    import: 'default',
-    eager: true,
-  }) as RawContentModules;
-}
-
 function publicImagePaths(): string[] {
-  return Object.keys(import.meta.glob('/public/images/**/*', { eager: true }))
-    .map((path) => path.replace(/^\/public/, ''));
+  return gallerySchema.parse(parseYaml(publicGallerySource)).map((item) => item.image);
 }
 
 export function loadContentFromSources(
@@ -76,7 +64,7 @@ export function loadContentFromSources(
 function loadContent(includePrivateGallery: boolean): ArchiveContent {
   return loadContentFromSources(
     markdownModules(),
-    Object.values(galleryModules())[0],
+    publicGallerySource,
     includePrivateGallery,
   );
 }
@@ -88,51 +76,15 @@ export function loadAllContent(): ArchiveContent {
 export function validateArchiveContent(
   content: ArchiveContent,
   options: ValidationOptions = {},
-): ValidationResult {
-  const errors: string[] = [];
-  const warnings: string[] = [];
-  const ids = new Set<string>();
-  const recordIds = new Set(content.records.map((record) => record.id));
-
-  for (const item of [...content.records, ...content.profiles, ...content.documents, ...content.gallery]) {
-    if (ids.has(item.id)) {
-      errors.push(`Duplicate content ID: ${item.id}`);
-    }
-    ids.add(item.id);
-  }
-
-  for (const record of content.records) {
-    if (!Number.isInteger(record.stage) || record.stage < 1 || record.stage > 8) {
-      errors.push(`Record ${record.id} has invalid stage: ${record.stage}`);
-    }
-    for (const relatedId of record.related) {
-      if (!recordIds.has(relatedId)) {
-        errors.push(`Record ${record.id} references missing related ID: ${relatedId}`);
-      }
-    }
-  }
-
-  const availableImages = new Set(options.publicImagePaths ?? publicImagePaths());
-  for (const item of content.gallery) {
-    if (item.public && !availableImages.has(item.image)) {
-      errors.push(`Public gallery image is missing: ${item.image}`);
-    }
-  }
-
-  const muyeongDetails = content.profiles
-    .filter((profile) => profile.id.includes('muyeong') || profile.title.includes('\uBB34\uC601'))
-    .map((profile) => JSON.stringify(profile))
-    .join('\n');
-  if (muyeongDetails.includes('185cm') && muyeongDetails.includes('189cm')) {
-    errors.push('\uBB34\uC601 \uC2E0\uC7A5\uC774 185cm\uC640 189cm\uB85C \uCDA9\uB3CC\uD569\uB2C8\uB2E4.');
-  }
-
-  return { errors, warnings };
+): ReturnType<typeof validateArchiveContentBase> {
+  return validateArchiveContentBase(content, {
+    publicImagePaths: options.publicImagePaths ?? publicImagePaths(),
+  });
 }
 
 export function validateContent(
   content: ArchiveContent = loadContent(true),
   options?: ValidationOptions,
-): ValidationResult {
+): ReturnType<typeof validateArchiveContent> {
   return validateArchiveContent(content, options);
 }

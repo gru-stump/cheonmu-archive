@@ -16,7 +16,7 @@ const validItem: GalleryItem = {
   tags: ['전신'],
   public: true,
 };
-const png = Uint8Array.from([0x89, 0x50, 0x4e, 0x47]);
+const png = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -42,6 +42,57 @@ describe('gallery validation', () => {
 });
 
 describe('GalleryForm', () => {
+  it('treats a selected same-path replacement as an unsaved change', async () => {
+    const user = userEvent.setup();
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    const api = {
+      list: vi.fn(async () => []),
+      save: vi.fn(),
+      remove: vi.fn(),
+      listGallery: vi.fn(async () => [validItem]),
+      saveGallery: vi.fn(async (entry: GalleryItem) => entry),
+      removeGallery: vi.fn(),
+      uploadGalleryImage: vi.fn(),
+      saveGalleryWithImage: vi.fn(),
+    };
+    render(<EditorApp api={api} />);
+    await user.click(await screen.findByRole('button', { name: '화랑' }));
+    await user.click(await screen.findByRole('button', { name: /편집$/ }));
+    const file = new File([png], 'work.png', { type: 'image/png' });
+    await user.upload(screen.getByLabelText('이미지 파일'), file);
+
+    await user.click(screen.getByRole('button', { name: '기록' }));
+
+    expect(confirm).toHaveBeenCalled();
+    expect(screen.getByLabelText('이미지 파일')).toBeInTheDocument();
+  });
+
+  it('derives the result extension from bytes and recomputes the path after ID edits', async () => {
+    const user = userEvent.setup();
+    const api = {
+      list: vi.fn(async () => []),
+      save: vi.fn(),
+      remove: vi.fn(),
+      listGallery: vi.fn(async () => []),
+      saveGallery: vi.fn(),
+      removeGallery: vi.fn(),
+      uploadGalleryImage: vi.fn(),
+      saveGalleryWithImage: vi.fn(),
+    };
+    render(<EditorApp api={api} />);
+    await user.click(await screen.findByRole('button', { name: '화랑' }));
+    await user.click(screen.getByRole('button', { name: '새 화랑 작품' }));
+    const id = screen.getByLabelText('식별자');
+    await user.type(id, 'first-id');
+    const disguisedPng = new File([png], 'portrait.JPEG', { type: 'image/jpeg' });
+    await user.upload(screen.getByLabelText('이미지 파일'), disguisedPng);
+
+    expect(await screen.findByText('/images/first-id.png')).toBeVisible();
+    await user.clear(id);
+    await user.type(id, 'renamed-id');
+    expect(screen.getByText('/images/renamed-id.png')).toBeVisible();
+  });
+
   it('shows the selected image preview and resulting normalized public path before save', async () => {
     const user = userEvent.setup();
     const onFileChange = vi.fn();
@@ -58,6 +109,7 @@ describe('GalleryForm', () => {
       errors={{}}
       idEditable
       selectedFile={null}
+      selectedExtension={null}
       onChange={vi.fn()}
       onFileChange={onFileChange}
     />);
@@ -69,6 +121,7 @@ describe('GalleryForm', () => {
       errors={{}}
       idEditable
       selectedFile={file}
+      selectedExtension="jpg"
       onChange={vi.fn()}
       onFileChange={onFileChange}
     />);
@@ -79,7 +132,11 @@ describe('GalleryForm', () => {
   it('integrates gallery creation with upload, metadata save, and unsaved navigation protection', async () => {
     const user = userEvent.setup();
     const saveGallery = vi.fn(async (entry: GalleryItem) => entry);
-    const uploadGalleryImage = vi.fn(async () => ({ path: '/images/new-work.png', width: 1, height: 1 }));
+    const uploadGalleryImage = vi.fn();
+    const saveGalleryWithImage = vi.fn(async ({ item }: { item: GalleryItem }) => ({
+      item: { ...item, image: '/images/new-work.png' },
+      image: { path: '/images/new-work.png', width: 1, height: 1 },
+    }));
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
     const api = {
       list: vi.fn(async () => []),
@@ -89,6 +146,7 @@ describe('GalleryForm', () => {
       saveGallery,
       removeGallery: vi.fn(),
       uploadGalleryImage,
+      saveGalleryWithImage,
     };
     render(<EditorApp api={api} />);
 
@@ -109,8 +167,9 @@ describe('GalleryForm', () => {
     expect(screen.getByLabelText('제목')).toHaveValue('새 작품');
 
     await user.click(screen.getByRole('button', { name: '저장' }));
-    expect(uploadGalleryImage).toHaveBeenCalledWith(expect.objectContaining({ id: 'new-work', file, overwrite: false }));
-    expect(saveGallery).toHaveBeenCalledWith(expect.objectContaining({ id: 'new-work', image: '/images/new-work.png' }));
+    expect(saveGalleryWithImage).toHaveBeenCalledWith(expect.objectContaining({ item: expect.objectContaining({ id: 'new-work', image: '/images/new-work.png' }), file, overwrite: false }));
+    expect(uploadGalleryImage).not.toHaveBeenCalled();
+    expect(saveGallery).not.toHaveBeenCalled();
   });
 
   it('locks gallery editing and navigation while metadata save is pending', async () => {
@@ -125,6 +184,7 @@ describe('GalleryForm', () => {
       saveGallery,
       removeGallery: vi.fn(),
       uploadGalleryImage: vi.fn(),
+      saveGalleryWithImage: vi.fn(),
     };
     render(<EditorApp api={api} />);
     await user.click(await screen.findByRole('button', { name: '화랑' }));

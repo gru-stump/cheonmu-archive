@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { link, lstat, mkdir, readFile, realpath, rename, rm, unlink, writeFile } from 'node:fs/promises';
-import { extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { basename, extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { parse as parseYaml, stringify } from 'yaml';
 import { ZodError } from 'zod';
 import { galleryItemSchema, gallerySchema, type GalleryItem } from '../src/content/schema';
@@ -154,9 +154,18 @@ export function createGalleryStorage({ rootDir, now = () => new Date() }: Galler
     return canonical;
   }
 
-  async function roots(): Promise<{ workspace: string; content: string; gallery: string; images: string }> {
+  async function roots(): Promise<{
+    workspace: string;
+    content: string;
+    gallery: string;
+    images: string;
+    privateImages: string;
+  }> {
     const workspace = await realpath(resolvedRoot);
     const content = await checkedDirectory(join(workspace, 'src', 'content'), workspace);
+    const privateImagesPath = join(content, 'private-images');
+    await mkdir(privateImagesPath, { recursive: true });
+    const privateImages = await checkedDirectory(privateImagesPath, content);
     const publicRoot = await checkedDirectory(join(workspace, 'public'), workspace);
     const images = await checkedDirectory(join(publicRoot, 'images'), publicRoot);
     const gallery = join(content, 'gallery.yaml');
@@ -164,7 +173,7 @@ export function createGalleryStorage({ rootDir, now = () => new Date() }: Galler
     if (stats.isSymbolicLink() || !stats.isFile()) throw invalidPath();
     const canonicalGallery = await realpath(gallery);
     if (!isWithin(content, canonicalGallery)) throw invalidPath();
-    return { workspace, content, gallery: canonicalGallery, images };
+    return { workspace, content, gallery: canonicalGallery, images, privateImages };
   }
 
   async function trashDirectory(workspace: string, kind: 'images' | 'gallery'): Promise<string> {
@@ -248,7 +257,7 @@ export function createGalleryStorage({ rootDir, now = () => new Date() }: Galler
 
   async function moveImageToTrash(path: string, locations: Awaited<ReturnType<typeof roots>>): Promise<string> {
     const trash = await trashDirectory(locations.workspace, 'images');
-    const backup = await allocateBackup(path, trash, path.slice(locations.images.length + 1));
+    const backup = await allocateBackup(path, trash, basename(path));
     await unlink(path);
     return backup;
   }
@@ -258,6 +267,20 @@ export function createGalleryStorage({ rootDir, now = () => new Date() }: Galler
       await link(backup, destination);
     } catch (error) {
       if (errorCode(error) !== 'EEXIST') throw error;
+    }
+  }
+
+  async function storedImagePath(
+    locations: Awaited<ReturnType<typeof roots>>,
+    item: GalleryItem,
+  ): Promise<string> {
+    const preferred = item.public ? locations.images : locations.privateImages;
+    const alternate = item.public ? locations.privateImages : locations.images;
+    try {
+      return await checkedImagePath(preferred, item.image, true);
+    } catch (error) {
+      if (errorCode(error) !== 'ENOENT') throw error;
+      return checkedImagePath(alternate, item.image, true);
     }
   }
 
@@ -274,18 +297,41 @@ export function createGalleryStorage({ rootDir, now = () => new Date() }: Galler
         throw validationError(error);
       }
       const locations = await roots();
-      const imagePath = await checkedImagePath(locations.images, item.image, true);
+      const items = await readItemsUnsafe(locations);
+      const index = items.findIndex(({ id }) => id === item.id);
+      const previous = index >= 0 ? items[index] : item;
+      const imagePath = await storedImagePath(locations, previous);
       const imageInfo = inspectImage(await readFile(imagePath));
       const expectedExtension = imageInfo.extension;
       const actualExtension = extname(imagePath).slice(1).toLowerCase().replace('jpeg', 'jpg');
       if (actualExtension !== expectedExtension) {
         throw new GalleryStorageError('Gallery validation failed.', 'VALIDATION_ERROR', { image: 'Image extension does not match its contents.' });
       }
-      const items = await readItemsUnsafe(locations);
-      const index = items.findIndex(({ id }) => id === item.id);
       if (index >= 0) items[index] = item;
       else items.push(item);
-      await writeItemsUnsafe(items, locations);
+      const destinationRoot = item.public ? locations.images : locations.privateImages;
+      const destination = await checkedImagePath(destinationRoot, item.image, false);
+      const moving = destination !== imagePath;
+      if (moving) {
+        try {
+          await link(imagePath, destination);
+        } catch (error) {
+          if (errorCode(error) === 'EEXIST') {
+            throw new GalleryStorageError('Gallery validation failed.', 'CONFLICT', { image: 'Destination image already exists.' });
+          }
+          throw error;
+        }
+        await unlink(imagePath);
+      }
+      try {
+        await writeItemsUnsafe(items, locations);
+      } catch (error) {
+        if (moving) {
+          await link(destination, imagePath);
+          await unlink(destination);
+        }
+        throw error;
+      }
       return item;
     });
   }
@@ -330,6 +376,66 @@ export function createGalleryStorage({ rootDir, now = () => new Date() }: Galler
     });
   }
 
+  function writeItemWithImage(
+    input: GalleryItem,
+    bytes: Buffer,
+    overwrite: boolean,
+  ): Promise<{ item: GalleryItem; image: RegisteredImage }> {
+    return enqueue(async () => {
+      let parsedItem: GalleryItem;
+      try {
+        parsedItem = galleryItemSchema.parse(input);
+      } catch (error) {
+        throw validationError(error);
+      }
+      const safeId = checkedId(parsedItem.id);
+      const info = inspectImage(bytes);
+      const locations = await roots();
+      const items = await readItemsUnsafe(locations);
+      const publicPath = `/images/${safeId}.${info.extension}`;
+      const item = { ...parsedItem, image: publicPath };
+      const destinationRoot = item.public ? locations.images : locations.privateImages;
+      const target = await checkedImagePath(destinationRoot, publicPath, false);
+      const candidates = new Set<string>();
+      for (const imageRoot of [locations.images, locations.privateImages]) {
+        for (const extension of ['png', 'jpg', 'jpeg', 'webp']) {
+          try {
+            candidates.add(await checkedImagePath(imageRoot, `/images/${safeId}.${extension}`, true));
+          } catch (error) {
+            if (errorCode(error) !== 'ENOENT') throw error;
+          }
+        }
+      }
+      if (candidates.size > 0 && !overwrite) {
+        throw new GalleryStorageError('이미지가 이미 존재합니다. 덮어쓰기를 확인해 주세요.', 'CONFLICT', { image: 'Explicit overwrite confirmation is required.' });
+      }
+
+      const temporary = join(destinationRoot, `.${safeId}.${randomUUID()}.tmp`);
+      const moved: Array<{ backup: string; destination: string }> = [];
+      let targetInstalled = false;
+      try {
+        await writeFile(temporary, bytes, { flag: 'wx' });
+        await roots();
+        for (const candidate of candidates) {
+          moved.push({ backup: await moveImageToTrash(candidate, locations), destination: candidate });
+        }
+        await rename(temporary, target);
+        targetInstalled = true;
+        const index = items.findIndex((entry) => entry.id === item.id);
+        if (index >= 0) items[index] = item;
+        else items.push(item);
+        await writeItemsUnsafe(items, locations);
+      } catch (error) {
+        await rm(temporary, { force: true });
+        if (targetInstalled) await rm(target, { force: true });
+        for (const entry of moved.reverse()) await restoreImage(entry.backup, entry.destination);
+        throw error;
+      }
+
+      return { item, image: { path: publicPath, width: info.width, height: info.height } };
+    });
+  }
+
   function trashItem(id: string): Promise<void> {
     return enqueue(async () => {
       const safeId = checkedId(id);
@@ -338,7 +444,7 @@ export function createGalleryStorage({ rootDir, now = () => new Date() }: Galler
       const index = items.findIndex((item) => item.id === safeId);
       if (index < 0) throw new GalleryStorageError('Gallery item not found.', 'NOT_FOUND');
       const [item] = items.splice(index, 1);
-      const image = await checkedImagePath(locations.images, item.image, true);
+      const image = await storedImagePath(locations, item);
       const backup = await moveImageToTrash(image, locations);
       try {
         await writeItemsUnsafe(items, locations);
@@ -349,7 +455,7 @@ export function createGalleryStorage({ rootDir, now = () => new Date() }: Galler
     });
   }
 
-  return { listItems, writeItem, registerImage, trashItem };
+  return { listItems, writeItem, writeItemWithImage, registerImage, trashItem };
 }
 
 export type GalleryStorage = ReturnType<typeof createGalleryStorage>;

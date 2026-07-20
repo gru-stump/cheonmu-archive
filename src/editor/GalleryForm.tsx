@@ -2,6 +2,7 @@ import { useEffect, useId, useState, type JSX } from 'react';
 import { ZodError } from 'zod';
 import { galleryItemSchema, type GalleryItem } from '../content/schema';
 import { resolvePublicAssetUrl } from '../lib/publicAssetUrl';
+import type { GalleryImageExtension } from './gallery-image';
 
 export type GalleryValidation = { valid: boolean; fields: Record<string, string> };
 
@@ -26,24 +27,14 @@ type GalleryFormProps = {
   idEditable: boolean;
   disabled?: boolean;
   selectedFile: File | null;
+  selectedExtension: GalleryImageExtension | null;
   onChange(next: Partial<GalleryItem>): void;
   onFileChange(file: File | null): void;
 };
 
 const toList = (value: string): string[] => value.split(',').map((item) => item.trim()).filter(Boolean);
 
-function normalizedExtension(file: File): string | null {
-  const fileExtension = file.name.split('.').pop()?.toLowerCase();
-  if (fileExtension === 'png' || fileExtension === 'webp') return fileExtension;
-  if (fileExtension === 'jpg' || fileExtension === 'jpeg') return 'jpg';
-  if (file.type === 'image/png') return 'png';
-  if (file.type === 'image/jpeg') return 'jpg';
-  if (file.type === 'image/webp') return 'webp';
-  return null;
-}
-
-export function suggestedGalleryPath(id: string, file: File): string {
-  const extension = normalizedExtension(file);
+export function suggestedGalleryPath(id: string, extension: GalleryImageExtension | null): string {
   return id && extension ? `/images/${id}.${extension}` : '';
 }
 
@@ -53,6 +44,7 @@ export function GalleryForm({
   idEditable,
   disabled = false,
   selectedFile,
+  selectedExtension,
   onChange,
   onFileChange,
 }: GalleryFormProps): JSX.Element {
@@ -77,8 +69,7 @@ export function GalleryForm({
     return () => URL.revokeObjectURL(url);
   }, [selectedFile]);
 
-  const extension = selectedFile ? normalizedExtension(selectedFile) : null;
-  const resultingPath = selectedFile && extension ? suggestedGalleryPath(value.id, selectedFile) : value.image;
+  const resultingPath = selectedFile && selectedExtension ? suggestedGalleryPath(value.id, selectedExtension) : value.image;
   const preview = localPreview ?? (value.image ? resolvePublicAssetUrl(value.image) : null);
 
   return <fieldset disabled={disabled}>

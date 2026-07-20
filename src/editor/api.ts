@@ -19,6 +19,7 @@ export interface EditorApi {
   saveGallery(item: GalleryItem): Promise<GalleryItem>;
   removeGallery(id: string): Promise<void>;
   uploadGalleryImage(request: GalleryImageUploadRequest): Promise<GalleryImageUpload>;
+  saveGalleryWithImage(request: GalleryCombinedSaveRequest): Promise<GalleryCombinedSave>;
 }
 
 export class EditorApiError extends Error {
@@ -69,6 +70,15 @@ export const editorApi: EditorApi = {
     },
     body: file,
   }),
+  saveGalleryWithImage: async ({ item, file, overwrite }) => request<GalleryCombinedSave>(`/api/editor/gallery/${item.id}/image`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/octet-stream',
+      'X-Gallery-Metadata': encodeURIComponent(JSON.stringify(item)),
+      'X-Confirm-Overwrite': String(overwrite),
+    },
+    body: file,
+  }),
 };
 
 export interface GalleryImageUploadRequest {
@@ -81,4 +91,15 @@ export interface GalleryImageUpload {
   path: string;
   width: number;
   height: number;
+}
+
+export interface GalleryCombinedSaveRequest {
+  item: GalleryItem;
+  file: File;
+  overwrite: boolean;
+}
+
+export interface GalleryCombinedSave {
+  item: GalleryItem;
+  image: GalleryImageUpload;
 }

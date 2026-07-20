@@ -1,9 +1,13 @@
 import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
+import { fileURLToPath } from 'node:url';
+import { publicGalleryPlugin } from './scripts/public-gallery';
+
+const rootDir = fileURLToPath(new URL('.', import.meta.url));
 
 export default defineConfig(({ command, isPreview }) => ({
   base: command === 'build' || isPreview ? '/cheonmu-archive/' : '/',
-  plugins: [react()],
+  plugins: [publicGalleryPlugin(rootDir), react()],
   server: { proxy: { '/api/editor': 'http://127.0.0.1:4174' } },
   test: {
     environment: 'jsdom',

@@ -4,7 +4,7 @@ import { mkdtemp, mkdir, readFile, readdir, rm, symlink, writeFile } from 'node:
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import request from 'supertest';
-import { parse as parseYaml } from 'yaml';
+import { parse as parseYaml, stringify } from 'yaml';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createEditorServer } from './server';
 import { createGalleryStorage, GalleryStorageError } from './gallery-storage';
@@ -133,6 +133,55 @@ describe('gallery image storage', () => {
 });
 
 describe('gallery metadata storage', () => {
+  it('commits private image and metadata together outside public build inputs', async () => {
+    const rootDir = await makeRoot();
+    const storage = createGalleryStorage({ rootDir });
+    const privateItem = { ...item, public: false };
+
+    const result = await storage.writeItemWithImage(privateItem, png, false);
+
+    expect(result.item).toEqual(privateItem);
+    expect(result.image).toEqual({ path: item.image, width: 1, height: 1 });
+    await expect(readFile(join(rootDir, 'src', 'content', 'private-images', 'new-work.png')))
+      .resolves.toEqual(png);
+    await expect(readFile(join(rootDir, 'public', 'images', 'new-work.png')))
+      .rejects.toMatchObject({ code: 'ENOENT' });
+    await expect(storage.listItems()).resolves.toEqual([privateItem]);
+  });
+
+  it('rolls back the image when the combined metadata commit fails', async () => {
+    const originalItem = { ...item, id: 'other-work', image: '/images/new-work.png' };
+    const originalSource = `${stringify([originalItem])}`;
+    const rootDir = await makeRoot(originalSource);
+    const imagePath = join(rootDir, 'public', 'images', 'new-work.png');
+    await writeFile(imagePath, png);
+    const replacement = Buffer.from(png);
+    replacement[replacement.length - 1] ^= 0x01;
+    const storage = createGalleryStorage({ rootDir });
+
+    await expect(storage.writeItemWithImage(item, replacement, true))
+      .rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+
+    await expect(readFile(imagePath)).resolves.toEqual(png);
+    await expect(readFile(join(rootDir, 'src', 'content', 'gallery.yaml'), 'utf8'))
+      .resolves.toBe(originalSource);
+    await expect(storage.listItems()).resolves.toEqual([originalItem]);
+  });
+
+  it('moves an image between private and public roots when visibility changes', async () => {
+    const rootDir = await makeRoot();
+    const storage = createGalleryStorage({ rootDir });
+    const privateItem = { ...item, public: false };
+    await storage.writeItemWithImage(privateItem, png, false);
+
+    await storage.writeItem({ ...privateItem, public: true });
+
+    await expect(readFile(join(rootDir, 'public', 'images', 'new-work.png'))).resolves.toEqual(png);
+    await expect(readFile(join(rootDir, 'src', 'content', 'private-images', 'new-work.png')))
+      .rejects.toMatchObject({ code: 'ENOENT' });
+    await expect(storage.listItems()).resolves.toEqual([{ ...privateItem, public: true }]);
+  });
+
   it('serializes concurrent updates without losing either item and backs up gallery.yaml', async () => {
     const rootDir = await makeRoot();
     const storage = createGalleryStorage({ rootDir });
@@ -174,9 +223,59 @@ describe('gallery metadata storage', () => {
     await expect(readFile(join(rootDir, 'public', 'images', 'new-work.png'))).rejects.toMatchObject({ code: 'ENOENT' });
     expect((await readdir(join(rootDir, '.trash', 'images'))).some((name) => name.endsWith('-new-work.png'))).toBe(true);
   });
+
+  it('recoverably deletes an image stored in the private root', async () => {
+    const rootDir = await makeRoot();
+    const storage = createGalleryStorage({ rootDir });
+    await storage.writeItemWithImage({ ...item, public: false }, png, false);
+
+    await storage.trashItem(item.id);
+
+    await expect(readFile(join(rootDir, 'src', 'content', 'private-images', 'new-work.png')))
+      .rejects.toMatchObject({ code: 'ENOENT' });
+    expect((await readdir(join(rootDir, '.trash', 'images')))
+      .some((name) => name.endsWith('-new-work.png'))).toBe(true);
+  });
 });
 
 describe('gallery editor API', () => {
+  it('atomically saves uploaded image bytes with gallery metadata', async () => {
+    const rootDir = await makeRoot();
+    await Promise.all(['records', 'profiles', 'documents'].map((kind) => (
+      mkdir(join(rootDir, 'src', 'content', kind), { recursive: true })
+    )));
+    const privateItem = { ...item, public: false };
+
+    await request(createEditorServer({ rootDir }))
+      .put(`/api/editor/gallery/${item.id}/image`)
+      .set('Content-Type', 'application/octet-stream')
+      .set('X-Gallery-Metadata', encodeURIComponent(JSON.stringify(privateItem)))
+      .set('X-Confirm-Overwrite', 'false')
+      .send(png)
+      .expect(200, {
+        item: privateItem,
+        image: { path: item.image, width: 1, height: 1 },
+      });
+
+    await expect(readFile(join(rootDir, 'src', 'content', 'private-images', 'new-work.png')))
+      .resolves.toEqual(png);
+  });
+
+  it('reports the 20 MB upload limit accurately', async () => {
+    const rootDir = await makeRoot();
+    await Promise.all(['records', 'profiles', 'documents'].map((kind) => (
+      mkdir(join(rootDir, 'src', 'content', kind), { recursive: true })
+    )));
+
+    await request(createEditorServer({ rootDir }))
+      .post('/api/editor/gallery/image')
+      .set('Content-Type', 'application/octet-stream')
+      .set('X-Gallery-Id', 'large-work')
+      .set('X-File-Name', 'large-work.png')
+      .send(Buffer.alloc((20 * 1024 * 1024) + 1))
+      .expect(413, { error: 'Request body exceeds 20 MB.' });
+  });
+
   it('uploads by signature, edits metadata, lists it, and recoverably deletes it', async () => {
     const rootDir = await makeRoot();
     await Promise.all(['records', 'profiles', 'documents'].map((kind) => (

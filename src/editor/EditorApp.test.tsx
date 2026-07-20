@@ -72,6 +72,7 @@ function createApi(overrides: Partial<EditorApi> = {}): EditorApi {
     saveGallery: vi.fn(async (item) => item),
     removeGallery: vi.fn(async () => undefined),
     uploadGalleryImage: vi.fn(async ({ id }) => ({ path: `/images/${id}.png`, width: 1, height: 1 })),
+    saveGalleryWithImage: vi.fn(async ({ item }) => ({ item, image: { path: item.image, width: 1, height: 1 } })),
     ...overrides,
   };
 }

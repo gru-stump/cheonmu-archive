@@ -47,6 +47,30 @@ export function createEditorServer({ rootDir }: EditorServerOptions): Express {
     },
   );
 
+  app.put(
+    '/api/editor/gallery/:id/image',
+    express.raw({ type: 'application/octet-stream', limit: '20mb' }),
+    async (request, response, next) => {
+      try {
+        const metadataHeader = request.get('X-Gallery-Metadata');
+        if (!Buffer.isBuffer(request.body) || !metadataHeader) {
+          throw new GalleryStorageError('Gallery validation failed.', 'VALIDATION_ERROR', { image: 'Image bytes and gallery metadata are required.' });
+        }
+        const metadata = JSON.parse(decodeURIComponent(metadataHeader)) as { id?: string };
+        if (metadata.id !== request.params.id) {
+          throw new GalleryStorageError('Gallery validation failed.', 'VALIDATION_ERROR', { id: 'Gallery ID must match the requested item ID.' });
+        }
+        response.json(await gallery.writeItemWithImage(
+          metadata as Parameters<typeof gallery.writeItemWithImage>[0],
+          request.body,
+          request.get('X-Confirm-Overwrite') === 'true',
+        ));
+      } catch (error) {
+        next(error);
+      }
+    },
+  );
+
   app.put('/api/editor/gallery/:id', async (request, response, next) => {
     try {
       const { id } = request.params;
@@ -113,9 +137,10 @@ export function createEditorServer({ rootDir }: EditorServerOptions): Express {
     }
   });
 
-  app.use((error: unknown, _request: Request, response: Response, _next: NextFunction) => {
+  app.use((error: unknown, request: Request, response: Response, _next: NextFunction) => {
     if (typeof error === 'object' && error !== null && 'status' in error && error.status === 413) {
-      response.status(413).json({ error: 'Request body exceeds 2 MB.' });
+      const limit = request.path.startsWith('/api/editor/gallery/') && request.path.endsWith('/image') ? 20 : 2;
+      response.status(413).json({ error: `Request body exceeds ${limit} MB.` });
       return;
     }
 
