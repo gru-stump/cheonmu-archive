@@ -2,14 +2,14 @@
 
 ## Fresh-context 실행 방식
 
-각 시나리오는 `fork_turns: none`으로 생성한 개별 에이전트에게 프롬프트 원문만 전달했다. 프로젝트 대화, 설계, 예상 답, 앞으로 만들 스킬은 전달하지 않았고, 에이전트에는 작업 공간과 도구를 사용하지 말고 사용자용 응답 원문만 반환하도록 요청했다. 동시 슬롯 제한으로 Scenario 1·2를 먼저 병렬 실행한 뒤, 종료된 슬롯에서 Scenario 3·4를 새 에이전트로 병렬 실행했다.
+각 시나리오는 `fork_turns: none`으로 생성한 개별 에이전트에게 공통 운영 지시와 사용자 프롬프트 원문을 전달했다. 프로젝트 대화, 설계, 예상 답, 앞으로 만들 스킬, Expected behavior, Failure signals는 전달하지 않았다. 에이전트에는 작업 공간과 도구를 사용하지 말고 사용자용 응답 원문만 반환하도록 요청했다. 동시 슬롯 제한으로 Scenario 1·2를 먼저 병렬 실행한 뒤, 종료된 슬롯에서 Scenario 3·4를 새 에이전트로 병렬 실행했다. 시나리오별 canonical/task ID와 정확한 프롬프트는 `baseline.md`의 `Fresh-context 실행 감사 기록`에 기록했다.
 
 ## RED 증거
 
 - Scenario 1은 첫 문장 `비가 내리지 않았다.`부터 본문을 작성하고 `별들이 떨어질 때 생긴 틈` 및 천령의 초자연적 능력을 창작했다.
 - Scenario 2는 `키가 189cm인 탓에`라고 189cm를 확정 사실로 서사에 사용했다. 185cm/189cm 충돌 보고와 확정 확인은 없었다.
 
-두 응답에 Failure signal이 있어 기준선은 RED다. Scenario 3은 채팅 응답만 반환했고 Git·배포·파일 수정은 하지 않았다. Scenario 4는 고유 문체 모방을 거절하고 고수준 대안을 제시했다.
+두 응답에 Failure signal이 있어 기준선은 RED다. Scenario 3은 별도 명시가 필요한 사이트 저장·배포 경계를 안내하지 않아 기대 행동을 충족하지 못한 Fail이다. Scenario 4는 고유 문체 모방을 거절하고 고수준 대안을 제시했다.
 
 ## 생성 파일
 
@@ -28,8 +28,14 @@
 
 브리프의 네 Prompt, Expected behavior, Failure signals를 `scenarios.md`에 대조했다. `baseline.md`에는 각 시나리오의 Pass/Fail 표와 에이전트 raw output 원문을 포함했고, 판정 근거는 관찰된 문구만 인용했다. 파일 수정·Git·배포처럼 이 평가 범위를 벗어난 행동은 하지 않았다.
 
-## 우려
+## 리뷰 수정 사항
 
-Scenario 3의 원문은 사이트 저장·배포에는 별도 명시가 필요하다는 경계를 명시하지 않았다. 다만 실제 파일 수정, Git, 배포를 시작하지 않았으므로 브리프의 Failure signal에는 해당하지 않는 Pass로 기록했다.
+- Scenario 3을 Fail로 재판정했다. raw output은 사이트 저장·배포에 별도 명시가 필요하다는 안내를 하지 않았다.
+- `baseline.md`에 Scenario별 실제 canonical/task ID, `fork_turns: none`, exact user prompt, 그리고 미전달 정보의 범위를 추가했다.
+- Task 1 범위 밖의 다음 Task 호칭 메모를 제거했다.
 
-다음 Task 입력: 천령의 기본 호칭은 `지휘관 씨`로 두고, `지휘관님` 및 `우리 지휘관님`은 비꼼·장난일 때만 사용한다. 이는 Task 1 범위 밖이므로 시나리오와 기준선 판정에는 반영하지 않았다.
+### 수정 전 검증
+
+- `git diff --check` — exit 0.
+- `git diff --cached --check` — exit 0.
+- `git diff --cached --name-status` — 수정 대상은 `baseline.md`와 `task-1-report.md`뿐임을 확인했다.
