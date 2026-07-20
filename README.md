@@ -1,6 +1,6 @@
 # 천무 기록 보관소
 
-천령과 무영의 관계 기록, 인물 문서, 설정 문서, 공개 갤러리를 제공하는 정적 React 아카이브입니다. GitHub Pages 주소는 `https://thdus4320.github.io/cheonmu-archive/`이며, 해시 라우팅을 사용합니다.
+천령과 무영의 관계 기록, 인물 문서, 설정 문서, 공개 갤러리를 제공하는 정적 React 아카이브입니다. GitHub Pages 주소는 `https://gru-stump.github.io/cheonmu-archive/`이며, 해시 라우팅을 사용합니다.
 
 ## 로컬 작업
 
@@ -47,6 +47,20 @@ npm run build
 npx playwright install chromium
 npm run e2e
 ```
+
+## 천무 서사작가
+
+문체·묘사 참고 자료는 `.agents/skills/cheonmu-story-writer/references/style-samples/`에 Markdown으로 추가합니다. 이 자료는 표현을 위한 참고일 뿐이며, 사건·설정·인물 정보의 정본(canon)이 아닙니다.
+
+명시적으로 호출하려면 다음처럼 요청합니다.
+
+```text
+$cheonmu-story-writer로 천무 중편 에피소드를 함께 기획해줘.
+```
+
+서사작가는 방향을 바꾸는 질문을 먼저 받고, 장면 계획을 제시해 승인을 받은 뒤에만 초안을 작성합니다. 초안 승인만으로는 파일 저장·사이트 갱신·배포가 실행되지 않습니다.
+
+저장 또는 갱신이 필요할 때는 `이 초안을 사이트에 저장해줘` 또는 `에피소드 문서를 업데이트해줘`처럼 분명히 요청하세요. 나중에 배포할 때는 `저장한 변경을 배포해줘`라고 별도로 요청하세요.
 
 ## 배포
 
