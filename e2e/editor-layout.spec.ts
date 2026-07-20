@@ -188,6 +188,16 @@ test('tablet entry list keeps its horizontal scroll affordance', async ({ page }
   await page.setViewportSize({ width: 768, height: 900 });
   await page.goto('./');
 
+  await page.locator('.editor-entry-list ul').evaluate((entries) => {
+    for (let index = 0; index < 8; index += 1) {
+      const item = document.createElement('li');
+      const button = document.createElement('button');
+      button.textContent = `Overflow fixture ${index + 1}`;
+      item.append(button);
+      entries.append(item);
+    }
+  });
+
   const affordance = await page.locator('.editor-entry-list').evaluate((list) => {
     const style = getComputedStyle(list, '::after');
     const entries = list.querySelector<HTMLElement>('ul')!;
