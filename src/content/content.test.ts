@@ -14,6 +14,15 @@ const OLD_IMAGE_PATHS = [
   '/images/creator-profile.png',
 ];
 
+const FORBIDDEN_PUBLIC_SECRETS = [
+  '천령은 인간',
+  '인간 의사',
+  '피를 마시는 흡혈귀',
+  '백사',
+  '실제 나이 불명',
+  '과거와 능력으로',
+];
+
 describe('initial Cheonmu archive content', () => {
   // CM-07·08은 공개 전까지 records/_hidden/에 보관한다. 복원 시 8단계 기대값으로 되돌릴 것.
   it('contains six confirmed stages with cinematics exactly at 1, 3, and 5', () => {
@@ -74,5 +83,36 @@ describe('initial Cheonmu archive content', () => {
     expect(relationshipBody).toContain('## 관계가 깊어진 뒤의 변화');
     expect(relationshipBody).toContain('심각한 상황이나 감정이 흔들릴 때는 ‘무영’이라고만 부른다');
     expect(relationshipBody).toContain('감정이 흔들릴 때는 ‘천령’이라고만 부른다');
+  });
+});
+
+describe('public archive secrecy', () => {
+  it('keeps direct identity and ability disclosures out of public content', () => {
+    const content = loadAllContent();
+    const publicText = JSON.stringify({
+      profiles: content.profiles,
+      documents: content.documents,
+      records: content.records,
+    });
+
+    expect(content.documents.map((item) => item.id)).not.toContain('settings');
+    for (const secret of FORBIDDEN_PUBLIC_SECRETS) {
+      expect(publicText).not.toContain(secret);
+    }
+  });
+
+  it('keeps the CM-06 relationship stage without naming the hidden identity', () => {
+    const stageSix = loadAllContent().records.find((record) => record.stage === 6);
+
+    expect(stageSix?.id).toBe('keeping-distance');
+    expect(stageSix?.body).toContain('통제 밖으로 벗어나는 것을 견디지 못하는 치료사');
+    expect(stageSix?.body).not.toContain('인간');
+    expect(stageSix?.quote).toBe('네가 가버린다고 판단했어');
+  });
+
+  it('describes CM-05 treatment without confirming a hidden ability', () => {
+    const stageFive = loadAllContent().records.find((record) => record.stage === 5);
+    expect(stageFive?.body).toContain('천령의 치료로도 돌이키기 어려운 증상');
+    expect(stageFive?.body).not.toContain('천령의 능력');
   });
 });
