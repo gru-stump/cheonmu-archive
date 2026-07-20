@@ -289,6 +289,78 @@ describe('editor storage safety', () => {
     await expect(readFile(join(recordsDirectory, 'draft-event.md'), 'utf8')).resolves.toBe(existingSource);
   });
 
+  it('rejects a scenes directory junction outside the content root', async (context) => {
+    const rootDir = await makeRoot();
+    const externalDirectory = await mkdtemp(join(tmpdir(), 'cheonmu-editor-scenes-junction-'));
+    temporaryRoots.push(externalDirectory);
+    await writeFile(join(externalDirectory, 'escaped.md'), 'External scene prose', 'utf8');
+    try {
+      await symlink(
+        externalDirectory,
+        join(rootDir, 'src', 'content', 'scenes'),
+        process.platform === 'win32' ? 'junction' : 'dir',
+      );
+    } catch (error) {
+      if (
+        typeof error === 'object'
+        && error !== null
+        && 'code' in error
+        && ['EPERM', 'EACCES', 'UNKNOWN'].includes(String(error.code))
+      ) {
+        context.skip(`Directory links are not permitted on this platform: ${String(error.code)}`);
+      }
+      throw error;
+    }
+    const storage = createEditorStorage({ rootDir });
+
+    await expect(storage.writeEntry('profiles', 'safe-profile', simpleSource('safe-profile')))
+      .rejects.toMatchObject({
+        code: 'VALIDATION_ERROR',
+        fields: { archive: expect.stringContaining('Scene directory must be a regular directory') },
+      });
+  });
+
+  it('rejects a scene file symbolic link', async (context) => {
+    const rootDir = await makeRoot();
+    const scenesDirectory = join(rootDir, 'src', 'content', 'scenes');
+    const externalDirectory = await mkdtemp(join(tmpdir(), 'cheonmu-editor-scene-link-'));
+    temporaryRoots.push(externalDirectory);
+    await mkdir(scenesDirectory, { recursive: true });
+    const externalPath = join(externalDirectory, 'outside.md');
+    await writeFile(externalPath, 'External scene prose', 'utf8');
+    try {
+      await symlink(externalPath, join(scenesDirectory, 'linked.md'), 'file');
+    } catch (error) {
+      if (
+        typeof error === 'object'
+        && error !== null
+        && 'code' in error
+        && ['EPERM', 'EACCES', 'UNKNOWN'].includes(String(error.code))
+      ) {
+        context.skip(`File links are not permitted on this platform: ${String(error.code)}`);
+      }
+      throw error;
+    }
+    const storage = createEditorStorage({ rootDir });
+
+    await expect(storage.writeEntry('profiles', 'safe-profile', simpleSource('safe-profile')))
+      .rejects.toMatchObject({
+        code: 'VALIDATION_ERROR',
+        fields: { archive: expect.stringContaining('Scene file must be a regular file') },
+      });
+  });
+
+  it('ignores scene files whose extension is not lowercase .md', async () => {
+    const rootDir = await makeRoot();
+    const scenesDirectory = join(rootDir, 'src', 'content', 'scenes');
+    await mkdir(scenesDirectory, { recursive: true });
+    await writeFile(join(scenesDirectory, 'ignored.MD'), 'Not a supported scene file', 'utf8');
+    const storage = createEditorStorage({ rootDir });
+    const source = simpleSource('safe-profile');
+
+    await expect(storage.writeEntry('profiles', 'safe-profile', source)).resolves.toBe(source);
+  });
+
   it('rejects a cross-kind duplicate ID before replacing disk content', async () => {
     const rootDir = await makeRoot();
     await writeFile(join(rootDir, 'src', 'content', 'profiles', 'shared-id.md'), simpleSource('shared-id'));

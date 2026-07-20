@@ -1,5 +1,5 @@
-import { readFile, readdir, realpath } from 'node:fs/promises';
-import { extname, join, relative, resolve, sep } from 'node:path';
+import { lstat, readFile, readdir, realpath } from 'node:fs/promises';
+import { extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { parse as parseYaml } from 'yaml';
 import { parseMarkdown } from '../src/content/frontmatter';
 import {
@@ -41,6 +41,12 @@ export class ArchivePersistenceError extends Error {
 }
 
 const rootQueues = new Map<string, Promise<void>>();
+
+function isWithin(root: string, target: string): boolean {
+  const relativePath = relative(root, target);
+  return relativePath === ''
+    || (!isAbsolute(relativePath) && relativePath !== '..' && !relativePath.startsWith(`..${sep}`));
+}
 
 export async function coordinateArchiveMutation<T>(
   rootDir: string,
@@ -118,9 +124,9 @@ async function loadGallery(contentRoot: string, mutation: ArchiveMutation): Prom
 
 async function loadScenes(contentRoot: string): Promise<ArchiveScene[]> {
   const directory = join(contentRoot, 'scenes');
-  let names: string[];
+  let directoryStats: Awaited<ReturnType<typeof lstat>>;
   try {
-    names = await readdir(directory);
+    directoryStats = await lstat(directory);
   } catch (error) {
     if (typeof error === 'object' && error !== null && 'code' in error && error.code === 'ENOENT') {
       return [];
@@ -128,12 +134,32 @@ async function loadScenes(contentRoot: string): Promise<ArchiveScene[]> {
     throw error;
   }
 
+  if (directoryStats.isSymbolicLink() || !directoryStats.isDirectory()) {
+    throw new Error('Scene directory must be a regular directory.');
+  }
+  const canonicalDirectory = await realpath(directory);
+  if (!isWithin(contentRoot, canonicalDirectory)) {
+    throw new Error('Scene directory must be within the content root.');
+  }
+  const names = await readdir(canonicalDirectory);
+
   return Promise.all(names
-    .filter((name) => extname(name).toLowerCase() === '.md')
-    .map(async (name) => ({
-      id: name.slice(0, -3),
-      body: (await readFile(join(directory, name), 'utf8')).trim(),
-    })));
+    .filter((name) => extname(name) === '.md')
+    .map(async (name) => {
+      const path = join(canonicalDirectory, name);
+      const stats = await lstat(path);
+      if (stats.isSymbolicLink() || !stats.isFile()) {
+        throw new Error('Scene file must be a regular file.');
+      }
+      const canonicalPath = await realpath(path);
+      if (!isWithin(canonicalDirectory, canonicalPath)) {
+        throw new Error('Scene file must be within the scene directory.');
+      }
+      return {
+        id: name.slice(0, -3),
+        body: (await readFile(canonicalPath, 'utf8')).trim(),
+      };
+    }));
 }
 
 async function listPublicImages(publicRoot: string, directory = publicRoot): Promise<string[]> {
