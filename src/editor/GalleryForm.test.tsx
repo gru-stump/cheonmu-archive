@@ -17,6 +17,29 @@ const validItem: GalleryItem = {
   public: true,
 };
 const png = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+const jpg = Uint8Array.from([0xff, 0xd8, 0xff]);
+
+class DelayedFileReader {
+  static pending: DelayedFileReader[] = [];
+  result: ArrayBuffer | null = null;
+  error: DOMException | null = null;
+  onload: ((event: ProgressEvent<FileReader>) => void) | null = null;
+  onerror: ((event: ProgressEvent<FileReader>) => void) | null = null;
+
+  readAsArrayBuffer(): void {
+    DelayedFileReader.pending.push(this);
+  }
+
+  resolve(bytes: Uint8Array): void {
+    this.result = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+    this.onload?.(new ProgressEvent('load') as ProgressEvent<FileReader>);
+  }
+}
+
+function delayFileReaders(): void {
+  DelayedFileReader.pending = [];
+  vi.stubGlobal('FileReader', DelayedFileReader as unknown as typeof FileReader);
+}
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -24,7 +47,11 @@ function deferred<T>() {
   return { promise, resolve };
 }
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+  DelayedFileReader.pending = [];
+});
 
 describe('gallery validation', () => {
   it('requires creator and alt text for public work through the shared schema', () => {
@@ -42,6 +69,47 @@ describe('gallery validation', () => {
 });
 
 describe('GalleryForm', () => {
+  it('uses the editor route for a saved private preview and the public URL for a public item', () => {
+    const sharedProps = {
+      errors: {},
+      idEditable: false,
+      selectedFile: null,
+      selectedExtension: null,
+      onChange: vi.fn(),
+      onFileChange: vi.fn(),
+    };
+    const { rerender } = render(<GalleryForm
+      {...sharedProps}
+      value={{ ...validItem, public: false }}
+    />);
+
+    expect(screen.getByRole('img', { name: validItem.alt }))
+      .toHaveAttribute('src', '/api/editor/gallery/work/image');
+
+    rerender(<GalleryForm {...sharedProps} value={validItem} />);
+    expect(screen.getByRole('img', { name: validItem.alt }))
+      .toHaveAttribute('src', '/images/work.png');
+  });
+
+  it('keeps a saved private preview usable while its public toggle is unsaved', async () => {
+    const user = userEvent.setup();
+    const privateItem = { ...validItem, public: false };
+    const api = {
+      list: vi.fn(async () => []), save: vi.fn(), remove: vi.fn(),
+      listGallery: vi.fn(async () => [privateItem]), saveGallery: vi.fn(), removeGallery: vi.fn(),
+      uploadGalleryImage: vi.fn(), saveGalleryWithImage: vi.fn(),
+    };
+    render(<EditorApp api={api} />);
+    await user.click(await screen.findByRole('button', { name: '화랑' }));
+    await user.click(await screen.findByRole('button', { name: '공개 작품 편집' }));
+    const image = screen.getByRole('img', { name: validItem.alt });
+    expect(image).toHaveAttribute('src', '/api/editor/gallery/work/image');
+
+    await user.click(screen.getByLabelText('공개'));
+
+    expect(image).toHaveAttribute('src', '/api/editor/gallery/work/image');
+  });
+
   it('treats a selected same-path replacement as an unsaved change', async () => {
     const user = userEvent.setup();
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
@@ -91,6 +159,98 @@ describe('GalleryForm', () => {
     await user.clear(id);
     await user.type(id, 'renamed-id');
     expect(screen.getByText('/images/renamed-id.png')).toBeVisible();
+  });
+
+  it('marks a pending signature read dirty immediately and blocks save', async () => {
+    delayFileReaders();
+    const user = userEvent.setup();
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    const api = {
+      list: vi.fn(async () => []), save: vi.fn(), remove: vi.fn(),
+      listGallery: vi.fn(async () => [validItem]), saveGallery: vi.fn(), removeGallery: vi.fn(),
+      uploadGalleryImage: vi.fn(), saveGalleryWithImage: vi.fn(),
+    };
+    render(<EditorApp api={api} />);
+    await user.click(await screen.findByRole('button', { name: '화랑' }));
+    await user.click(await screen.findByRole('button', { name: '공개 작품 편집' }));
+
+    await user.upload(screen.getByLabelText('이미지 파일'), new File([png], 'work.png', { type: 'image/png' }));
+
+    expect(screen.getByText('이미지 확인 중입니다.')).toHaveAttribute('role', 'status');
+    expect(screen.getByRole('button', { name: '저장' })).toBeDisabled();
+    await user.click(screen.getByRole('button', { name: '기록' }));
+    expect(confirm).toHaveBeenCalled();
+    expect(screen.getByLabelText('이미지 파일')).toBeInTheDocument();
+  });
+
+  it('uses the latest ID when a delayed signature read finishes', async () => {
+    delayFileReaders();
+    const user = userEvent.setup();
+    const api = {
+      list: vi.fn(async () => []), save: vi.fn(), remove: vi.fn(),
+      listGallery: vi.fn(async () => []), saveGallery: vi.fn(), removeGallery: vi.fn(),
+      uploadGalleryImage: vi.fn(), saveGalleryWithImage: vi.fn(),
+    };
+    render(<EditorApp api={api} />);
+    await user.click(await screen.findByRole('button', { name: '화랑' }));
+    await user.click(screen.getByRole('button', { name: '새 화랑 작품' }));
+    const id = screen.getByLabelText('식별자');
+    await user.type(id, 'first-id');
+    await user.upload(screen.getByLabelText('이미지 파일'), new File([png], 'portrait.png', { type: 'image/png' }));
+    await user.clear(id);
+    await user.type(id, 'latest-id');
+
+    await act(async () => DelayedFileReader.pending[0]!.resolve(png));
+
+    expect(id).toHaveValue('latest-id');
+    expect(screen.getByText('/images/latest-id.png')).toBeVisible();
+  });
+
+  it('ignores an older signature read after a newer file is selected', async () => {
+    delayFileReaders();
+    const user = userEvent.setup();
+    const api = {
+      list: vi.fn(async () => []), save: vi.fn(), remove: vi.fn(),
+      listGallery: vi.fn(async () => []), saveGallery: vi.fn(), removeGallery: vi.fn(),
+      uploadGalleryImage: vi.fn(), saveGalleryWithImage: vi.fn(),
+    };
+    render(<EditorApp api={api} />);
+    await user.click(await screen.findByRole('button', { name: '화랑' }));
+    await user.click(screen.getByRole('button', { name: '새 화랑 작품' }));
+    await user.type(screen.getByLabelText('식별자'), 'race-work');
+    const input = screen.getByLabelText('이미지 파일');
+    await user.upload(input, new File([png], 'older.png', { type: 'image/png' }));
+    await user.upload(input, new File([jpg], 'newer.jpg', { type: 'image/jpeg' }));
+
+    await act(async () => DelayedFileReader.pending[1]!.resolve(jpg));
+    expect(screen.getByText('/images/race-work.jpg')).toBeVisible();
+    await act(async () => DelayedFileReader.pending[0]!.resolve(png));
+
+    expect(screen.getByText('/images/race-work.jpg')).toBeVisible();
+    expect(screen.queryByText('/images/race-work.png')).not.toBeInTheDocument();
+  });
+
+  it('ignores a delayed signature read after gallery navigation', async () => {
+    delayFileReaders();
+    const user = userEvent.setup();
+    const secondItem = { ...validItem, id: 'second-work', title: '두 번째 작품', image: '/images/second-work.png' };
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const api = {
+      list: vi.fn(async () => []), save: vi.fn(), remove: vi.fn(),
+      listGallery: vi.fn(async () => [validItem, secondItem]), saveGallery: vi.fn(), removeGallery: vi.fn(),
+      uploadGalleryImage: vi.fn(), saveGalleryWithImage: vi.fn(),
+    };
+    render(<EditorApp api={api} />);
+    await user.click(await screen.findByRole('button', { name: '화랑' }));
+    await user.click(await screen.findByRole('button', { name: '공개 작품 편집' }));
+    await user.upload(screen.getByLabelText('이미지 파일'), new File([png], 'work.png', { type: 'image/png' }));
+    await user.click(screen.getByRole('button', { name: '두 번째 작품 편집' }));
+    expect(confirm).toHaveBeenCalled();
+
+    await act(async () => DelayedFileReader.pending[0]!.resolve(png));
+
+    expect(screen.getByLabelText('제목')).toHaveValue('두 번째 작품');
+    expect(screen.getByText('/images/second-work.png')).toBeVisible();
   });
 
   it('shows the selected image preview and resulting normalized public path before save', async () => {

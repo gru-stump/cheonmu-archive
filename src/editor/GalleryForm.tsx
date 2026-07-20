@@ -28,6 +28,7 @@ type GalleryFormProps = {
   disabled?: boolean;
   selectedFile: File | null;
   selectedExtension: GalleryImageExtension | null;
+  savedPublic?: boolean;
   onChange(next: Partial<GalleryItem>): void;
   onFileChange(file: File | null): void;
 };
@@ -45,6 +46,7 @@ export function GalleryForm({
   disabled = false,
   selectedFile,
   selectedExtension,
+  savedPublic,
   onChange,
   onFileChange,
 }: GalleryFormProps): JSX.Element {
@@ -70,7 +72,12 @@ export function GalleryForm({
   }, [selectedFile]);
 
   const resultingPath = selectedFile && selectedExtension ? suggestedGalleryPath(value.id, selectedExtension) : value.image;
-  const preview = localPreview ?? (value.image ? resolvePublicAssetUrl(value.image) : null);
+  const savedPreview = value.image
+    ? (savedPublic ?? value.public)
+      ? resolvePublicAssetUrl(value.image)
+      : `/api/editor/gallery/${encodeURIComponent(value.id)}/image`
+    : null;
+  const preview = localPreview ?? savedPreview;
 
   return <fieldset disabled={disabled}>
     <legend>화랑 정보</legend>

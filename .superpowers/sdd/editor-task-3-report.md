@@ -108,3 +108,33 @@ Final focused result: exit 0; 3 files passed, 33 tests passed. This includes the
 | `npm run e2e` | Exit 0; 6 Playwright tests passed. |
 | `rg -n '/api/editor|src/editor|PRIVATE_METADATA_MARKER|private-work' dist` | No matches; `DIST_PRIVATE_EDITOR_SCAN_CLEAN`. |
 | `git diff --check` | Exit 0. |
+
+## Second review hardening addendum (2026-07-20)
+
+### Delivered
+
+- Replacement candidates now include the existing item's exact metadata image path, even when its legacy basename is unrelated to the item ID, plus normalized ID candidates in both public and private roots. The combined PUT and original POST workflows share this resolution.
+- Legacy public bytes are moved to recoverable trash during replacement or metadata-only unpublishing. A storage-plus-Vite integration fixture proves neither the legacy public basename nor the normalized private replacement appears in `dist/`.
+- Metadata-only public/private migration now treats destination linking, source removal, and metadata replacement as one compensating transaction. If source unlink fails, the new destination link is removed; if metadata replacement fails after source removal, the source is restored before the destination is removed.
+- The loopback editor API now provides `GET /api/editor/gallery/:id/image` for private items only. Storage resolves bytes inside the canonical non-reparse private root and the route returns signature-derived `Content-Type`, `Cache-Control: no-store`, and `X-Content-Type-Options: nosniff`. Public items return 404 and reparse-backed files are rejected.
+- Saved private previews use the editor API while saved public previews retain their public asset URL. Unsaved visibility toggles continue using the saved location until the migration commits, avoiding a broken preview during editing.
+- File selection immediately marks the gallery draft dirty and signature inspection pending, disables save, and installs a generation token plus selected-file identity guard. Resolution updates the latest draft functionally, so current ID edits win and older file/navigation results cannot overwrite current state.
+
+### Strict TDD evidence
+
+- Legacy RED: original POST tried the private legacy metadata path only under `public/images` and failed with `ENOENT`; combined replacement left the exact legacy public file; a real Vite build copied that orphan into `dist`. GREEN: all three focused regressions passed after the shared two-root candidate resolver.
+- Migration RED: an injected private-source unlink failure was ignored because the injection boundary did not exist, demonstrating that the existing operation could leave its public hard link. GREEN: normal migration and injected failure rollback passed, with public destination absent, private source intact, and YAML byte-for-byte unchanged.
+- Preview RED: the private preview request returned 404 and `GalleryForm` used `/images/...` for private saved content. GREEN: private bytes/security headers, public denial, reparse rejection, private/public URLs, and unsaved toggle stability passed.
+- FileReader RED: all four delayed-read regressions failed—no immediate pending/dirty state, an edited ID reverted, an older file won, and navigation did not prompt or invalidate the old result. GREEN: all four passed with generation and identity guards.
+
+### Final verification after second review
+
+| Command/check | Result |
+| --- | --- |
+| `npm run test:run -- editor/gallery-storage.test.ts scripts/public-gallery.test.ts src/editor/GalleryForm.test.tsx src/editor/EditorApp.test.tsx` | Exit 0; 4 files passed; 55 passed, 1 skipped (56 total). |
+| `npm run test:run` | Exit 0; 17 files passed; 117 passed, 2 skipped (119 total). The skips are Windows permission-gated symlink fixtures. |
+| `npm run validate` | Exit 0; `Content validation passed.` |
+| `npm run build` | Exit 0; TypeScript and Vite production build passed; 389 modules transformed. |
+| `npm run e2e` | Exit 0; 6 Playwright tests passed. |
+| `rg -n '/api/editor|src/editor|PRIVATE_METADATA_MARKER|PRIVATE_IMAGE_BYTES|legacy-private' dist` | No matches; `DIST_PRIVATE_EDITOR_LEGACY_SCAN_CLEAN`. |
+| `git diff --check` | Exit 0. |

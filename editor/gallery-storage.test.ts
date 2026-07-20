@@ -1,6 +1,6 @@
 // @vitest-environment node
 
-import { mkdtemp, mkdir, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, readdir, rm, symlink, unlink as unlinkFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import request from 'supertest';
@@ -104,6 +104,28 @@ describe('gallery image storage', () => {
     expect(trashed.some((name) => name.endsWith('-work.png'))).toBe(true);
   });
 
+  it('replaces a private legacy metadata image through the original POST workflow', async () => {
+    const legacyItem = { ...item, image: '/images/legacy-portrait.png', public: false };
+    const rootDir = await makeRoot(stringify([legacyItem]));
+    await mkdir(join(rootDir, 'src', 'content', 'private-images'), { recursive: true });
+    await writeFile(join(rootDir, 'src', 'content', 'private-images', 'legacy-portrait.png'), png);
+    const storage = createGalleryStorage({ rootDir });
+
+    await storage.registerImage({
+      id: item.id,
+      originalName: 'replacement.jpg',
+      bytes: jpeg(4, 5),
+      overwrite: true,
+    });
+
+    await expect(readFile(join(rootDir, 'src', 'content', 'private-images', 'legacy-portrait.png')))
+      .rejects.toMatchObject({ code: 'ENOENT' });
+    await expect(readFile(join(rootDir, 'public', 'images', 'new-work.jpg')))
+      .resolves.toEqual(jpeg(4, 5));
+    expect((await readdir(join(rootDir, '.trash', 'images')))
+      .some((name) => name.endsWith('-legacy-portrait.png'))).toBe(true);
+  });
+
   it('rejects unsafe IDs before resolving an image path', async () => {
     const storage = createGalleryStorage({ rootDir: await makeRoot() });
     await expect(storage.registerImage({ id: '../escape', originalName: 'work.png', bytes: png, overwrite: false }))
@@ -168,6 +190,25 @@ describe('gallery metadata storage', () => {
     await expect(storage.listItems()).resolves.toEqual([originalItem]);
   });
 
+  it('trashes the exact legacy metadata image during combined replacement', async () => {
+    const legacyItem = { ...item, image: '/images/legacy-portrait.png' };
+    const rootDir = await makeRoot(stringify([legacyItem]));
+    await writeFile(join(rootDir, 'public', 'images', 'legacy-portrait.png'), png);
+    const storage = createGalleryStorage({ rootDir });
+
+    await storage.writeItemWithImage({ ...legacyItem, public: false }, jpeg(4, 5), true);
+
+    await expect(readFile(join(rootDir, 'public', 'images', 'legacy-portrait.png')))
+      .rejects.toMatchObject({ code: 'ENOENT' });
+    await expect(readFile(join(rootDir, 'src', 'content', 'private-images', 'new-work.jpg')))
+      .resolves.toEqual(jpeg(4, 5));
+    await expect(storage.listItems()).resolves.toEqual([{
+      ...legacyItem,
+      image: '/images/new-work.jpg',
+      public: false,
+    }]);
+  });
+
   it('moves an image between private and public roots when visibility changes', async () => {
     const rootDir = await makeRoot();
     const storage = createGalleryStorage({ rootDir });
@@ -180,6 +221,52 @@ describe('gallery metadata storage', () => {
     await expect(readFile(join(rootDir, 'src', 'content', 'private-images', 'new-work.png')))
       .rejects.toMatchObject({ code: 'ENOENT' });
     await expect(storage.listItems()).resolves.toEqual([{ ...privateItem, public: true }]);
+  });
+
+  it('removes legacy public bytes when a metadata-only update unpublishes the item', async () => {
+    const legacyItem = { ...item, image: '/images/legacy-portrait.png' };
+    const rootDir = await makeRoot(stringify([legacyItem]));
+    await writeFile(join(rootDir, 'public', 'images', 'legacy-portrait.png'), png);
+    const storage = createGalleryStorage({ rootDir });
+
+    await storage.writeItem({ ...legacyItem, public: false });
+
+    await expect(readFile(join(rootDir, 'public', 'images', 'legacy-portrait.png')))
+      .rejects.toMatchObject({ code: 'ENOENT' });
+    await expect(readFile(join(rootDir, 'src', 'content', 'private-images', 'legacy-portrait.png')))
+      .resolves.toEqual(png);
+    await expect(storage.listItems()).resolves.toEqual([{ ...legacyItem, public: false }]);
+  });
+
+  it('rolls back every side effect when source unlink fails during private-to-public migration', async () => {
+    const rootDir = await makeRoot();
+    const privateItem = { ...item, public: false };
+    await createGalleryStorage({ rootDir }).writeItemWithImage(privateItem, png, false);
+    const privateSource = join(rootDir, 'src', 'content', 'private-images', 'new-work.png');
+    const metadataBefore = await readFile(join(rootDir, 'src', 'content', 'gallery.yaml'), 'utf8');
+    let injected = false;
+    const storage = createGalleryStorage({
+      rootDir,
+      filesystem: {
+        unlink: async (path) => {
+          if (!injected && path === privateSource) {
+            injected = true;
+            throw Object.assign(new Error('injected unlink failure'), { code: 'EACCES' });
+          }
+          await unlinkFile(path);
+        },
+      },
+    });
+
+    await expect(storage.writeItem({ ...privateItem, public: true }))
+      .rejects.toThrow('injected unlink failure');
+
+    await expect(readFile(join(rootDir, 'public', 'images', 'new-work.png')))
+      .rejects.toMatchObject({ code: 'ENOENT' });
+    await expect(readFile(privateSource)).resolves.toEqual(png);
+    await expect(readFile(join(rootDir, 'src', 'content', 'gallery.yaml'), 'utf8'))
+      .resolves.toBe(metadataBefore);
+    await expect(storage.listItems()).resolves.toEqual([privateItem]);
   });
 
   it('serializes concurrent updates without losing either item and backs up gallery.yaml', async () => {
@@ -239,6 +326,61 @@ describe('gallery metadata storage', () => {
 });
 
 describe('gallery editor API', () => {
+  it('serves saved private preview bytes with safe loopback editor headers', async () => {
+    const rootDir = await makeRoot();
+    await Promise.all(['records', 'profiles', 'documents'].map((kind) => (
+      mkdir(join(rootDir, 'src', 'content', kind), { recursive: true })
+    )));
+    const privateItem = { ...item, public: false };
+    await createGalleryStorage({ rootDir }).writeItemWithImage(privateItem, png, false);
+
+    const response = await request(createEditorServer({ rootDir }))
+      .get(`/api/editor/gallery/${item.id}/image`)
+      .expect(200)
+      .expect('Content-Type', /image\/png/)
+      .expect('Cache-Control', 'no-store')
+      .expect('X-Content-Type-Options', 'nosniff');
+
+    expect(response.body).toEqual(png);
+  });
+
+  it('does not expose a public item through the private preview route', async () => {
+    const rootDir = await makeRoot();
+    await Promise.all(['records', 'profiles', 'documents'].map((kind) => (
+      mkdir(join(rootDir, 'src', 'content', kind), { recursive: true })
+    )));
+    await createGalleryStorage({ rootDir }).writeItemWithImage(item, png, false);
+
+    await request(createEditorServer({ rootDir }))
+      .get(`/api/editor/gallery/${item.id}/image`)
+      .expect(404);
+  });
+
+  it('rejects a reparse-backed private preview image', async (context) => {
+    const privateItem = { ...item, public: false };
+    const rootDir = await makeRoot(stringify([privateItem]));
+    await Promise.all(['records', 'profiles', 'documents'].map((kind) => (
+      mkdir(join(rootDir, 'src', 'content', kind), { recursive: true })
+    )));
+    const privateImages = join(rootDir, 'src', 'content', 'private-images');
+    await mkdir(privateImages, { recursive: true });
+    const outside = join(rootDir, 'outside.png');
+    await writeFile(outside, png);
+    try {
+      await symlink(outside, join(privateImages, 'new-work.png'), 'file');
+    } catch (error) {
+      if (typeof error === 'object' && error !== null && 'code' in error && error.code === 'EPERM') {
+        context.skip();
+        return;
+      }
+      throw error;
+    }
+
+    await request(createEditorServer({ rootDir }))
+      .get(`/api/editor/gallery/${item.id}/image`)
+      .expect(400, { error: '허용되지 않는 경로입니다.' });
+  });
+
   it('atomically saves uploaded image bytes with gallery metadata', async () => {
     const rootDir = await makeRoot();
     await Promise.all(['records', 'profiles', 'documents'].map((kind) => (

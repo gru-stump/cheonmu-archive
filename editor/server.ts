@@ -25,6 +25,20 @@ export function createEditorServer({ rootDir }: EditorServerOptions): Express {
     }
   });
 
+  app.get('/api/editor/gallery/:id/image', async (request, response, next) => {
+    try {
+      const image = await gallery.readPrivateImage(request.params.id);
+      response.set({
+        'Cache-Control': 'no-store',
+        'Content-Type': image.contentType,
+        'X-Content-Type-Options': 'nosniff',
+      });
+      response.send(image.bytes);
+    } catch (error) {
+      next(error);
+    }
+  });
+
   app.post(
     '/api/editor/gallery/image',
     express.raw({ type: 'application/octet-stream', limit: '20mb' }),

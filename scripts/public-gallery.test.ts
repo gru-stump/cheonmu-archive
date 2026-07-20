@@ -6,8 +6,10 @@ import { join } from 'node:path';
 import { build } from 'vite';
 import { afterEach, describe, expect, it } from 'vitest';
 import { publicGalleryPlugin } from './public-gallery';
+import { createGalleryStorage } from '../editor/gallery-storage';
 
 const roots: string[] = [];
+const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64');
 
 afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
@@ -59,6 +61,48 @@ describe('public gallery production filtering', () => {
     await expect(readFile(join(root, 'dist', 'images', 'public-work.png'), 'utf8'))
       .resolves.toBe('PUBLIC_IMAGE_BYTES');
     await expect(readFile(join(root, 'dist', 'images', 'private-work.png'), 'utf8'))
+      .rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  it('omits an orphaned legacy public image after replacing a private item', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'cheonmu-public-gallery-legacy-'));
+    roots.push(root);
+    await Promise.all([
+      mkdir(join(root, 'src', 'content'), { recursive: true }),
+      mkdir(join(root, 'public', 'images'), { recursive: true }),
+    ]);
+    await writeFile(join(root, 'index.html'), '<script type="module" src="/src/main.ts"></script>', 'utf8');
+    await writeFile(join(root, 'src', 'main.ts'), "import source from 'virtual:public-gallery'; console.log(source);", 'utf8');
+    const legacyItem = {
+      id: 'private-work',
+      title: 'Private work',
+      image: '/images/legacy-private.png',
+      alt: 'Private image',
+      creator: 'Artist',
+      characters: ['muyeong'],
+      public: false,
+    };
+    await writeFile(join(root, 'src', 'content', 'gallery.yaml'), `- id: private-work
+  title: Private work
+  image: /images/legacy-private.png
+  alt: Private image
+  creator: Artist
+  characters: [muyeong]
+  public: false
+`, 'utf8');
+    await writeFile(join(root, 'public', 'images', 'legacy-private.png'), png);
+
+    await createGalleryStorage({ rootDir: root }).writeItemWithImage(legacyItem, png, true);
+    await build({
+      root,
+      logLevel: 'silent',
+      plugins: [publicGalleryPlugin(root)],
+      build: { sourcemap: true, outDir: 'dist' },
+    });
+
+    await expect(readFile(join(root, 'dist', 'images', 'legacy-private.png')))
+      .rejects.toMatchObject({ code: 'ENOENT' });
+    await expect(readFile(join(root, 'dist', 'images', 'private-work.png')))
       .rejects.toMatchObject({ code: 'ENOENT' });
   });
 });

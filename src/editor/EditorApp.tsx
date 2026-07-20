@@ -105,12 +105,15 @@ export function EditorApp({ api = editorApi }: { api?: EditorApiContract }): JSX
   const [galleryDraft, setGalleryDraft] = useState<GalleryDraft | null>(null);
   const [selectedGalleryFile, setSelectedGalleryFile] = useState<File | null>(null);
   const [selectedGalleryExtension, setSelectedGalleryExtension] = useState<GalleryImageExtension | null>(null);
+  const [galleryImagePending, setGalleryImagePending] = useState(false);
   const [savedSource, setSavedSource] = useState<string | null>(null);
   const [isNew, setIsNew] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [message, setMessage] = useState('');
   const [pending, setPending] = useState<'save' | 'delete' | null>(null);
   const pendingRef = useRef(false);
+  const galleryImageReadToken = useRef(0);
+  const selectedGalleryFileRef = useRef<File | null>(null);
 
   useEffect(() => {
     void Promise.all([
@@ -148,11 +151,18 @@ export function EditorApp({ api = editorApi }: { api?: EditorApiContract }): JSX
     next();
   }
 
+  function clearGalleryImageSelection() {
+    galleryImageReadToken.current += 1;
+    selectedGalleryFileRef.current = null;
+    setSelectedGalleryFile(null);
+    setSelectedGalleryExtension(null);
+    setGalleryImagePending(false);
+  }
+
   function resetDrafts() {
     setDraft(null);
     setGalleryDraft(null);
-    setSelectedGalleryFile(null);
-    setSelectedGalleryExtension(null);
+    clearGalleryImageSelection();
     setDeleting(false);
     setIsNew(false);
     setSavedSource(null);
@@ -162,8 +172,7 @@ export function EditorApp({ api = editorApi }: { api?: EditorApiContract }): JSX
     transition(() => {
       setKind(entryKind);
       setGalleryDraft(null);
-      setSelectedGalleryFile(null);
-      setSelectedGalleryExtension(null);
+      clearGalleryImageSelection();
       setDraft({ kind: entryKind, id: entry.id, source: entry.source, dirty: false, validation: validationFor(entryKind, entry.source, recordIds, allIds, false) });
       setSavedSource(entry.source);
       setIsNew(false);
@@ -177,8 +186,7 @@ export function EditorApp({ api = editorApi }: { api?: EditorApiContract }): JSX
       setKind('gallery');
       setDraft(null);
       setSavedSource(null);
-      setSelectedGalleryFile(null);
-      setSelectedGalleryExtension(null);
+      clearGalleryImageSelection();
       setGalleryDraft({ item, saved: item, isNew: false, dirty: false, validation: galleryValidationFor(item, allIds, false) });
       setIsNew(false);
       setDeleting(false);
@@ -195,8 +203,7 @@ export function EditorApp({ api = editorApi }: { api?: EditorApiContract }): JSX
         const item = blankGallery();
         setDraft(null);
         setSavedSource(null);
-        setSelectedGalleryFile(null);
-        setSelectedGalleryExtension(null);
+        clearGalleryImageSelection();
         setGalleryDraft({ item, saved: null, isNew: true, dirty: true, validation: galleryValidationFor(item, allIds, true) });
         setIsNew(false);
         return;
@@ -204,8 +211,7 @@ export function EditorApp({ api = editorApi }: { api?: EditorApiContract }): JSX
       const data = blankData(entryKind);
       const source = sourceFrom(data, '');
       setGalleryDraft(null);
-      setSelectedGalleryFile(null);
-      setSelectedGalleryExtension(null);
+      clearGalleryImageSelection();
       setDraft({ kind: entryKind, id: '', source, dirty: true, validation: validationFor(entryKind, source, recordIds, allIds, true) });
       setSavedSource(null);
       setIsNew(true);
@@ -238,20 +244,61 @@ export function EditorApp({ api = editorApi }: { api?: EditorApiContract }): JSX
 
   async function chooseGalleryFile(file: File | null) {
     if (!galleryDraft || pendingRef.current) return;
+    const token = galleryImageReadToken.current + 1;
+    galleryImageReadToken.current = token;
+    selectedGalleryFileRef.current = file;
     setSelectedGalleryFile(file);
-    const extension = file ? await galleryImageExtension(file) : null;
-    setSelectedGalleryExtension(extension);
-    const image = file ? suggestedGalleryPath(galleryDraft.item.id, extension) : galleryDraft.saved?.image ?? '';
-    const item = { ...galleryDraft.item, image };
-    const validation = galleryValidationFor(item, allIds, galleryDraft.isNew);
-    if (file && !extension) validation.fields.image = 'PNG, JPEG, WebP 이미지 파일만 사용할 수 있습니다.';
-    setGalleryDraft({
-      ...galleryDraft,
-      item,
-      dirty: galleryDraft.isNew || Boolean(file) || JSON.stringify(item) !== JSON.stringify(galleryDraft.saved),
-      validation: { valid: validation.valid && (!file || Boolean(extension)), fields: validation.fields },
-    });
+    setSelectedGalleryExtension(null);
     setDeleting(false);
+    if (!file) {
+      setGalleryImagePending(false);
+      setGalleryDraft((current) => {
+        if (!current || galleryImageReadToken.current !== token) return current;
+        const item = { ...current.item, image: current.saved?.image ?? '' };
+        return {
+          ...current,
+          item,
+          dirty: current.isNew || JSON.stringify(item) !== JSON.stringify(current.saved),
+          validation: galleryValidationFor(item, allIds, current.isNew),
+        };
+      });
+      return;
+    }
+
+    setGalleryImagePending(true);
+    setGalleryDraft((current) => current ? {
+      ...current,
+      dirty: true,
+      validation: { ...galleryValidationFor(current.item, allIds, current.isNew), valid: false },
+    } : current);
+
+    let extension: GalleryImageExtension | null = null;
+    let readError = false;
+    try {
+      extension = await galleryImageExtension(file);
+    } catch {
+      readError = true;
+    }
+    if (galleryImageReadToken.current !== token || selectedGalleryFileRef.current !== file) return;
+
+    setSelectedGalleryExtension(extension);
+    setGalleryImagePending(false);
+    setGalleryDraft((current) => {
+      if (!current || galleryImageReadToken.current !== token || selectedGalleryFileRef.current !== file) return current;
+      const item = { ...current.item, image: suggestedGalleryPath(current.item.id, extension) };
+      const validation = galleryValidationFor(item, allIds, current.isNew);
+      if (!extension) {
+        validation.fields.image = readError
+          ? '이미지 파일을 읽지 못했습니다.'
+          : 'PNG, JPEG, WebP 이미지 파일만 사용할 수 있습니다.';
+      }
+      return {
+        ...current,
+        item,
+        dirty: true,
+        validation: { valid: validation.valid && Boolean(extension), fields: validation.fields },
+      };
+    });
   }
 
   async function saveContent() {
@@ -298,7 +345,7 @@ export function EditorApp({ api = editorApi }: { api?: EditorApiContract }): JSX
   }
 
   async function saveGallery() {
-    if (pendingRef.current || !galleryDraft || (!deleting && !galleryDraft.validation.valid)) return;
+    if (pendingRef.current || !galleryDraft || (!deleting && (galleryImagePending || !galleryDraft.validation.valid))) return;
     const operation = deleting ? 'delete' : 'save';
     pendingRef.current = true;
     setPending(operation);
@@ -308,8 +355,7 @@ export function EditorApp({ api = editorApi }: { api?: EditorApiContract }): JSX
         setGalleryItems((current) => current.filter((item) => item.id !== galleryDraft.item.id));
         setMessage('삭제한 화랑 항목과 이미지를 휴지통으로 옮겼습니다.');
         setGalleryDraft(null);
-        setSelectedGalleryFile(null);
-        setSelectedGalleryExtension(null);
+        clearGalleryImageSelection();
         setDeleting(false);
         return;
       }
@@ -324,8 +370,7 @@ export function EditorApp({ api = editorApi }: { api?: EditorApiContract }): JSX
         : await api.saveGallery(item);
       setGalleryItems((current) => [...current.filter((entry) => entry.id !== result.id), result]);
       setGalleryDraft({ item: result, saved: result, isNew: false, dirty: false, validation: galleryValidationFor(result, allIds, false) });
-      setSelectedGalleryFile(null);
-      setSelectedGalleryExtension(null);
+      clearGalleryImageSelection();
       setMessage('화랑 항목을 저장했습니다.');
     } catch (error) {
       const fields = fieldErrors(error);
@@ -369,9 +414,10 @@ export function EditorApp({ api = editorApi }: { api?: EditorApiContract }): JSX
         <PreviewPane kind={draft.kind} data={preview.data} body={preview.body} path={`src/content/${draft.kind}/${draft.id}.md`} action={action} />
       </>}
       {galleryDraft && <>
-        <GalleryForm value={galleryDraft.item} errors={galleryDraft.validation.fields} idEditable={galleryDraft.isNew} disabled={pending !== null} selectedFile={selectedGalleryFile} selectedExtension={selectedGalleryExtension} onChange={updateGallery} onFileChange={(file) => void chooseGalleryFile(file)} />
+        <GalleryForm value={galleryDraft.item} errors={galleryDraft.validation.fields} idEditable={galleryDraft.isNew} disabled={pending !== null} selectedFile={selectedGalleryFile} selectedExtension={selectedGalleryExtension} savedPublic={galleryDraft.saved?.public} onChange={updateGallery} onFileChange={(file) => void chooseGalleryFile(file)} />
+        {galleryImagePending && <p role="status">이미지 확인 중입니다.</p>}
         {!galleryDraft.isNew && <button type="button" disabled={pending !== null} onClick={() => setDeleting((value) => !value)}>{deleting ? '삭제 취소' : '삭제 예정으로 표시'}</button>}
-        <button type="button" disabled={pending !== null || (deleting ? false : !galleryDraft.validation.valid)} onClick={() => void saveGallery()}>{deleting ? '삭제 확인' : '저장'}</button>
+        <button type="button" disabled={pending !== null || (deleting ? false : galleryImagePending || !galleryDraft.validation.valid)} onClick={() => void saveGallery()}>{deleting ? '삭제 확인' : '저장'}</button>
         <p>작업: {deleting ? '삭제 예정' : galleryDraft.isNew ? '생성' : galleryDraft.dirty ? '수정' : '변경 없음'}</p>
         <p>src/content/gallery.yaml</p>
       </>}
