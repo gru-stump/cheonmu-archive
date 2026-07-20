@@ -12,7 +12,15 @@ import {
   type RecordMeta,
 } from '../content/schema';
 import { DocumentForm } from './DocumentForm';
-import { editorApi, EditorApiError, type EditorApi as EditorApiContract, type EditorEntry, type EditorKind } from './api';
+import {
+  editorApi,
+  EditorApiError,
+  type EditorApi as EditorApiContract,
+  type EditorEntry,
+  type EditorKind,
+  type GalleryChange,
+  type GalleryChangePlan,
+} from './api';
 import { GalleryForm, suggestedGalleryPath, validateGalleryDraft } from './GalleryForm';
 import { galleryImageExtension, type GalleryImageExtension } from './gallery-image';
 import { PreviewPane, type EditorAction } from './PreviewPane';
@@ -96,6 +104,14 @@ function fieldErrors(error: unknown): Record<string, string> | undefined {
   return typeof fields === 'object' && fields !== null ? fields as Record<string, string> : undefined;
 }
 
+function galleryChangeText(change: GalleryChange): string {
+  if (change.action === 'metadata') return `메타데이터: ${change.path}`;
+  if (change.action === 'stage') return `스테이징 원본: ${change.path}`;
+  if (change.action === 'move') return `이동: ${change.path} → ${change.destination}`;
+  if (change.action === 'trash') return `휴지통: ${change.path}`;
+  return `${change.visibility === 'public' ? '공개 저장' : '비공개 저장'}: ${change.path}`;
+}
+
 export function EditorApp({ api = editorApi }: { api?: EditorApiContract }): JSX.Element {
   const [kind, setKind] = useState<EditorSection>('records');
   const [entries, setEntries] = useState<Record<EditorKind, EditorEntry[]>>({ records: [], profiles: [], documents: [] });
@@ -106,6 +122,9 @@ export function EditorApp({ api = editorApi }: { api?: EditorApiContract }): JSX
   const [selectedGalleryFile, setSelectedGalleryFile] = useState<File | null>(null);
   const [selectedGalleryExtension, setSelectedGalleryExtension] = useState<GalleryImageExtension | null>(null);
   const [galleryImagePending, setGalleryImagePending] = useState(false);
+  const [galleryPlan, setGalleryPlan] = useState<GalleryChangePlan | null>(null);
+  const [galleryPlanPending, setGalleryPlanPending] = useState(false);
+  const [galleryPlanError, setGalleryPlanError] = useState('');
   const [savedSource, setSavedSource] = useState<string | null>(null);
   const [isNew, setIsNew] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -113,6 +132,7 @@ export function EditorApp({ api = editorApi }: { api?: EditorApiContract }): JSX
   const [pending, setPending] = useState<'save' | 'delete' | null>(null);
   const pendingRef = useRef(false);
   const galleryImageReadToken = useRef(0);
+  const galleryPlanToken = useRef(0);
   const selectedGalleryFileRef = useRef<File | null>(null);
 
   useEffect(() => {
@@ -133,6 +153,43 @@ export function EditorApp({ api = editorApi }: { api?: EditorApiContract }): JSX
     window.addEventListener('beforeunload', warn);
     return () => window.removeEventListener('beforeunload', warn);
   }, [hasUnsavedChanges]);
+
+  useEffect(() => {
+    const token = galleryPlanToken.current + 1;
+    galleryPlanToken.current = token;
+    setGalleryPlan(null);
+    setGalleryPlanError('');
+    const needsPlan = Boolean(galleryDraft && (galleryDraft.dirty || deleting));
+    const canPlan = Boolean(galleryDraft && (deleting || (!galleryImagePending && galleryDraft.validation.valid)));
+    if (!needsPlan || !canPlan || !galleryDraft) {
+      setGalleryPlanPending(false);
+      return undefined;
+    }
+    if (!api.planGallery) {
+      setGalleryPlanError('변경 파일 계획 API를 사용할 수 없습니다.');
+      setGalleryPlanPending(false);
+      return undefined;
+    }
+
+    setGalleryPlanPending(true);
+    const request = {
+      item: galleryDraft.item,
+      ...(selectedGalleryFile ? { file: selectedGalleryFile } : {}),
+      ...(deleting ? { deleting: true } : {}),
+    };
+    void api.planGallery(request).then((plan) => {
+      if (galleryPlanToken.current !== token) return;
+      setGalleryPlan(plan);
+      setGalleryPlanPending(false);
+    }).catch((error: unknown) => {
+      if (galleryPlanToken.current !== token) return;
+      setGalleryPlanError(error instanceof Error ? error.message : '변경 파일 계획을 만들지 못했습니다.');
+      setGalleryPlanPending(false);
+    });
+    return () => {
+      if (galleryPlanToken.current === token) galleryPlanToken.current += 1;
+    };
+  }, [api, deleting, galleryDraft, galleryImagePending, selectedGalleryFile]);
 
   const recordIds = entries.records.map((entry) => entry.id);
   const allIds = [...contentKinds.flatMap((entryKind) => entries[entryKind].map((entry) => entry.id)), ...galleryItems.map((item) => item.id)];
@@ -334,24 +391,24 @@ export function EditorApp({ api = editorApi }: { api?: EditorApiContract }): JSX
     }
   }
 
-  async function uploadGallery(item: GalleryItem, file: File) {
-    const plan = api.planGalleryWithImage
-      ? await api.planGalleryWithImage({ item, file })
-      : { item, changes: [{ action: 'write' as const, path: 'src/content/gallery.yaml', visibility: 'metadata' as const }] };
-    const replacements = plan.changes.filter(({ action }) => action === 'trash');
-    if (replacements.length > 0) {
-      const summary = plan.changes
-        .map(({ action, path, visibility }) => `${action === 'write' ? '저장' : '휴지통'} [${visibility}] ${path}`)
-        .join('\n');
-      if (!window.confirm(`다음 파일 변경을 적용하시겠습니까?\n\n${summary}`)) {
-        throw new EditorApiError('이미지 교체가 취소되었습니다.');
-      }
-    }
-    return api.saveGalleryWithImage({ item: plan.item, file, overwrite: replacements.length > 0 });
+  async function uploadGallery(plan: GalleryChangePlan, file: File) {
+    return api.saveGalleryWithImage({
+      item: plan.item,
+      file,
+      overwrite: plan.changes.some(({ action }) => action === 'trash'),
+    });
   }
 
   async function saveGallery() {
-    if (pendingRef.current || !galleryDraft || (!deleting && (galleryImagePending || !galleryDraft.validation.valid))) return;
+    const needsPlan = Boolean(galleryDraft && (galleryDraft.dirty || deleting));
+    if (
+      pendingRef.current
+      || !galleryDraft
+      || (needsPlan && !galleryPlan)
+      || galleryPlanPending
+      || Boolean(galleryPlanError)
+      || (!deleting && (galleryImagePending || !galleryDraft.validation.valid))
+    ) return;
     const operation = deleting ? 'delete' : 'save';
     pendingRef.current = true;
     setPending(operation);
@@ -365,14 +422,20 @@ export function EditorApp({ api = editorApi }: { api?: EditorApiContract }): JSX
         setDeleting(false);
         return;
       }
-      const item = galleryDraft.item;
+      const item = galleryPlan?.item ?? galleryDraft.item;
       const validation = galleryValidationFor(item, allIds, galleryDraft.isNew);
       if (!validation.valid) {
         setGalleryDraft({ ...galleryDraft, item, validation });
         return;
       }
+      if (!deleting && galleryPlan?.changes.some(({ action }) => action === 'trash')) {
+        const summary = galleryPlan.changes.map(galleryChangeText).join('\n');
+        if (!window.confirm(`다음 파일 변경을 적용하시겠습니까?\n\n${summary}`)) {
+          throw new EditorApiError('이미지 교체가 취소되었습니다.');
+        }
+      }
       const result = selectedGalleryFile
-        ? (await uploadGallery(item, selectedGalleryFile)).item
+        ? (await uploadGallery(galleryPlan!, selectedGalleryFile)).item
         : await api.saveGallery(item);
       setGalleryItems((current) => [...current.filter((entry) => entry.id !== result.id), result]);
       setGalleryDraft({ item: result, saved: result, isNew: false, dirty: false, validation: galleryValidationFor(result, allIds, false) });
@@ -422,20 +485,22 @@ export function EditorApp({ api = editorApi }: { api?: EditorApiContract }): JSX
       {galleryDraft && <>
         <GalleryForm value={galleryDraft.item} errors={galleryDraft.validation.fields} idEditable={galleryDraft.isNew} disabled={pending !== null} selectedFile={selectedGalleryFile} selectedExtension={selectedGalleryExtension} savedPublic={galleryDraft.saved?.public} onChange={updateGallery} onFileChange={(file) => void chooseGalleryFile(file)} />
         {galleryImagePending && <p role="status">이미지 확인 중입니다.</p>}
+        {galleryPlanPending && <p role="status">변경 파일 계획 확인 중입니다.</p>}
+        {galleryPlanError && <p role="alert">{galleryPlanError}</p>}
         {!galleryDraft.isNew && <button type="button" disabled={pending !== null} onClick={() => setDeleting((value) => !value)}>{deleting ? '삭제 취소' : '삭제 예정으로 표시'}</button>}
-        <button type="button" disabled={pending !== null || (deleting ? false : galleryImagePending || !galleryDraft.validation.valid)} onClick={() => void saveGallery()}>{deleting ? '삭제 확인' : '저장'}</button>
+        <button
+          type="button"
+          disabled={pending !== null
+            || galleryPlanPending
+            || Boolean(galleryPlanError)
+            || ((galleryDraft.dirty || deleting) && !galleryPlan)
+            || (deleting ? false : galleryImagePending || !galleryDraft.validation.valid)}
+          onClick={() => void saveGallery()}
+        >{deleting ? '삭제 확인' : '저장'}</button>
         <p>작업: {deleting ? '삭제 예정' : galleryDraft.isNew ? '생성' : galleryDraft.dirty ? '수정' : '변경 없음'}</p>
-        <ul aria-label="변경 파일">
-          <li>메타데이터 저장: src/content/gallery.yaml</li>
-          <li>{galleryDraft.item.public ? '공개 저장' : '비공개 저장'}: {galleryDraft.item.public
-            ? `public${galleryDraft.item.image}`
-            : `src/content/private-images/${galleryDraft.item.image.slice('/images/'.length)}`}</li>
-          {galleryDraft.saved && (galleryDraft.saved.image !== galleryDraft.item.image || galleryDraft.saved.public !== galleryDraft.item.public) && <li>
-            휴지통 이동: {galleryDraft.saved.public
-              ? `public${galleryDraft.saved.image}`
-              : `src/content/private-images/${galleryDraft.saved.image.slice('/images/'.length)}`}
-          </li>}
-        </ul>
+        {galleryPlan && <ul aria-label="변경 파일">
+          {galleryPlan.changes.map((change, index) => <li key={`${change.action}-${change.path}-${index}`}>{galleryChangeText(change)}</li>)}
+        </ul>}
       </>}
     </section>}
     {message && <p role="status">{message}</p>}

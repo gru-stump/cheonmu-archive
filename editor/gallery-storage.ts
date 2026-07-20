@@ -145,8 +145,15 @@ export interface PrivateGalleryImage {
 
 export interface GalleryChangePlan {
   item: GalleryItem;
-  changes: Array<{ action: 'write' | 'trash'; path: string; visibility: 'public' | 'private' | 'metadata' | 'trash' }>;
+  changes: GalleryChange[];
 }
+
+export type GalleryChange =
+  | { action: 'metadata'; path: string; visibility: 'metadata' }
+  | { action: 'stage'; path: string; visibility: 'stage' }
+  | { action: 'write'; path: string; visibility: 'public' | 'private' }
+  | { action: 'move'; path: string; destination: string; visibility: 'public' | 'private' }
+  | { action: 'trash'; path: string; visibility: 'trash' };
 
 export function createGalleryStorage({ rootDir, now = () => new Date(), filesystem }: GalleryStorageOptions) {
   const resolvedRoot = resolve(rootDir);
@@ -488,8 +495,301 @@ export function createGalleryStorage({ rootDir, now = () => new Date(), filesyst
     return paths;
   }
 
+  type Locations = Awaited<ReturnType<typeof roots>>;
+
+  type PreparedMetadataPlan = {
+    kind: 'metadata';
+    item: GalleryItem;
+    items: GalleryItem[];
+    locations: Locations;
+    source: string;
+    destination: string;
+    stagedPath?: string;
+    manifestPath?: string;
+    candidates: Set<string>;
+    changes: GalleryChange[];
+  };
+
+  type PreparedCombinedPlan = {
+    kind: 'combined';
+    item: GalleryItem;
+    items: GalleryItem[];
+    locations: Locations;
+    destination: string;
+    candidates: Set<string>;
+    info: ImageInfo;
+    bytes: Buffer;
+    changes: GalleryChange[];
+  };
+
+  type PreparedDeletePlan = {
+    kind: 'delete';
+    item: GalleryItem;
+    items: GalleryItem[];
+    locations: Locations;
+    image: string;
+    changes: GalleryChange[];
+  };
+
+  function workspacePath(locations: Locations, path: string): string {
+    return relative(locations.workspace, path).split(sep).join('/');
+  }
+
+  function auditTrash(locations: Locations, paths: Iterable<string>): GalleryChange[] {
+    return [...paths].map((path) => ({
+      action: 'trash',
+      path: workspacePath(locations, path),
+      visibility: 'trash',
+    }));
+  }
+
+  async function prepareMetadataPlan(input: GalleryItem): Promise<PreparedMetadataPlan> {
+    let item: GalleryItem;
+    try {
+      item = galleryItemSchema.parse(input);
+    } catch (error) {
+      throw validationError(error);
+    }
+    await validateProspectiveArchive(resolvedRoot, {
+      type: 'gallery-write',
+      item,
+      futurePublicImagePaths: item.public ? [item.image] : [],
+    });
+    const locations = await roots(false);
+    const items = await readItemsUnsafe(locations);
+    const index = items.findIndex(({ id }) => id === item.id);
+    const previous = index >= 0 ? items[index] : undefined;
+    if (index >= 0) items[index] = item;
+    else items.push(item);
+    const destinationRoot = item.public ? locations.images : locations.privateImages;
+    const destination = await checkedImagePath(destinationRoot, item.image, false);
+    const normalizedSubmittedPath = ['png', 'jpg', 'jpeg', 'webp']
+      .some((extension) => item.image === `/images/${item.id}.${extension}`);
+    const stagedPath = normalizedSubmittedPath
+      ? await optionalImagePath(locations.stagedImages, item.image)
+      : undefined;
+    const changes: GalleryChange[] = [
+      { action: 'metadata', path: 'src/content/gallery.yaml', visibility: 'metadata' },
+    ];
+
+    if (stagedPath) {
+      const imageInfo = inspectImage(await readFile(stagedPath));
+      validateImageExtension(item.image, imageInfo);
+      const manifestPath = await optionalStageManifestPath(locations.stagedImages, item.id);
+      const manifest = manifestPath
+        ? parseStageManifest(await readFile(manifestPath, 'utf8'))
+        : { version: 1, candidates: [] } satisfies StageManifest;
+      const candidates = await confirmedCandidatePaths(locations, items, item.id, manifest, previous?.image);
+      const previousPath = previous ? await optionalStoredImagePath(locations, previous) : undefined;
+      if (previousPath) candidates.add(previousPath);
+      const existingDestination = await optionalImagePath(destinationRoot, item.image);
+      if (existingDestination && !candidates.has(existingDestination)) {
+        throw new GalleryStorageError('Gallery validation failed.', 'CONFLICT', { image: 'Destination image already exists.' });
+      }
+      changes.push(
+        { action: 'stage', path: workspacePath(locations, stagedPath), visibility: 'stage' },
+        { action: 'write', path: workspacePath(locations, destination), visibility: item.public ? 'public' : 'private' },
+        ...auditTrash(locations, candidates),
+      );
+      return {
+        kind: 'metadata', item, items, locations, source: stagedPath, destination,
+        stagedPath, manifestPath, candidates, changes,
+      };
+    }
+
+    const previousItem = previous ?? item;
+    let source = await optionalStoredImagePath(locations, previousItem);
+    if (!source && index >= 0) {
+      const preferred = item.public ? locations.images : locations.privateImages;
+      const alternate = item.public ? locations.privateImages : locations.images;
+      source = await optionalImagePath(preferred, item.image)
+        ?? await optionalImagePath(alternate, item.image);
+    }
+    if (!source) source = await storedImagePath(locations, previousItem);
+    const imageInfo = inspectImage(await readFile(source));
+    validateImageExtension(item.image, imageInfo);
+    if (destination !== source) {
+      changes.push({
+        action: 'move',
+        path: workspacePath(locations, source),
+        destination: workspacePath(locations, destination),
+        visibility: item.public ? 'public' : 'private',
+      });
+    }
+    return {
+      kind: 'metadata', item, items, locations, source, destination,
+      candidates: new Set(), changes,
+    };
+  }
+
+  async function prepareCombinedPlan(input: GalleryItem, bytes: Buffer): Promise<PreparedCombinedPlan> {
+    let parsedItem: GalleryItem;
+    try {
+      parsedItem = galleryItemSchema.parse(input);
+    } catch (error) {
+      throw validationError(error);
+    }
+    const safeId = checkedId(parsedItem.id);
+    const info = inspectImage(bytes);
+    const publicPath = `/images/${safeId}.${info.extension}`;
+    const item = { ...parsedItem, image: publicPath };
+    await validateProspectiveArchive(resolvedRoot, {
+      type: 'gallery-write', item,
+      futurePublicImagePaths: item.public ? [item.image] : [],
+    });
+    const locations = await roots(false);
+    const items = await readItemsUnsafe(locations);
+    const existingItem = items.find((entry) => entry.id === safeId);
+    const destinationRoot = item.public ? locations.images : locations.privateImages;
+    const destination = await checkedImagePath(destinationRoot, publicPath, false);
+    if (referencedByAnotherItem(items, safeId, publicPath)) {
+      throw new GalleryStorageError('Gallery validation failed.', 'VALIDATION_ERROR', { image: 'Gallery image paths must be unique.' });
+    }
+    const candidates = await replacementCandidates(locations, items, safeId, existingItem);
+    const changes: GalleryChange[] = [
+      { action: 'metadata', path: 'src/content/gallery.yaml', visibility: 'metadata' },
+      { action: 'write', path: workspacePath(locations, destination), visibility: item.public ? 'public' : 'private' },
+      ...auditTrash(locations, candidates),
+    ];
+    return { kind: 'combined', item, items, locations, destination, candidates, info, bytes, changes };
+  }
+
+  async function prepareDeletePlan(id: string): Promise<PreparedDeletePlan> {
+    const safeId = checkedId(id);
+    await validateProspectiveArchive(resolvedRoot, { type: 'gallery-delete', id: safeId });
+    const locations = await roots(false);
+    const items = await readItemsUnsafe(locations);
+    const index = items.findIndex((item) => item.id === safeId);
+    if (index < 0) throw new GalleryStorageError('Gallery item not found.', 'NOT_FOUND');
+    const [item] = items.splice(index, 1);
+    const image = await storedImagePath(locations, item);
+    return {
+      kind: 'delete', item, items, locations, image,
+      changes: [
+        { action: 'metadata', path: 'src/content/gallery.yaml', visibility: 'metadata' },
+        { action: 'trash', path: workspacePath(locations, image), visibility: 'trash' },
+      ],
+    };
+  }
+
+  function publicPlan(plan: PreparedMetadataPlan | PreparedCombinedPlan | PreparedDeletePlan): GalleryChangePlan {
+    return { item: plan.item, changes: plan.changes };
+  }
+
+  async function executeMetadataPlan(plan: PreparedMetadataPlan): Promise<GalleryItem> {
+    await roots();
+    if (plan.stagedPath) {
+      const moved: Array<{ backup: string; destination: string }> = [];
+      let destinationLinked = false;
+      let stagedRemoved = false;
+      try {
+        for (const candidate of plan.candidates) {
+          moved.push({ backup: await moveImageToTrash(candidate, plan.locations), destination: candidate });
+        }
+        await link(plan.stagedPath, plan.destination);
+        destinationLinked = true;
+        await unlinkPath(plan.stagedPath);
+        stagedRemoved = true;
+        await writeItemsUnsafe(plan.items, plan.locations);
+      } catch (error) {
+        if (destinationLinked) {
+          if (stagedRemoved) await restoreImage(plan.destination, plan.stagedPath);
+          await unlinkPath(plan.destination);
+        }
+        for (const entry of moved.reverse()) await restoreImage(entry.backup, entry.destination);
+        throw error;
+      }
+      if (plan.manifestPath) await rm(plan.manifestPath, { force: true }).catch(() => undefined);
+      return plan.item;
+    }
+
+    const moving = plan.destination !== plan.source;
+    let destinationLinked = false;
+    let sourceRemoved = false;
+    try {
+      if (moving) {
+        try {
+          await link(plan.source, plan.destination);
+        } catch (error) {
+          if (errorCode(error) === 'EEXIST') {
+            throw new GalleryStorageError('Gallery validation failed.', 'CONFLICT', { image: 'Destination image already exists.' });
+          }
+          throw error;
+        }
+        destinationLinked = true;
+        await unlinkPath(plan.source);
+        sourceRemoved = true;
+      }
+      await writeItemsUnsafe(plan.items, plan.locations);
+    } catch (error) {
+      if (moving && destinationLinked) {
+        if (sourceRemoved) await restoreImage(plan.destination, plan.source);
+        await unlinkPath(plan.destination);
+      }
+      throw error;
+    }
+    return plan.item;
+  }
+
+  async function executeCombinedPlan(
+    plan: PreparedCombinedPlan,
+    overwrite: boolean,
+  ): Promise<{ item: GalleryItem; image: RegisteredImage }> {
+    if (plan.candidates.size > 0 && !overwrite) {
+      throw new GalleryStorageError('이미지가 이미 존재합니다. 덮어쓰기를 확인해 주세요.', 'CONFLICT', { image: 'Explicit overwrite confirmation is required.' });
+    }
+    await roots();
+    const temporary = join(
+      plan.item.public ? plan.locations.images : plan.locations.privateImages,
+      `.${plan.item.id}.${randomUUID()}.tmp`,
+    );
+    const moved: Array<{ backup: string; destination: string }> = [];
+    let targetInstalled = false;
+    try {
+      await writeFile(temporary, plan.bytes, { flag: 'wx' });
+      await roots();
+      for (const candidate of plan.candidates) {
+        moved.push({ backup: await moveImageToTrash(candidate, plan.locations), destination: candidate });
+      }
+      await rename(temporary, plan.destination);
+      targetInstalled = true;
+      const index = plan.items.findIndex((entry) => entry.id === plan.item.id);
+      if (index >= 0) plan.items[index] = plan.item;
+      else plan.items.push(plan.item);
+      await writeItemsUnsafe(plan.items, plan.locations);
+    } catch (error) {
+      await rm(temporary, { force: true });
+      if (targetInstalled) await rm(plan.destination, { force: true });
+      for (const entry of moved.reverse()) await restoreImage(entry.backup, entry.destination);
+      throw error;
+    }
+    return {
+      item: plan.item,
+      image: { path: plan.item.image, width: plan.info.width, height: plan.info.height },
+    };
+  }
+
+  async function executeDeletePlan(plan: PreparedDeletePlan): Promise<void> {
+    await roots();
+    const backup = await moveImageToTrash(plan.image, plan.locations);
+    try {
+      await writeItemsUnsafe(plan.items, plan.locations);
+    } catch (error) {
+      await restoreImage(backup, plan.image);
+      throw error;
+    }
+  }
+
   function listItems(): Promise<GalleryItem[]> {
     return enqueue(async () => readItemsUnsafe());
+  }
+
+  function planItem(input: GalleryItem): Promise<GalleryChangePlan> {
+    return enqueue(async () => publicPlan(await prepareMetadataPlan(input)));
+  }
+
+  function planTrashItem(id: string): Promise<GalleryChangePlan> {
+    return enqueue(async () => publicPlan(await prepareDeletePlan(id)));
   }
 
   function readPrivateImage(id: string): Promise<PrivateGalleryImage> {
@@ -508,113 +808,7 @@ export function createGalleryStorage({ rootDir, now = () => new Date(), filesyst
   }
 
   function writeItem(input: GalleryItem): Promise<GalleryItem> {
-    return enqueue(async () => {
-      let item: GalleryItem;
-      try {
-        item = galleryItemSchema.parse(input);
-      } catch (error) {
-        throw validationError(error);
-      }
-      await validateProspectiveArchive(resolvedRoot, {
-        type: 'gallery-write',
-        item,
-        futurePublicImagePaths: item.public ? [item.image] : [],
-      });
-      const locations = await roots(false);
-      const items = await readItemsUnsafe(locations);
-      const index = items.findIndex(({ id }) => id === item.id);
-      const previous = index >= 0 ? items[index] : undefined;
-      if (index >= 0) items[index] = item;
-      else items.push(item);
-      const destinationRoot = item.public ? locations.images : locations.privateImages;
-      const destination = await checkedImagePath(destinationRoot, item.image, false);
-      const normalizedSubmittedPath = ['png', 'jpg', 'jpeg', 'webp']
-        .some((extension) => item.image === `/images/${item.id}.${extension}`);
-      const stagedPath = normalizedSubmittedPath
-        ? await optionalImagePath(locations.stagedImages, item.image)
-        : undefined;
-
-      if (stagedPath) {
-        const imageInfo = inspectImage(await readFile(stagedPath));
-        validateImageExtension(item.image, imageInfo);
-        await roots();
-        const manifestPath = await optionalStageManifestPath(locations.stagedImages, item.id);
-        const manifest = manifestPath
-          ? parseStageManifest(await readFile(manifestPath, 'utf8'))
-          : { version: 1, candidates: [] } satisfies StageManifest;
-        const candidates = await confirmedCandidatePaths(locations, items, item.id, manifest, previous?.image);
-        const previousPath = previous
-          ? await optionalStoredImagePath(locations, previous)
-          : undefined;
-        if (previousPath) candidates.add(previousPath);
-        const existingDestination = await optionalImagePath(destinationRoot, item.image);
-        if (existingDestination && !candidates.has(existingDestination)) {
-          throw new GalleryStorageError('Gallery validation failed.', 'CONFLICT', { image: 'Destination image already exists.' });
-        }
-
-        const moved: Array<{ backup: string; destination: string }> = [];
-        let destinationLinked = false;
-        let stagedRemoved = false;
-        try {
-          for (const candidate of candidates) {
-            moved.push({ backup: await moveImageToTrash(candidate, locations), destination: candidate });
-          }
-          await link(stagedPath, destination);
-          destinationLinked = true;
-          await unlinkPath(stagedPath);
-          stagedRemoved = true;
-          await writeItemsUnsafe(items, locations);
-        } catch (error) {
-          if (destinationLinked) {
-            if (stagedRemoved) await restoreImage(destination, stagedPath);
-            await unlinkPath(destination);
-          }
-          for (const entry of moved.reverse()) await restoreImage(entry.backup, entry.destination);
-          throw error;
-        }
-        if (manifestPath) await rm(manifestPath, { force: true }).catch(() => undefined);
-        return item;
-      }
-
-      const previousItem = previous ?? item;
-      let imagePath = await optionalStoredImagePath(locations, previousItem);
-      if (!imagePath && index >= 0) {
-        const preferred = item.public ? locations.images : locations.privateImages;
-        const alternate = item.public ? locations.privateImages : locations.images;
-        imagePath = await optionalImagePath(preferred, item.image)
-          ?? await optionalImagePath(alternate, item.image);
-      }
-      if (!imagePath) imagePath = await storedImagePath(locations, previousItem);
-      const imageInfo = inspectImage(await readFile(imagePath));
-      validateImageExtension(item.image, imageInfo);
-      await roots();
-      const moving = destination !== imagePath;
-      let destinationLinked = false;
-      let sourceRemoved = false;
-      try {
-        if (moving) {
-          try {
-            await link(imagePath, destination);
-          } catch (error) {
-            if (errorCode(error) === 'EEXIST') {
-              throw new GalleryStorageError('Gallery validation failed.', 'CONFLICT', { image: 'Destination image already exists.' });
-            }
-            throw error;
-          }
-          destinationLinked = true;
-          await unlinkPath(imagePath);
-          sourceRemoved = true;
-        }
-        await writeItemsUnsafe(items, locations);
-      } catch (error) {
-        if (moving && destinationLinked) {
-          if (sourceRemoved) await restoreImage(destination, imagePath);
-          await unlinkPath(destination);
-        }
-        throw error;
-      }
-      return item;
-    });
+    return enqueue(async () => executeMetadataPlan(await prepareMetadataPlan(input)));
   }
 
   function registerImage({ id, bytes, overwrite }: RegisterImageRequest): Promise<RegisteredImage> {
@@ -664,41 +858,7 @@ export function createGalleryStorage({ rootDir, now = () => new Date(), filesyst
   }
 
   function planItemWithImage(input: GalleryItem, bytes: Buffer): Promise<GalleryChangePlan> {
-    return enqueue(async () => {
-      let parsedItem: GalleryItem;
-      try {
-        parsedItem = galleryItemSchema.parse(input);
-      } catch (error) {
-        throw validationError(error);
-      }
-      const info = inspectImage(bytes);
-      const publicPath = `/images/${checkedId(parsedItem.id)}.${info.extension}`;
-      const item = { ...parsedItem, image: publicPath };
-      await validateProspectiveArchive(resolvedRoot, {
-        type: 'gallery-write',
-        item,
-        futurePublicImagePaths: item.public ? [item.image] : [],
-      });
-      const locations = await roots(false);
-      const items = await readItemsUnsafe(locations);
-      const existingItem = items.find((entry) => entry.id === item.id);
-      const candidates = await replacementCandidates(locations, items, item.id, existingItem);
-      const destination = item.public
-        ? `public${publicPath}`
-        : `src/content/private-images/${basename(publicPath)}`;
-      return {
-        item,
-        changes: [
-          { action: 'write', path: 'src/content/gallery.yaml', visibility: 'metadata' },
-          { action: 'write', path: destination, visibility: item.public ? 'public' : 'private' },
-          ...[...candidates].map((path) => ({
-            action: 'trash' as const,
-            path: relative(locations.workspace, path).split(sep).join('/'),
-            visibility: 'trash' as const,
-          })),
-        ],
-      };
-    });
+    return enqueue(async () => publicPlan(await prepareCombinedPlan(input, bytes)));
   }
 
   function writeItemWithImage(
@@ -706,82 +866,18 @@ export function createGalleryStorage({ rootDir, now = () => new Date(), filesyst
     bytes: Buffer,
     overwrite: boolean,
   ): Promise<{ item: GalleryItem; image: RegisteredImage }> {
-    return enqueue(async () => {
-      let parsedItem: GalleryItem;
-      try {
-        parsedItem = galleryItemSchema.parse(input);
-      } catch (error) {
-        throw validationError(error);
-      }
-      const safeId = checkedId(parsedItem.id);
-      const info = inspectImage(bytes);
-      const publicPath = `/images/${safeId}.${info.extension}`;
-      const item = { ...parsedItem, image: publicPath };
-      await validateProspectiveArchive(resolvedRoot, {
-        type: 'gallery-write',
-        item,
-        futurePublicImagePaths: item.public ? [item.image] : [],
-      });
-      const locations = await roots();
-      const items = await readItemsUnsafe(locations);
-      const existingItem = items.find((entry) => entry.id === safeId);
-      const destinationRoot = item.public ? locations.images : locations.privateImages;
-      const target = await checkedImagePath(destinationRoot, publicPath, false);
-      if (referencedByAnotherItem(items, safeId, publicPath)) {
-        throw new GalleryStorageError('Gallery validation failed.', 'VALIDATION_ERROR', { image: 'Gallery image paths must be unique.' });
-      }
-      const candidates = await replacementCandidates(locations, items, safeId, existingItem);
-      if (candidates.size > 0 && !overwrite) {
-        throw new GalleryStorageError('이미지가 이미 존재합니다. 덮어쓰기를 확인해 주세요.', 'CONFLICT', { image: 'Explicit overwrite confirmation is required.' });
-      }
-
-      const temporary = join(destinationRoot, `.${safeId}.${randomUUID()}.tmp`);
-      const moved: Array<{ backup: string; destination: string }> = [];
-      let targetInstalled = false;
-      try {
-        await writeFile(temporary, bytes, { flag: 'wx' });
-        await roots();
-        for (const candidate of candidates) {
-          moved.push({ backup: await moveImageToTrash(candidate, locations), destination: candidate });
-        }
-        await rename(temporary, target);
-        targetInstalled = true;
-        const index = items.findIndex((entry) => entry.id === item.id);
-        if (index >= 0) items[index] = item;
-        else items.push(item);
-        await writeItemsUnsafe(items, locations);
-      } catch (error) {
-        await rm(temporary, { force: true });
-        if (targetInstalled) await rm(target, { force: true });
-        for (const entry of moved.reverse()) await restoreImage(entry.backup, entry.destination);
-        throw error;
-      }
-
-      return { item, image: { path: publicPath, width: info.width, height: info.height } };
-    });
+    return enqueue(async () => executeCombinedPlan(await prepareCombinedPlan(input, bytes), overwrite));
   }
 
   function trashItem(id: string): Promise<void> {
-    return enqueue(async () => {
-      const safeId = checkedId(id);
-      await validateProspectiveArchive(resolvedRoot, { type: 'gallery-delete', id: safeId });
-      const locations = await roots();
-      const items = await readItemsUnsafe(locations);
-      const index = items.findIndex((item) => item.id === safeId);
-      if (index < 0) throw new GalleryStorageError('Gallery item not found.', 'NOT_FOUND');
-      const [item] = items.splice(index, 1);
-      const image = await storedImagePath(locations, item);
-      const backup = await moveImageToTrash(image, locations);
-      try {
-        await writeItemsUnsafe(items, locations);
-      } catch (error) {
-        await restoreImage(backup, image);
-        throw error;
-      }
-    });
+    return enqueue(async () => executeDeletePlan(await prepareDeletePlan(id)));
   }
 
-  return { listItems, readPrivateImage, writeItem, writeItemWithImage, planItemWithImage, registerImage, trashItem };
+  return {
+    listItems, readPrivateImage,
+    planItem, planItemWithImage, planTrashItem,
+    writeItem, writeItemWithImage, registerImage, trashItem,
+  };
 }
 
 export type GalleryStorage = ReturnType<typeof createGalleryStorage>;

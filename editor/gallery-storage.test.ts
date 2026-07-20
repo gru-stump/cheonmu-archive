@@ -160,6 +160,74 @@ describe('gallery image storage', () => {
 });
 
 describe('gallery metadata storage', () => {
+  it('plans a title-only edit as metadata-only without a false image write', async () => {
+    const rootDir = await makeRoot(stringify([item]));
+    await writeFile(join(rootDir, 'public', 'images', 'new-work.png'), png);
+    const storage = createGalleryStorage({ rootDir });
+
+    const plan = await storage.planItem({ ...item, title: 'Renamed work' });
+
+    expect(plan.changes).toEqual([
+      { action: 'metadata', path: 'src/content/gallery.yaml', visibility: 'metadata' },
+    ]);
+    await expect(storage.listItems()).resolves.toEqual([item]);
+  });
+
+  it('plans a private-to-public migration as one exact move plus metadata', async () => {
+    const rootDir = await makeRoot();
+    const storage = createGalleryStorage({ rootDir });
+    const privateItem = { ...item, public: false };
+    await storage.writeItemWithImage(privateItem, png, false);
+
+    const plan = await storage.planItem({ ...privateItem, public: true });
+
+    expect(plan.changes).toEqual([
+      { action: 'metadata', path: 'src/content/gallery.yaml', visibility: 'metadata' },
+      {
+        action: 'move',
+        path: 'src/content/private-images/new-work.png',
+        destination: 'public/images/new-work.png',
+        visibility: 'public',
+      },
+    ]);
+    await expect(readFile(join(rootDir, 'src', 'content', 'private-images', 'new-work.png'))).resolves.toEqual(png);
+    await expect(readFile(join(rootDir, 'public', 'images', 'new-work.png')))
+      .rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  it('plans a staged same-path replacement with its source, destination, and exact trash candidates', async () => {
+    const rootDir = await makeRoot(stringify([item]));
+    await writeFile(join(rootDir, 'public', 'images', 'new-work.png'), png);
+    const storage = createGalleryStorage({ rootDir });
+    await storage.registerImage({ id: item.id, originalName: 'replacement.png', bytes: png, overwrite: true });
+
+    const plan = await storage.planItem(item);
+
+    expect(plan.changes).toEqual([
+      { action: 'metadata', path: 'src/content/gallery.yaml', visibility: 'metadata' },
+      { action: 'stage', path: 'src/content/staged-images/new-work.png', visibility: 'stage' },
+      { action: 'write', path: 'public/images/new-work.png', visibility: 'public' },
+      { action: 'trash', path: 'public/images/new-work.png', visibility: 'trash' },
+    ]);
+    await expect(readFile(join(rootDir, 'public', 'images', 'new-work.png'))).resolves.toEqual(png);
+    await expect(readFile(join(rootDir, 'src', 'content', 'staged-images', 'new-work.png'))).resolves.toEqual(png);
+  });
+
+  it('plans gallery deletion as metadata plus the exact image trash action', async () => {
+    const rootDir = await makeRoot(stringify([item]));
+    await writeFile(join(rootDir, 'public', 'images', 'new-work.png'), png);
+    const storage = createGalleryStorage({ rootDir });
+
+    const plan = await storage.planTrashItem(item.id);
+
+    expect(plan.changes).toEqual([
+      { action: 'metadata', path: 'src/content/gallery.yaml', visibility: 'metadata' },
+      { action: 'trash', path: 'public/images/new-work.png', visibility: 'trash' },
+    ]);
+    await expect(storage.listItems()).resolves.toEqual([item]);
+    await expect(readFile(join(rootDir, 'public', 'images', 'new-work.png'))).resolves.toEqual(png);
+  });
+
   it('commits private image and metadata together outside public build inputs', async () => {
     const rootDir = await makeRoot();
     const storage = createGalleryStorage({ rootDir });
@@ -538,20 +606,45 @@ describe('gallery editor API', () => {
     const metadataBefore = await readFile(join(rootDir, 'src', 'content', 'gallery.yaml'), 'utf8');
 
     const response = await request(createEditorServer({ rootDir }))
-      .put('/api/editor/gallery/new-work/plan')
+      .put('/api/editor/gallery/new-work/image/plan')
       .set('Content-Type', 'application/octet-stream')
       .set('X-Gallery-Metadata', encodeURIComponent(JSON.stringify({ ...legacyItem, public: false })))
       .send(jpeg(4, 5))
       .expect(200);
 
     expect(response.body.changes).toEqual(expect.arrayContaining([
-      { action: 'write', path: 'src/content/gallery.yaml', visibility: 'metadata' },
+      { action: 'metadata', path: 'src/content/gallery.yaml', visibility: 'metadata' },
       { action: 'write', path: 'src/content/private-images/new-work.jpg', visibility: 'private' },
       { action: 'trash', path: 'public/images/legacy-work.png', visibility: 'trash' },
     ]));
     await expect(readFile(legacyPath)).resolves.toEqual(png);
     await expect(readFile(join(rootDir, 'src', 'content', 'gallery.yaml'), 'utf8')).resolves.toBe(metadataBefore);
     expect(await readdir(join(rootDir, 'src', 'content'))).not.toEqual(expect.arrayContaining(['private-images', 'staged-images']));
+  });
+
+  it('serves authoritative metadata-only and delete plans without mutating either operation', async () => {
+    const rootDir = await makeRoot(stringify([item]));
+    await writeFile(join(rootDir, 'public', 'images', 'new-work.png'), png);
+    const app = createEditorServer({ rootDir });
+
+    const metadata = await request(app)
+      .put('/api/editor/gallery/new-work/plan')
+      .send({ ...item, title: 'Renamed work' })
+      .expect(200);
+    const deletion = await request(app)
+      .delete('/api/editor/gallery/new-work/plan')
+      .expect(200);
+
+    expect(metadata.body.changes).toEqual([
+      { action: 'metadata', path: 'src/content/gallery.yaml', visibility: 'metadata' },
+    ]);
+    expect(deletion.body.changes).toEqual([
+      { action: 'metadata', path: 'src/content/gallery.yaml', visibility: 'metadata' },
+      { action: 'trash', path: 'public/images/new-work.png', visibility: 'trash' },
+    ]);
+    await expect(readFile(join(rootDir, 'src', 'content', 'gallery.yaml'), 'utf8'))
+      .resolves.toBe(stringify([item]));
+    await expect(readFile(join(rootDir, 'public', 'images', 'new-work.png'))).resolves.toEqual(png);
   });
 
   it('trashes every confirmed owned candidate when POST then PUT changes extension', async () => {

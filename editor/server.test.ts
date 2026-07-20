@@ -45,6 +45,15 @@ describe('editor content API', () => {
       .expect(200);
   });
 
+  it('rejects cross-site Fetch Metadata even when Origin is otherwise trusted', async () => {
+    await request(createEditorServer({ rootDir: await makeRoot() }))
+      .get('/api/editor/documents')
+      .set('Host', '127.0.0.1:4174')
+      .set('Origin', 'http://localhost:5173')
+      .set('Sec-Fetch-Site', 'cross-site')
+      .expect(403);
+  });
+
   it('returns 400 for malformed JSON instead of an internal error', async () => {
     await request(createEditorServer({ rootDir: await makeRoot() }))
       .put('/api/editor/documents/notes')

@@ -20,7 +20,7 @@ export interface EditorApi {
   removeGallery(id: string): Promise<void>;
   uploadGalleryImage(request: GalleryImageUploadRequest): Promise<GalleryImageUpload>;
   saveGalleryWithImage(request: GalleryCombinedSaveRequest): Promise<GalleryCombinedSave>;
-  planGalleryWithImage?(request: Omit<GalleryCombinedSaveRequest, 'overwrite'>): Promise<GalleryChangePlan>;
+  planGallery?(request: GalleryPlanRequest): Promise<GalleryChangePlan>;
 }
 
 export class EditorApiError extends Error {
@@ -80,14 +80,26 @@ export const editorApi: EditorApi = {
     },
     body: file,
   }),
-  planGalleryWithImage: async ({ item, file }) => request<GalleryChangePlan>(`/api/editor/gallery/${item.id}/plan`, {
-    method: 'PUT',
-    headers: {
-      'Content-Type': 'application/octet-stream',
-      'X-Gallery-Metadata': encodeURIComponent(JSON.stringify(item)),
-    },
-    body: file,
-  }),
+  planGallery: async ({ item, file, deleting = false }) => {
+    if (deleting) {
+      return request<GalleryChangePlan>(`/api/editor/gallery/${item.id}/plan`, { method: 'DELETE' });
+    }
+    if (file) {
+      return request<GalleryChangePlan>(`/api/editor/gallery/${item.id}/image/plan`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/octet-stream',
+          'X-Gallery-Metadata': encodeURIComponent(JSON.stringify(item)),
+        },
+        body: file,
+      });
+    }
+    return request<GalleryChangePlan>(`/api/editor/gallery/${item.id}/plan`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(item),
+    });
+  },
 };
 
 export interface GalleryImageUploadRequest {
@@ -115,5 +127,18 @@ export interface GalleryCombinedSave {
 
 export interface GalleryChangePlan {
   item: GalleryItem;
-  changes: Array<{ action: 'write' | 'trash'; path: string; visibility: 'public' | 'private' | 'metadata' | 'trash' }>;
+  changes: GalleryChange[];
 }
+
+export interface GalleryPlanRequest {
+  item: GalleryItem;
+  file?: File;
+  deleting?: boolean;
+}
+
+export type GalleryChange =
+  | { action: 'metadata'; path: string; visibility: 'metadata' }
+  | { action: 'stage'; path: string; visibility: 'stage' }
+  | { action: 'write'; path: string; visibility: 'public' | 'private' }
+  | { action: 'move'; path: string; destination: string; visibility: 'public' | 'private' }
+  | { action: 'trash'; path: string; visibility: 'trash' };

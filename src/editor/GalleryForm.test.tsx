@@ -1,4 +1,4 @@
-import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { galleryItemSchema, type GalleryItem } from '../content/schema';
@@ -69,6 +69,113 @@ describe('gallery validation', () => {
 });
 
 describe('GalleryForm', () => {
+  it('keeps save disabled while an authoritative title-only plan is pending and renders only that plan', async () => {
+    const user = userEvent.setup();
+    const pendingPlan = deferred<{ item: GalleryItem; changes: Array<{ action: 'metadata'; path: string; visibility: 'metadata' }> }>();
+    const planGallery = vi.fn(() => pendingPlan.promise);
+    const api = {
+      list: vi.fn(async () => []), save: vi.fn(), remove: vi.fn(),
+      listGallery: vi.fn(async () => [validItem]),
+      saveGallery: vi.fn(async (entry: GalleryItem) => entry), removeGallery: vi.fn(),
+      uploadGalleryImage: vi.fn(), saveGalleryWithImage: vi.fn(), planGallery,
+    };
+    render(<EditorApp api={api} />);
+    await user.click(await screen.findByRole('button', { name: '화랑' }));
+    await user.click(await screen.findByRole('button', { name: '공개 작품 편집' }));
+
+    fireEvent.change(screen.getByLabelText('제목'), { target: { value: '제목만 변경' } });
+
+    expect(await screen.findByText('변경 파일 계획 확인 중입니다.')).toHaveAttribute('role', 'status');
+    expect(screen.getByRole('button', { name: '저장' })).toBeDisabled();
+    expect(screen.queryByLabelText('변경 파일')).not.toBeInTheDocument();
+    const plannedItem = { ...validItem, title: '제목만 변경' };
+    await act(async () => pendingPlan.resolve({
+      item: plannedItem,
+      changes: [{ action: 'metadata', path: 'src/content/gallery.yaml', visibility: 'metadata' }],
+    }));
+
+    expect(await screen.findByText('메타데이터: src/content/gallery.yaml')).toBeVisible();
+    expect(screen.getByRole('button', { name: '저장' })).toBeEnabled();
+    expect(within(screen.getByLabelText('변경 파일')).queryByText(/public\/images\/work\.png/)).not.toBeInTheDocument();
+  });
+
+  it('invalidates an old plan on edits and ignores its stale completion', async () => {
+    const user = userEvent.setup();
+    const first = deferred<{ item: GalleryItem; changes: Array<{ action: 'metadata'; path: string; visibility: 'metadata' }> }>();
+    const second = deferred<{ item: GalleryItem; changes: Array<{ action: 'metadata'; path: string; visibility: 'metadata' }> }>();
+    const planGallery = vi.fn()
+      .mockImplementationOnce(() => first.promise)
+      .mockImplementationOnce(() => second.promise);
+    const api = {
+      list: vi.fn(async () => []), save: vi.fn(), remove: vi.fn(),
+      listGallery: vi.fn(async () => [validItem]), saveGallery: vi.fn(), removeGallery: vi.fn(),
+      uploadGalleryImage: vi.fn(), saveGalleryWithImage: vi.fn(), planGallery,
+    };
+    render(<EditorApp api={api} />);
+    await user.click(await screen.findByRole('button', { name: '화랑' }));
+    await user.click(await screen.findByRole('button', { name: '공개 작품 편집' }));
+    const title = screen.getByLabelText('제목');
+
+    fireEvent.change(title, { target: { value: '첫 계획' } });
+    await waitFor(() => expect(planGallery).toHaveBeenCalledTimes(1));
+    fireEvent.change(title, { target: { value: '둘째 계획' } });
+    await waitFor(() => expect(planGallery).toHaveBeenCalledTimes(2));
+    await act(async () => second.resolve({
+      item: { ...validItem, title: '둘째 계획' },
+      changes: [{ action: 'metadata', path: 'second-plan.yaml', visibility: 'metadata' }],
+    }));
+    expect(await screen.findByText('메타데이터: second-plan.yaml')).toBeVisible();
+    await act(async () => first.resolve({
+      item: { ...validItem, title: '첫 계획' },
+      changes: [{ action: 'metadata', path: 'stale-plan.yaml', visibility: 'metadata' }],
+    }));
+    expect(screen.queryByText(/stale-plan\.yaml/)).not.toBeInTheDocument();
+    expect(screen.getByText('메타데이터: second-plan.yaml')).toBeVisible();
+  });
+
+  it('requests and persistently renders the authoritative delete plan', async () => {
+    const user = userEvent.setup();
+    const planGallery = vi.fn(async ({ item, deleting }: { item: GalleryItem; deleting?: boolean }) => ({
+      item,
+      changes: deleting
+        ? [
+          { action: 'metadata' as const, path: 'src/content/gallery.yaml', visibility: 'metadata' as const },
+          { action: 'trash' as const, path: 'public/images/work.png', visibility: 'trash' as const },
+        ]
+        : [],
+    }));
+    const api = {
+      list: vi.fn(async () => []), save: vi.fn(), remove: vi.fn(),
+      listGallery: vi.fn(async () => [validItem]), saveGallery: vi.fn(), removeGallery: vi.fn(),
+      uploadGalleryImage: vi.fn(), saveGalleryWithImage: vi.fn(), planGallery,
+    };
+    render(<EditorApp api={api} />);
+    await user.click(await screen.findByRole('button', { name: '화랑' }));
+    await user.click(await screen.findByRole('button', { name: '공개 작품 편집' }));
+    await user.click(screen.getByRole('button', { name: '삭제 예정으로 표시' }));
+
+    expect(await screen.findByText('휴지통: public/images/work.png')).toBeVisible();
+    expect(planGallery).toHaveBeenLastCalledWith({ item: validItem, deleting: true });
+    expect(screen.getByRole('button', { name: '삭제 확인' })).toBeEnabled();
+  });
+
+  it('renders a plan failure and keeps the operation disabled', async () => {
+    const user = userEvent.setup();
+    const api = {
+      list: vi.fn(async () => []), save: vi.fn(), remove: vi.fn(),
+      listGallery: vi.fn(async () => [validItem]), saveGallery: vi.fn(), removeGallery: vi.fn(),
+      uploadGalleryImage: vi.fn(), saveGalleryWithImage: vi.fn(),
+      planGallery: vi.fn(async () => { throw new Error('계획을 만들지 못했습니다.'); }),
+    };
+    render(<EditorApp api={api} />);
+    await user.click(await screen.findByRole('button', { name: '화랑' }));
+    await user.click(await screen.findByRole('button', { name: '공개 작품 편집' }));
+    fireEvent.change(screen.getByLabelText('제목'), { target: { value: '실패 계획' } });
+
+    expect(await screen.findByText('계획을 만들지 못했습니다.')).toHaveAttribute('role', 'alert');
+    expect(screen.getByRole('button', { name: '저장' })).toBeDisabled();
+  });
+
   it('uses the editor route for a saved private preview and the public URL for a public item', () => {
     const sharedProps = {
       errors: {},
@@ -297,6 +404,13 @@ describe('GalleryForm', () => {
       item: { ...item, image: '/images/new-work.png' },
       image: { path: '/images/new-work.png', width: 1, height: 1 },
     }));
+    const planGallery = vi.fn(async ({ item }: { item: GalleryItem }) => ({
+      item,
+      changes: [
+        { action: 'metadata' as const, path: 'src/content/gallery.yaml', visibility: 'metadata' as const },
+        { action: 'write' as const, path: 'public/images/new-work.png', visibility: 'public' as const },
+      ],
+    }));
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
     const api = {
       list: vi.fn(async () => []),
@@ -307,6 +421,7 @@ describe('GalleryForm', () => {
       removeGallery: vi.fn(),
       uploadGalleryImage,
       saveGalleryWithImage,
+      planGallery,
     };
     render(<EditorApp api={api} />);
 
@@ -321,6 +436,11 @@ describe('GalleryForm', () => {
     const file = new File([png], 'upload.png', { type: 'image/png' });
     await user.upload(screen.getByLabelText('이미지 파일'), file);
     expect(screen.getByText('/images/new-work.png')).toBeVisible();
+    expect(await screen.findByText('공개 저장: public/images/new-work.png')).toBeVisible();
+    expect(planGallery).toHaveBeenLastCalledWith(expect.objectContaining({
+      item: expect.objectContaining({ id: 'new-work', image: '/images/new-work.png' }),
+      file,
+    }));
 
     await user.click(screen.getByRole('button', { name: '기록' }));
     expect(confirm).toHaveBeenCalled();
@@ -345,6 +465,10 @@ describe('GalleryForm', () => {
       removeGallery: vi.fn(),
       uploadGalleryImage: vi.fn(),
       saveGalleryWithImage: vi.fn(),
+      planGallery: vi.fn(async ({ item }: { item: GalleryItem }) => ({
+        item,
+        changes: [{ action: 'metadata' as const, path: 'src/content/gallery.yaml', visibility: 'metadata' as const }],
+      })),
     };
     render(<EditorApp api={api} />);
     await user.click(await screen.findByRole('button', { name: '화랑' }));

@@ -21,10 +21,12 @@ export function createEditorServer({ rootDir }: EditorServerOptions): Express {
     const trustedHost = host === '127.0.0.1:4174' || host === 'localhost:4174';
     const supertestHost = process.env.NODE_ENV === 'test' && /^127\.0\.0\.1:\d+$/.test(host);
     const origin = request.get('Origin');
+    const fetchSite = request.get('Sec-Fetch-Site');
+    const trustedFetchSite = fetchSite === undefined || ['none', 'same-origin', 'same-site'].includes(fetchSite);
     const trustedOrigin = origin === undefined
-      ? request.get('Sec-Fetch-Site') !== 'cross-site'
-      : origin === 'http://127.0.0.1:5173' || origin === 'http://localhost:5173';
-    if ((!trustedHost && !supertestHost) || !trustedOrigin) {
+      || origin === 'http://127.0.0.1:5173'
+      || origin === 'http://localhost:5173';
+    if ((!trustedHost && !supertestHost) || !trustedOrigin || !trustedFetchSite) {
       response.status(403).json({ error: 'Editor request origin is not trusted.' });
       return;
     }
@@ -78,7 +80,7 @@ export function createEditorServer({ rootDir }: EditorServerOptions): Express {
   );
 
   app.put(
-    '/api/editor/gallery/:id/plan',
+    '/api/editor/gallery/:id/image/plan',
     express.raw({ type: 'application/octet-stream', limit: '20mb' }),
     async (request, response, next) => {
       try {
@@ -101,6 +103,25 @@ export function createEditorServer({ rootDir }: EditorServerOptions): Express {
       }
     },
   );
+
+  app.put('/api/editor/gallery/:id/plan', async (request, response, next) => {
+    try {
+      if (request.body?.id !== request.params.id) {
+        throw new GalleryStorageError('Gallery validation failed.', 'VALIDATION_ERROR', { id: 'Gallery ID must match the requested item ID.' });
+      }
+      response.json(await gallery.planItem(request.body));
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.delete('/api/editor/gallery/:id/plan', async (request, response, next) => {
+    try {
+      response.json(await gallery.planTrashItem(request.params.id));
+    } catch (error) {
+      next(error);
+    }
+  });
 
   app.put(
     '/api/editor/gallery/:id/image',
