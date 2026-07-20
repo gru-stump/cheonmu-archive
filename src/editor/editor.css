@@ -1,0 +1,14 @@
+.editor-shell {
+  min-height: 100vh;
+  color: var(--paper-raised);
+  background:
+    radial-gradient(circle at top left, rgb(104 73 86 / 24%), transparent 28rem),
+    linear-gradient(145deg, #171412, #24201d 58%, #171412);
+  font-family: var(--font-label);
+}
+
+.editor-shell *,
+.editor-shell *::before,
+.editor-shell *::after {
+  box-sizing: border-box;
+}
