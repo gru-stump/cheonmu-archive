@@ -71,4 +71,15 @@ describe('editor style entry', () => {
     overflow: visible;
   }`);
   });
+
+  it('defines balanced form, checkbox, file, action, and gallery spacing', () => {
+    const css = read('./editor.css');
+    expect(css).toContain('gap: 0.875rem;');
+    expect(css).toContain('gap: 0.375rem;');
+    expect(css).toContain('min-height: 2.5rem;');
+    expect(css).toContain(`.editor-form-pane label:has(input[type='checkbox'])`);
+    expect(css).toContain(`.editor-form-pane input[type='file']::file-selector-button`);
+    expect(css).toContain('max-height: min(62vh, 47.5rem);');
+    expect(css).toContain('.editor-actions { display: flex; flex-wrap: wrap; gap: 0.5rem;');
+  });
 });

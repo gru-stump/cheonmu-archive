@@ -62,6 +62,35 @@ for (const viewport of [
     expect(geometry.clippedControls).toEqual([]);
     expect(geometry.inputFontSizes.length).toBeGreaterThan(0);
     expect(Math.min(...geometry.inputFontSizes)).toBeGreaterThanOrEqual(14);
+    const fieldGaps = await page.locator('.editor-form-pane fieldset').evaluate((fieldset) => {
+      const labels = Array.from(fieldset.children)
+        .filter((element): element is HTMLLabelElement => element instanceof HTMLLabelElement);
+      return labels.flatMap((label, index) => {
+        const next = labels[index + 1];
+        if (!next || label.nextElementSibling !== next) return [];
+        const currentRect = label.getBoundingClientRect();
+        const nextRect = next.getBoundingClientRect();
+        return [nextRect.top - currentRect.bottom];
+      });
+    });
+    expect(fieldGaps.length).toBeGreaterThan(0);
+    for (const gap of fieldGaps) {
+      expect(gap).toBeGreaterThanOrEqual(8);
+      expect(gap).toBeLessThanOrEqual(24);
+    }
+    if (viewport.name === 'mobile') {
+      const checkboxLine = await page.getByLabel('장면 재구성').evaluate((checkbox: HTMLInputElement) => {
+        const label = checkbox.closest('label')!;
+        const labelRect = label.getBoundingClientRect();
+        const boxRect = checkbox.getBoundingClientRect();
+        return {
+          display: getComputedStyle(label).display,
+          delta: Math.abs((labelRect.top + labelRect.height / 2) - (boxRect.top + boxRect.height / 2)),
+        };
+      });
+      expect(checkboxLine.display).toBe('flex');
+      expect(checkboxLine.delta).toBeLessThan(2);
+    }
     if (viewport.width >= 700) {
       expect(Math.abs(geometry.formTop - geometry.previewTop)).toBeLessThan(2);
     } else {
@@ -93,6 +122,11 @@ for (const viewport of [
       const imageElement = formPane.querySelector<HTMLImageElement>('img')!;
       const paneStyle = getComputedStyle(formPane);
       const imageRect = imageElement.getBoundingClientRect();
+      const fileInput = formPane.querySelector<HTMLInputElement>('input[type="file"]')!;
+      const publicCheckbox = formPane.querySelector<HTMLInputElement>('input[type="checkbox"]')!;
+      const checkboxLabel = publicCheckbox.closest('label')!;
+      const checkboxRect = publicCheckbox.getBoundingClientRect();
+      const checkboxLabelRect = checkboxLabel.getBoundingClientRect();
       const contentWidth = formPane.clientWidth
         - Number.parseFloat(paneStyle.paddingLeft)
         - Number.parseFloat(paneStyle.paddingRight);
@@ -103,12 +137,23 @@ for (const viewport of [
         paneClientWidth: formPane.clientWidth,
         contentWidth,
         imageWidth: imageRect.width,
+        imageHeight: imageRect.height,
         imageNaturalWidth: imageElement.naturalWidth,
+        fileInputHeight: fileInput.getBoundingClientRect().height,
+        checkboxDisplay: getComputedStyle(checkboxLabel).display,
+        checkboxCenterDelta: Math.abs(
+          (checkboxLabelRect.top + checkboxLabelRect.height / 2)
+            - (checkboxRect.top + checkboxRect.height / 2),
+        ),
       };
     });
 
     expect(geometry.imageNaturalWidth).toBeGreaterThan(0);
     expect(geometry.imageWidth).toBeLessThanOrEqual(geometry.contentWidth + 1);
+    expect(geometry.imageHeight).toBeLessThanOrEqual(Math.min(viewport.height * 0.62, 760) + 1);
+    expect(geometry.fileInputHeight).toBeGreaterThanOrEqual(40);
+    expect(geometry.checkboxDisplay).toBe('flex');
+    expect(geometry.checkboxCenterDelta).toBeLessThan(2);
     expect(geometry.paneScrollWidth).toBeLessThanOrEqual(geometry.paneClientWidth + 1);
     expect(geometry.documentScrollWidth).toBeLessThanOrEqual(geometry.documentClientWidth + 1);
     console.info(`${viewport.name} gallery geometry ${JSON.stringify(geometry)}`);
@@ -145,16 +190,28 @@ test('tablet entry list keeps its horizontal scroll affordance', async ({ page }
 
   const affordance = await page.locator('.editor-entry-list').evaluate((list) => {
     const style = getComputedStyle(list, '::after');
+    const entries = list.querySelector<HTMLElement>('ul')!;
     return {
       content: style.content,
       display: style.display,
+      position: style.position,
+      right: style.right,
+      bottom: style.bottom,
+      width: style.width,
       pointerEvents: style.pointerEvents,
       backgroundImage: style.backgroundImage,
+      listScrollWidth: entries.scrollWidth,
+      listClientWidth: entries.clientWidth,
     };
   });
 
   expect(affordance.content).not.toBe('none');
   expect(affordance.display).not.toBe('none');
+  expect(affordance.position).toBe('absolute');
+  expect(affordance.right).toBe('0px');
+  expect(affordance.bottom).toBe('16px');
+  expect(affordance.width).toBe('32px');
   expect(affordance.pointerEvents).toBe('none');
   expect(affordance.backgroundImage).toContain('linear-gradient');
+  expect(affordance.listScrollWidth).toBeGreaterThan(affordance.listClientWidth);
 });
