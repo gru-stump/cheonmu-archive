@@ -422,40 +422,64 @@
   font-size: 0.62rem;
 }
 
-/* 무번호·전사 기록 — 빛바랜 옛 기록 */
+/* 잊혀진 기록(전사) — 빛바랜 옛 문서 */
 .record-card--faded .record-card__body {
+  position: relative;
   background:
-    radial-gradient(ellipse at 10% 6%, rgb(150 122 74 / 14%), transparent 42%),
-    radial-gradient(ellipse at 94% 90%, rgb(150 122 74 / 18%), transparent 46%),
-    linear-gradient(rgb(233 220 188 / 94%), rgb(224 208 170 / 94%));
-  border-top-color: rgb(90 76 56 / 70%);
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3CfeComponentTransfer%3E%3CfeFuncA type='linear' slope='0.09'/%3E%3C/feComponentTransfer%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E"),
+    radial-gradient(circle at 82% 14%, transparent 33%, rgb(126 94 44 / 17%) 36%, rgb(126 94 44 / 5%) 40%, transparent 45%),
+    radial-gradient(ellipse at 6% 94%, rgb(140 110 60 / 24%), transparent 42%),
+    radial-gradient(ellipse at 98% 72%, rgb(150 122 74 / 16%), transparent 38%),
+    radial-gradient(ellipse at 40% 4%, rgb(150 122 74 / 12%), transparent 30%),
+    linear-gradient(168deg, transparent 46.7%, rgb(96 74 40 / 15%) 48.2%, rgb(255 252 240 / 28%) 48.9%, transparent 50.6%),
+    linear-gradient(rgb(233 219 184 / 97%), rgb(217 197 154 / 97%));
+  border-top-color: rgb(90 76 56 / 50%);
   box-shadow:
-    inset 0 0 2.75rem rgb(120 96 56 / 20%),
-    0 0.5rem 1.25rem rgb(52 43 30 / 6%);
+    inset 0 0 3.5rem rgb(110 86 46 / 30%),
+    inset 0 0 0.6rem rgb(110 86 46 / 14%),
+    0 0.5rem 1.25rem rgb(52 43 30 / 8%);
+  transform: rotate(-0.45deg);
+  clip-path: polygon(
+    0.6% 3%, 4% 0.6%, 9% 1.8%, 15% 0.2%, 22% 1.6%, 30% 0.5%, 38% 1.9%, 47% 0.7%,
+    55% 2%, 63% 0.5%, 71% 1.7%, 80% 0.3%, 88% 1.8%, 95% 0.6%, 99.5% 2.6%,
+    99.2% 12%, 100% 25%, 99.3% 40%, 100% 55%, 99.1% 70%, 100% 84%, 99.4% 96%,
+    95% 99.4%, 87% 98.2%, 78% 99.7%, 68% 98.3%, 58% 99.8%, 48% 98.4%, 38% 99.6%,
+    28% 98.2%, 18% 99.7%, 9% 98.4%, 3% 99.5%, 0.4% 97%, 1% 84%, 0% 70%,
+    0.8% 55%, 0% 40%, 0.9% 26%, 0% 12%
+  );
 }
 
 .record-card--faded .record-card__index {
-  color: rgb(98 91 80 / 65%);
+  color: rgb(98 91 80 / 55%);
+  filter: sepia(0.4);
 }
 
 .record-card--faded .record-card__meta > span:first-child {
   display: inline-block;
   padding: 0.14rem 0.55rem;
-  color: rgb(112 45 43 / 78%);
-  border: 0.09rem solid rgb(112 45 43 / 50%);
+  color: rgb(112 45 43 / 72%);
+  background: rgb(112 45 43 / 5%);
+  border: 0.12rem solid rgb(112 45 43 / 42%);
+  box-shadow: inset 0 0 0.45rem rgb(112 45 43 / 18%);
+  mix-blend-mode: multiply;
   transform: rotate(-5deg);
 }
 
 .record-card--faded h2 a {
-  color: rgb(58 49 38 / 88%);
+  color: rgb(58 49 38 / 85%);
 }
 
 .record-card--faded blockquote {
-  color: rgb(98 91 80 / 82%);
+  color: rgb(98 91 80 / 78%);
 }
 
 .record-card--faded .record-tags {
-  opacity: 0.72;
+  opacity: 0.65;
+}
+
+.record-card--faded .status-stamp {
+  opacity: 0.7;
+  filter: sepia(0.5);
 }
 
 .record-card h2 {
@@ -527,6 +551,23 @@
   transform: rotate(-1.2deg);
 }
 
+.record-detail--faded {
+  padding: var(--space-lg) clamp(var(--space-md), 3vw, var(--space-xl)) var(--space-xl);
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3CfeComponentTransfer%3E%3CfeFuncA type='linear' slope='0.07'/%3E%3C/feComponentTransfer%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E"),
+    radial-gradient(circle at 88% 6%, transparent 30%, rgb(126 94 44 / 13%) 33%, rgb(126 94 44 / 4%) 37%, transparent 42%),
+    radial-gradient(ellipse at 4% 98%, rgb(140 110 60 / 18%), transparent 38%),
+    radial-gradient(ellipse at 100% 60%, rgb(150 122 74 / 12%), transparent 34%),
+    linear-gradient(rgb(236 224 194 / 90%), rgb(222 204 164 / 90%));
+  box-shadow: inset 0 0 4.5rem rgb(110 86 46 / 24%);
+  clip-path: polygon(
+    0.5% 1.2%, 8% 0.2%, 18% 1%, 30% 0.1%, 43% 0.9%, 56% 0.2%, 68% 1%, 81% 0.2%,
+    92% 0.8%, 99.6% 0.3%, 99.2% 14%, 100% 30%, 99.3% 48%, 100% 66%, 99.2% 82%,
+    99.8% 98.8%, 90% 99.9%, 78% 99%, 64% 99.8%, 50% 99.1%, 36% 99.9%, 22% 99.2%,
+    10% 99.8%, 0.3% 99.3%, 0.9% 84%, 0% 66%, 0.7% 48%, 0% 30%, 0.8% 14%
+  );
+}
+
 .record-detail--faded .record-detail__header {
   border-bottom-color: rgb(140 118 82 / 60%);
 }
@@ -538,6 +579,10 @@
 .record-detail--faded .record-detail__quote {
   color: rgb(233 220 188 / 92%);
   background: rgb(46 40 34 / 94%);
+}
+
+.record-detail--faded .markdown-document {
+  color: rgb(60 50 38 / 92%);
 }
 
 .record-detail__quote {

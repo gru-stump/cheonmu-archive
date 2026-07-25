@@ -1,6 +1,6 @@
 ---
 id: the-one-who-stayed
-recordNumber: 무번호
+recordNumber: 잊혀진 기록
 title: "남아 있던 사람"
 stage: 0
 status: confirmed

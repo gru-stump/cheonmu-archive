@@ -8,7 +8,7 @@ for (const viewport of [
   test(`${viewport.name} editor stays readable without horizontal overflow`, async ({ page }, testInfo) => {
     await page.setViewportSize(viewport);
     await page.goto('./');
-    await page.getByRole('button', { name: '첫 조우 편집' }).click();
+    await page.getByRole('button', { name: '기록된 첫 만남 편집' }).click();
 
     const shell = page.locator('.editor-shell');
     const form = page.locator('.editor-form-pane');

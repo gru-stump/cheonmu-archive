@@ -1,7 +1,7 @@
 ---
 id: first-contact
 recordNumber: CM-01
-title: "첫 조우"
+title: "기록된 첫 만남"
 stage: 1
 status: confirmed
 characters: [cheonryeong, muyeong]

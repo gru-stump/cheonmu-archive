@@ -40,10 +40,10 @@ for (const viewport of [
 
 test('visitor reads a record and opens its cinematic scene', async ({ page }) => {
   await page.goto('./#/records');
-  await page.getByRole('link', { name: '첫 조우', exact: true }).click();
+  await page.getByRole('link', { name: '기록된 첫 만남', exact: true }).click();
   await page.getByRole('button', { name: '장면 재구성 열기', exact: true }).click();
 
-  await expect(page.getByRole('dialog', { name: '첫 조우 장면 재구성', exact: true })).toBeVisible();
+  await expect(page.getByRole('dialog', { name: '기록된 첫 만남 장면 재구성', exact: true })).toBeVisible();
 });
 
 test('long cinematic prose opens as one compact scrolling reading view', async ({ page }) => {

@@ -9,8 +9,8 @@
 | 각자의 정확한 체중 | unresolved | |
 | 천령의 실제 나이와 기원 | unresolved | 공개는 `reveal-plan.md`의 age/origin gate를 따름 |
 | 천령이 특재청에 들어온 계기 | unresolved | reason for staying gate와 연동 |
-| 무영이 지휘관이 된 과정 | unresolved | 동기의 기원(9세 구조 사건, 무번호 기록)만 확정 — 입대·승진 과정은 미정 |
-| 무영의 가족 및 과거 | unresolved | 9세에 상가 붕괴 재난에서 구조된 사건은 확정(무번호 기록) — 가족 구성·생사는 미정 |
+| 무영이 지휘관이 된 과정 | unresolved | 동기의 기원(9세 구조 사건, 잊혀진 기록)만 확정 — 입대·승진 과정은 미정 |
+| 무영의 가족 및 과거 | unresolved | 9세에 상가 붕괴 재난에서 구조된 사건은 확정(잊혀진 기록) — 가족 구성·생사는 미정 |
 | 천령의 능력 한계와 부작용 | unresolved | blood heals and harms gate와 연동 |
 | 둘의 첫 조우가 발생한 구체적 재난 | unresolved | records/01은 재난 종류를 특정하지 않음 |
 | 관계가 결정적으로 변하는 대형 사건 | unresolved | 5단계 균열의 구체 사건 |

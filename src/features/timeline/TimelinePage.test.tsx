@@ -194,7 +194,7 @@ describe('RecordDetailPage', () => {
     );
 
     await user.click(screen.getByRole('button', { name: '장면 재구성 열기' }));
-    const dialog = screen.getByRole('dialog', { name: '첫 조우 장면 재구성' });
+    const dialog = screen.getByRole('dialog', { name: '기록된 첫 만남 장면 재구성' });
     const prose = dialog.querySelector('.cinematic-scene__text--prose');
 
     expect(prose?.textContent).toContain('격리선 밖의 의사');
