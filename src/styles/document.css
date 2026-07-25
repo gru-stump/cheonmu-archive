@@ -551,7 +551,7 @@
   transform: rotate(-1.2deg);
 }
 
-.record-detail--faded {
+.record-detail__paper--faded {
   padding: var(--space-lg) clamp(var(--space-md), 3vw, var(--space-xl)) var(--space-xl);
   background:
     url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3CfeComponentTransfer%3E%3CfeFuncA type='linear' slope='0.07'/%3E%3C/feComponentTransfer%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E"),
@@ -568,20 +568,20 @@
   );
 }
 
-.record-detail--faded .record-detail__header {
+.record-detail__paper--faded .record-detail__header {
   border-bottom-color: rgb(140 118 82 / 60%);
 }
 
-.record-detail--faded .document-kicker {
+.record-detail__paper--faded .document-kicker {
   color: rgb(112 45 43 / 70%);
 }
 
-.record-detail--faded .record-detail__quote {
+.record-detail__paper--faded .record-detail__quote {
   color: rgb(233 220 188 / 92%);
   background: rgb(46 40 34 / 94%);
 }
 
-.record-detail--faded .markdown-document {
+.record-detail__paper--faded .markdown-document {
   color: rgb(60 50 38 / 92%);
 }
 

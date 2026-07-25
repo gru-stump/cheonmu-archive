@@ -80,29 +80,31 @@ export function RecordDetailPage({ records = loadAllContent().records }: RecordD
   const scenes = hasCinematicScene ? scenesFromRecord(record) : [];
 
   return (
-    <article className={`record-detail${record.stage === 0 ? ' record-detail--faded' : ''}`}>
-      <Link className="back-link" to="/records">← 기록철</Link>
-      {record.stage === 0 && (
-        <p className="record-detail__archive-note">기록철 미등재 · 보관된 사본</p>
-      )}
-      <RecordContentDisplay
-        record={record}
-        cinematicEntry={hasCinematicScene ? <div className="cinematic-entry">
-          <p>이 기록의 확정된 문장을 장면 순서대로 열람합니다.</p>
-          <button type="button" onClick={() => setIsCinematicOpen(true)}>장면 재구성 열기</button>
-        </div> : undefined}
-      />
+    <article className="record-detail">
+      <div className={`record-detail__paper${record.stage === 0 ? ' record-detail__paper--faded' : ''}`}>
+        <Link className="back-link" to="/records">← 기록철</Link>
+        {record.stage === 0 && (
+          <p className="record-detail__archive-note">기록철 미등재 · 보관된 사본</p>
+        )}
+        <RecordContentDisplay
+          record={record}
+          cinematicEntry={hasCinematicScene ? <div className="cinematic-entry">
+            <p>이 기록의 확정된 문장을 장면 순서대로 열람합니다.</p>
+            <button type="button" onClick={() => setIsCinematicOpen(true)}>장면 재구성 열기</button>
+          </div> : undefined}
+        />
 
-      {relatedRecords.length > 0 && (
-        <nav className="related-records" aria-label="연결 기록">
-          <p>연결 기록</p>
-          <ul>
-            {relatedRecords.map((related) => (
-              <li key={related.id}><Link to={`/records/${related.id}`}>{related.title}</Link></li>
-            ))}
-          </ul>
-        </nav>
-      )}
+        {relatedRecords.length > 0 && (
+          <nav className="related-records" aria-label="연결 기록">
+            <p>연결 기록</p>
+            <ul>
+              {relatedRecords.map((related) => (
+                <li key={related.id}><Link to={`/records/${related.id}`}>{related.title}</Link></li>
+              ))}
+            </ul>
+          </nav>
+        )}
+      </div>
 
       {isCinematicOpen && hasCinematicScene && (
         <CinematicScene
