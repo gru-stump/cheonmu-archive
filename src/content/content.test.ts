@@ -61,7 +61,14 @@ describe('initial Cheonmu archive content', () => {
 
     expect(gallery.map((item) => item.image)).toEqual(NEW_IMAGE_PATHS);
     expect(gallery.map((item) => item.image)).not.toEqual(expect.arrayContaining(OLD_IMAGE_PATHS));
-    expect(gallery.every((item) => item.creator === '불가사리')).toBe(true);
+    expect(gallery.map((item) => item.creator)).toEqual([
+      '불가사리',
+      '불가사리',
+      '불가사리',
+      '불가사리',
+      '고젓두',
+      '땨땨',
+    ]);
     expect(gallery.every((item) => !('source' in item))).toBe(true);
   });
 
