@@ -80,8 +80,11 @@ export function RecordDetailPage({ records = loadAllContent().records }: RecordD
   const scenes = hasCinematicScene ? scenesFromRecord(record) : [];
 
   return (
-    <article className="record-detail">
+    <article className={`record-detail${record.stage === 0 ? ' record-detail--faded' : ''}`}>
       <Link className="back-link" to="/records">← 기록철</Link>
+      {record.stage === 0 && (
+        <p className="record-detail__archive-note">기록철 미등재 · 보관된 사본</p>
+      )}
       <RecordContentDisplay
         record={record}
         cinematicEntry={hasCinematicScene ? <div className="cinematic-entry">

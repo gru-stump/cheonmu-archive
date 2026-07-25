@@ -422,6 +422,42 @@
   font-size: 0.62rem;
 }
 
+/* 무번호·전사 기록 — 빛바랜 옛 기록 */
+.record-card--faded .record-card__body {
+  background:
+    radial-gradient(ellipse at 10% 6%, rgb(150 122 74 / 14%), transparent 42%),
+    radial-gradient(ellipse at 94% 90%, rgb(150 122 74 / 18%), transparent 46%),
+    linear-gradient(rgb(233 220 188 / 94%), rgb(224 208 170 / 94%));
+  border-top-color: rgb(90 76 56 / 70%);
+  box-shadow:
+    inset 0 0 2.75rem rgb(120 96 56 / 20%),
+    0 0.5rem 1.25rem rgb(52 43 30 / 6%);
+}
+
+.record-card--faded .record-card__index {
+  color: rgb(98 91 80 / 65%);
+}
+
+.record-card--faded .record-card__meta > span:first-child {
+  display: inline-block;
+  padding: 0.14rem 0.55rem;
+  color: rgb(112 45 43 / 78%);
+  border: 0.09rem solid rgb(112 45 43 / 50%);
+  transform: rotate(-5deg);
+}
+
+.record-card--faded h2 a {
+  color: rgb(58 49 38 / 88%);
+}
+
+.record-card--faded blockquote {
+  color: rgb(98 91 80 / 82%);
+}
+
+.record-card--faded .record-tags {
+  opacity: 0.72;
+}
+
 .record-card h2 {
   margin: var(--space-sm) 0 var(--space-xs);
   font-size: clamp(1.35rem, 3vw, 1.85rem);
@@ -475,6 +511,33 @@
 
 .record-detail__header {
   align-items: center;
+}
+
+.record-detail__archive-note {
+  display: table;
+  margin: var(--space-lg) 0 0;
+  padding: 0.3rem 0.7rem;
+  color: rgb(112 45 43 / 80%);
+  background: rgb(233 220 188 / 60%);
+  border: 1px dashed rgb(112 45 43 / 45%);
+  font-family: var(--font-label);
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  transform: rotate(-1.2deg);
+}
+
+.record-detail--faded .record-detail__header {
+  border-bottom-color: rgb(140 118 82 / 60%);
+}
+
+.record-detail--faded .document-kicker {
+  color: rgb(112 45 43 / 70%);
+}
+
+.record-detail--faded .record-detail__quote {
+  color: rgb(233 220 188 / 92%);
+  background: rgb(46 40 34 / 94%);
 }
 
 .record-detail__quote {

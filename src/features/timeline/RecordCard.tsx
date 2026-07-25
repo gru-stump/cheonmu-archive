@@ -9,7 +9,10 @@ type RecordCardProps = {
 
 export function RecordCard({ record }: RecordCardProps): JSX.Element {
   return (
-    <article className="record-card" data-testid="record-card">
+    <article
+      className={`record-card${record.stage === 0 ? ' record-card--faded' : ''}`}
+      data-testid="record-card"
+    >
       <div className="record-card__index" aria-hidden="true">
         {record.stage.toString().padStart(2, '0')}
       </div>
