@@ -2,16 +2,18 @@ import { useMemo, useState, type JSX } from 'react';
 import { Link } from 'react-router-dom';
 import { loadAllContent } from '../../content/load';
 import type { ArchiveContent } from '../../content/schema';
+import { resolvePublicAssetUrl } from '../../lib/publicAssetUrl';
+import { GalleryLightbox } from './GalleryLightbox';
 
 type ArchivePageProps = {
   content?: ArchiveContent;
 };
 
-type ArchiveType = 'profile' | 'document' | 'gallery';
+type DocumentType = 'profile' | 'document';
 
 type ArchiveCard = {
   id: string;
-  type: ArchiveType;
+  type: DocumentType;
   title: string;
   description: string;
   path: string;
@@ -24,10 +26,9 @@ const characterNames: Record<string, string> = {
   muyeong: '무영',
 };
 
-const typeNames: Record<ArchiveType, string> = {
+const typeNames: Record<DocumentType, string> = {
   profile: '인물',
   document: '문서',
-  gallery: '화랑',
 };
 
 function toCards(content: ArchiveContent): ArchiveCard[] {
@@ -51,33 +52,39 @@ function toCards(content: ArchiveContent): ArchiveCard[] {
       .map(([id]) => id),
     tags: ['문서'],
   }));
-  const galleryCards = content.gallery
-    .filter((item) => item.public)
-    .map((item) => ({
-      id: item.id,
-      type: 'gallery' as const,
-      title: item.title,
-      description: `작가 ${item.creator}`,
-      path: '/archive/gallery',
-      characters: item.characters,
-      tags: item.tags ?? [],
-    }));
 
-  return [...profileCards, ...documentCards, ...galleryCards];
+  return [...profileCards, ...documentCards];
 }
 
 export function ArchivePage({ content = loadAllContent() }: ArchivePageProps): JSX.Element {
   const [type, setType] = useState('all');
   const [character, setCharacter] = useState('all');
   const [tag, setTag] = useState('all');
+  const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const cards = useMemo(() => toCards(content), [content]);
-  const characters = [...new Set(cards.flatMap((card) => card.characters))];
-  const tags = [...new Set(cards.flatMap((card) => card.tags))];
+  const galleryItems = useMemo(
+    () => content.gallery.filter((item) => item.public),
+    [content],
+  );
+  const characters = [...new Set([
+    ...cards.flatMap((card) => card.characters),
+    ...galleryItems.flatMap((item) => item.characters),
+  ])];
+  const tags = [...new Set([
+    ...cards.flatMap((card) => card.tags),
+    ...galleryItems.flatMap((item) => item.tags ?? []),
+  ])];
   const visibleCards = cards.filter((card) => (
     (type === 'all' || card.type === type)
     && (character === 'all' || card.characters.includes(character))
     && (tag === 'all' || card.tags.includes(tag))
   ));
+  const visibleGalleryItems = galleryItems.filter((item) => (
+    (type === 'all' || type === 'gallery')
+    && (character === 'all' || item.characters.includes(character))
+    && (tag === 'all' || (item.tags ?? []).includes(tag))
+  ));
+  const visibleCount = visibleCards.length + visibleGalleryItems.length;
 
   return (
     <section className="archive-page" aria-labelledby="archive-title">
@@ -116,22 +123,60 @@ export function ArchivePage({ content = loadAllContent() }: ArchivePageProps): J
         </label>
       </form>
 
-      <p className="archive-result-count" aria-live="polite">자료 {visibleCards.length}건</p>
-      {visibleCards.length > 0 ? (
-        <ul className="archive-card-grid">
-          {visibleCards.map((card) => (
-            <li key={`${card.type}-${card.id}`}>
-              <Link className="archive-card" to={card.path}>
-                <span className="archive-card__type">{typeNames[card.type]}</span>
-                <h2>{card.title}</h2>
-                <p>{card.description}</p>
-                {card.tags.length > 0 && <small>{card.tags.map((item) => `#${item}`).join(' ')}</small>}
-              </Link>
-            </li>
-          ))}
-        </ul>
-      ) : (
+      <p className="archive-result-count" aria-live="polite">자료 {visibleCount}건</p>
+
+      {visibleCards.length > 0 && (
+        <section className="archive-section" aria-labelledby="archive-documents-title">
+          <h2 className="archive-section__title" id="archive-documents-title">인물 · 문서</h2>
+          <ul className="archive-card-grid">
+            {visibleCards.map((card) => (
+              <li key={`${card.type}-${card.id}`}>
+                <Link className="archive-card" to={card.path}>
+                  <span className="archive-card__type">{typeNames[card.type]}</span>
+                  <h3>{card.title}</h3>
+                  <p>{card.description}</p>
+                  {card.tags.length > 0 && <small>{card.tags.map((item) => `#${item}`).join(' ')}</small>}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {visibleGalleryItems.length > 0 && (
+        <section className="archive-section" aria-labelledby="archive-gallery-title">
+          <h2 className="archive-section__title" id="archive-gallery-title">화랑</h2>
+          <ul className="gallery-grid archive-gallery-preview">
+            {visibleGalleryItems.map((item, index) => (
+              <li key={item.id}>
+                <button
+                  className="gallery-card"
+                  type="button"
+                  aria-label={`${item.title} 크게 보기`}
+                  onClick={() => setSelectedIndex(index)}
+                >
+                  <span className="gallery-card__image"><img src={resolvePublicAssetUrl(item.image)} alt={item.alt} loading="lazy" /></span>
+                  <span className="gallery-card__caption">
+                    <strong>{item.title}</strong>
+                    <small>작가 {item.creator}</small>
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {visibleCount === 0 && (
         <p className="archive-empty">선택한 조건에 맞는 자료가 없습니다.</p>
+      )}
+
+      {selectedIndex !== null && (
+        <GalleryLightbox
+          items={visibleGalleryItems}
+          initialIndex={selectedIndex}
+          onClose={() => setSelectedIndex(null)}
+        />
       )}
     </section>
   );

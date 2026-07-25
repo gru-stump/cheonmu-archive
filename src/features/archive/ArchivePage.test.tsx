@@ -67,10 +67,23 @@ describe('ArchivePage', () => {
 
     await user.selectOptions(screen.getByLabelText('자료 유형'), 'gallery');
     await user.selectOptions(screen.getByLabelText('태그'), '전신');
-    expect(screen.getByRole('link', { name: /천령 전신/ })).toHaveAttribute(
-      'href',
-      '/archive/gallery',
-    );
+    expect(screen.getByRole('button', { name: '천령 전신 크게 보기' })).toBeVisible();
+    expect(screen.queryByRole('link', { name: /천무 관계 개요/ })).not.toBeInTheDocument();
+  });
+
+  it('shows gallery image previews on the archive page and opens the lightbox in place', async () => {
+    const user = userEvent.setup();
+    renderArchive();
+
+    expect(screen.getByRole('heading', { name: '인물 · 문서' })).toBeVisible();
+    expect(screen.getByRole('heading', { name: '화랑' })).toBeVisible();
+    expect(screen.getByAltText('천령 전신 설정화')).toBeVisible();
+
+    await user.click(screen.getByRole('button', { name: '천령 전신 크게 보기' }));
+    expect(screen.getByRole('dialog', { name: '천령 전신' })).toBeVisible();
+
+    await user.click(screen.getByRole('button', { name: '라이트박스 닫기' }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 });
 
