@@ -46,6 +46,63 @@ a {
   background: var(--muyeong-red);
 }
 
+/* 스크롤바 — 낡은 기록철의 괘선·잉크 톤에 맞춘다 */
+@supports not selector(::-webkit-scrollbar) {
+  * {
+    scrollbar-color: var(--rule) var(--paper-shadow);
+  }
+
+  .cinematic-scene,
+  .gallery-lightbox {
+    scrollbar-color: var(--muyeong-red) var(--muyeong-black);
+  }
+}
+
+::-webkit-scrollbar {
+  width: 0.8rem;
+  height: 0.8rem;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--paper-shadow);
+  border: 1px solid rgb(184 170 144 / 45%);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--rule);
+  border: 0.2rem solid var(--paper-shadow);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--ink-muted);
+}
+
+::-webkit-scrollbar-thumb:active {
+  background: var(--muyeong-red);
+}
+
+::-webkit-scrollbar-corner {
+  background: var(--paper-shadow);
+}
+
+/* 어두운 장면 재구성·라이트박스 위에서는 먹지에 붉은 잉크 */
+.cinematic-scene::-webkit-scrollbar-track,
+.gallery-lightbox::-webkit-scrollbar-track {
+  background: var(--muyeong-black);
+  border-color: rgb(243 236 218 / 14%);
+}
+
+.cinematic-scene::-webkit-scrollbar-thumb,
+.gallery-lightbox::-webkit-scrollbar-thumb {
+  background: var(--muyeong-red);
+  border-color: var(--muyeong-black);
+}
+
+.cinematic-scene::-webkit-scrollbar-thumb:hover,
+.gallery-lightbox::-webkit-scrollbar-thumb:hover {
+  background: #8a3a37;
+}
+
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;
