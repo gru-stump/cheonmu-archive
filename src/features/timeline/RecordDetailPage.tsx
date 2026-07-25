@@ -9,7 +9,7 @@ type RecordDetailPageProps = {
   records?: readonly ArchiveRecord[];
 };
 
-const cinematicStages = new Set([1, 3, 5, 7]);
+const cinematicStages = new Set([0, 1, 3, 5, 7]);
 
 function proseFromRecordBody(body: string): string {
   return body

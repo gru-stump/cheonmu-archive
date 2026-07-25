@@ -133,11 +133,12 @@
     - revealStage: 1
       paragraphs:
         - 초기에는 부상자를 후방 치료 시설로 이송하는 것이 원칙이었다. 그러나 이송 중 상태가 악화되는 사례가 누적되며 의료 인력의 현장 배속이 도입되었다.
+        - 배속 제도가 도입되기 전, 격리선 설정 이후의 구역에 잔류해 이뤄진 비공식 구조가 초기 기록에 드물게 남아 있다. 해당 사례의 다수는 구조자의 소속이 확인되지 않은 채 종결되었다.
     - revealStage: 3
       paragraphs:
         - 배속 의료 인력은 통제선 밖 점검선에 위치하며, 철수 명령의 적용 대상이다. 다만 환자 발생 시 의료적 판단과 지휘 판단의 우선순위는 명문화되어 있지 않다.
         - 특정 부대와 특정 의료인의 배속 조합이 반복되는 경우, 편성 담당은 이를 관행으로 존중하는 편이다.
-  relatedRecords: [field-accompaniment]
+  relatedRecords: [field-accompaniment, the-one-who-stayed]
 
 - id: personnel-registry
   documentNumber: WF-08

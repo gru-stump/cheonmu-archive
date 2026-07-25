@@ -21,7 +21,7 @@ export function validateArchiveContent(
   }
 
   for (const record of content.records) {
-    if (!Number.isInteger(record.stage) || record.stage < 1 || record.stage > 8) {
+    if (!Number.isInteger(record.stage) || record.stage < 0 || record.stage > 8) {
       errors.push(`Record ${record.id} has invalid stage: ${record.stage}`);
     }
     for (const relatedId of record.related) {

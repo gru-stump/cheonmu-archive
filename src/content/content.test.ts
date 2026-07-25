@@ -27,13 +27,13 @@ const FORBIDDEN_PUBLIC_SECRETS = [
 
 describe('initial Cheonmu archive content', () => {
   // CM-07·08은 공개 전까지 records/_hidden/에 보관한다. 복원 시 8단계 기대값으로 되돌릴 것.
-  it('contains six confirmed stages with cinematics exactly at 1, 3, and 5', () => {
+  it('contains the prequel and six confirmed stages with cinematics at 0, 1, 3, and 5', () => {
     const content = loadAllContent();
 
-    expect(content.records.map((record) => record.stage)).toEqual([1, 2, 3, 4, 5, 6]);
+    expect(content.records.map((record) => record.stage)).toEqual([0, 1, 2, 3, 4, 5, 6]);
     expect(content.records.filter((record) => record.cinematic).map((record) => record.stage))
-      .toEqual([1, 3, 5]);
-    expect(content.records.map((record) => record.status)).toEqual(Array(6).fill('confirmed'));
+      .toEqual([0, 1, 3, 5]);
+    expect(content.records.map((record) => record.status)).toEqual(Array(7).fill('confirmed'));
   });
 
   it('keeps the public first-contact summary separate from the cinematic prose', () => {

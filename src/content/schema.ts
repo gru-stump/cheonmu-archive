@@ -14,7 +14,7 @@ export const recordMetaSchema = z.object({
   id: contentId,
   recordNumber: nonEmptyText,
   title: nonEmptyText,
-  stage: z.number().int().min(1).max(8),
+  stage: z.number().int().min(0).max(8),
   status: statusSchema,
   characters: z.array(contentId),
   tags: z.array(nonEmptyText),
