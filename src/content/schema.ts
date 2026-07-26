@@ -47,6 +47,7 @@ export const galleryItemSchema = z.object({
   characters: z.array(contentId).min(1),
   tags: z.array(nonEmptyText).optional(),
   public: z.boolean(),
+  nonCanon: z.boolean().optional(),
 });
 
 export const gallerySchema = z.array(galleryItemSchema);

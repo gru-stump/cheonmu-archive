@@ -1439,6 +1439,64 @@
 .gallery-card__caption { display: grid; gap: 0.1rem; padding: var(--space-md); }
 .gallery-card__caption small { color: var(--ink-muted); }
 
+.gallery-card__image { position: relative; }
+
+.gallery-card__phantom {
+  position: absolute;
+  top: 0.9rem;
+  right: 0.9rem;
+  padding: 0.22rem 0.6rem;
+  color: rgb(112 45 43 / 78%);
+  background: rgb(251 247 235 / 74%);
+  border: 1px dashed rgb(112 45 43 / 55%);
+  font: 800 0.64rem/1.2 var(--font-label);
+  letter-spacing: 0.12em;
+  transform: rotate(4deg);
+  pointer-events: none;
+}
+
+.gallery-lightbox__phantom {
+  color: var(--ink-muted);
+  font-size: 0.78rem;
+  font-style: italic;
+}
+
+/* 화랑 — 존재하지 않는 기록 섹션 */
+.gallery-phantom-section {
+  margin-top: var(--space-xl);
+  padding-top: var(--space-lg);
+  border-top: 1px dashed rgb(112 45 43 / 45%);
+}
+
+.gallery-phantom-section__header h2 {
+  margin: 0 0 var(--space-xs);
+  color: rgb(58 49 38 / 82%);
+  font-size: clamp(1.3rem, 3vw, 1.8rem);
+  letter-spacing: 0.04em;
+  word-break: keep-all;
+}
+
+.gallery-phantom-section__header p {
+  margin: 0 0 var(--space-md);
+  color: var(--ink-muted);
+  font-size: 0.85rem;
+  font-style: italic;
+}
+
+.gallery-card--phantom {
+  background: rgb(251 247 235 / 45%);
+  border: 1px dashed rgb(112 45 43 / 40%);
+}
+
+.gallery-card--phantom:hover {
+  border-color: var(--muyeong-red);
+  border-style: solid;
+}
+
+.gallery-card--phantom .gallery-card__caption small {
+  font-style: italic;
+}
+
 .gallery-lightbox {
   position: fixed;
   z-index: 100;

@@ -42,6 +42,7 @@
   characters: [cheonryeong, muyeong]
   tags: [2인, 아이돌, 콘셉트]
   public: true
+  nonCanon: true
 
 - id: cheonmu-setlog
   title: 천령·무영 셋로그
@@ -51,3 +52,4 @@
   characters: [cheonryeong, muyeong]
   tags: [2인, SD, 셋로그]
   public: true
+  nonCanon: true

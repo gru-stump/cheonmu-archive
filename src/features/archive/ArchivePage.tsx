@@ -155,7 +155,10 @@ export function ArchivePage({ content = loadAllContent() }: ArchivePageProps): J
                   aria-label={`${item.title} 크게 보기`}
                   onClick={() => setSelectedIndex(index)}
                 >
-                  <span className="gallery-card__image"><img src={resolvePublicAssetUrl(item.image)} alt={item.alt} loading="lazy" /></span>
+                  <span className="gallery-card__image">
+                    <img src={resolvePublicAssetUrl(item.image)} alt={item.alt} loading="lazy" />
+                    {item.nonCanon && <span className="gallery-card__phantom">존재하지 않는 기록</span>}
+                  </span>
                   <span className="gallery-card__caption">
                     <strong>{item.title}</strong>
                     <small>작가 {item.creator}</small>

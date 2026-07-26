@@ -280,6 +280,27 @@
         - 두드림에 응답하지 않는 습속은 격리 구역 응답 규칙이 개정되기 전부터 존재했다. 규정이 습속을 뒤늦게 따라온 사례로 기록되어 있다.
   relatedRecords: [the-one-who-stayed, first-contact]
 
+- id: response-behavior-protocol
+  documentNumber: WF-12
+  title: 응답 행위 대응 지침
+  categories: [field-response]
+  status: public
+  clearance: 공개 열람
+  basisStage: 5
+  summary: 격리선에 침입해 개체에 접촉을 시도하는 집단에 대한 대응 지침.
+  explanation: 부르면 안 되는 것을, 일부러 부르는 사람들이 있다.
+  sections:
+    - revealStage: 1
+      paragraphs:
+        - 격리선 침입 사건 가운데 개체에 대한 접촉 시도가 목적인 사례가 반복 확인된다. 두드림에 응답하는 행위, 음원 유인 장비의 설치, 격리 설비의 고의 개방 시도가 대표 유형이며, 통칭 응답 행위로 분류된다.
+        - 응답 행위자는 조직적으로 움직이는 사례가 많다. 스스로를 부르는 이름은 확인되지 않았으며, 내부 보고서는 이들을 응답회로 통칭한다.
+        - 응답 행위자와의 단독 접촉은 금지된다. 확인 즉시 인계하고, 이들이 남긴 표식과 장비는 만지지 않고 보고한다.
+    - revealStage: 5
+      paragraphs:
+        - 응답회 관계자가 미공표 사건 정보를 사전에 인지하고 있던 정황이 복수 건 보고되었다. 정보 경로는 확인되지 않았다.
+        - 상위 등급 사건의 발생 시기와 응답회 활동의 상관을 지적한 보고가 있으나, 인과는 판단이 유보되어 있다.
+  relatedRecords: []
+
 - id: recurring-anomalies
   documentNumber: OB-01
   title: 반복 관측 이상
@@ -356,6 +377,26 @@
         - 멸(滅)급 대응 기준은 이 단편들에서 유래했다. 문서 번호가 붙은 기록만 정식 사건으로 인정하는 현행 기록 제도 역시 같은 시기의 교훈에서 비롯했다는 견해가 기관 내부에 있다.
   relatedRecords: [the-one-who-stayed]
   lockLabel: 연대 확정 전 열람 제한
+
+- id: founding-record-gaps
+  documentNumber: CL-04
+  title: 창설기 기록의 공백
+  categories: [classified]
+  status: locked
+  clearance: 제한 열람
+  basisStage: 5
+  summary: 기관 창설기의 인사·자원 기록에 설명되지 않는 공백이 있다.
+  explanation: 이 기관을 세운 사람들의 이름이, 기관의 기록에서 지워져 있다.
+  sections:
+    - revealStage: 1
+      paragraphs: [창설기 인사 기록의 일부가 일괄 말소되어 있다. 말소 절차의 승인자 역시 기록에 남아 있지 않다.]
+    - revealStage: 5
+      paragraphs:
+        - 재건 초기의 자원 배분을 주도한 집단이 존재했음을 시사하는 문서가 남아 있다. 해당 집단의 이름은 문서마다 다르게 등장하며, 이후 일괄 말소되었다. 말소를 피한 각주 하나에 수계(守契)라는 표기가 반복된다.
+        - 말소된 이름들과 관련된 계좌·법인 일부가 응답 행위 관련 집단(WF-12)의 자금 흐름과 교차한 정황이 있다. 조사는 승인되지 않았다.
+        - 지켜야 할 약속이 있다는 문장이 서로 다른 시기의 단편에서 같은 형태로 발견되었다. 약속의 상대와 내용은 어느 기록에도 남아 있지 않다.
+  relatedRecords: []
+  lockLabel: 조사 승인 전 열람 제한
 
 - id: cheonryeong-restricted
   documentNumber: CL-01

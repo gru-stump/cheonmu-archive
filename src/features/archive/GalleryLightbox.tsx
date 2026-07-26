@@ -94,6 +94,9 @@ export function GalleryLightbox({ items, initialIndex, onClose }: GalleryLightbo
           <div className="gallery-lightbox__credit">
             <p>작가 <strong>{item.creator}</strong></p>
             {item.tags && <p>{item.tags.map((tag) => `#${tag}`).join(' ')}</p>}
+            {item.nonCanon && (
+              <p className="gallery-lightbox__phantom">※ 이 기록은 어느 문서고에도 존재하지 않습니다.</p>
+            )}
             {item.source && (
               <a href={item.source} target="_blank" rel="noreferrer">출처 보기</a>
             )}
