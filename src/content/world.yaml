@@ -56,6 +56,7 @@
     - revealStage: 2
       paragraphs:
         - 반복 내원하는 환자에게는 전담 의사가 배정된다. 전담 배정은 공식 제도라기보다 반복되는 배정이 굳어진 관행에 가깝다.
+        - 적성 등록자(WF-10)는 회복이 빨라 외상 징후가 조기에 가려진다. 여기에 자각 증상의 축소 보고가 겹치면 중증이 늦게 발견되는 사례가 반복되어, 적성자 반복 내원자에게는 전담 의사의 지속 관찰이 권장된다.
     - revealStage: 5
       paragraphs:
         - 일부 치료 기록은 담당 의료인 전담으로 잠기며, 다른 의료진은 열람할 수 없다. 전담 잠금의 사유는 차트에 남지 않는다.
@@ -115,6 +116,7 @@
       paragraphs:
         - 미확인 개체는 형태와 성질이 일정하지 않아 개별 사건 단위로 분류된다. 관측 즉시 격리선이 설정되고 민간인 접근이 통제된다.
         - 제압보다 격리가 우선이며, 제압은 격리 유지가 불가능하다고 판단된 경우에만 승인된다.
+        - 사건이 누적되며 대응 규모를 기준으로 한 등급 체계(WF-09)와 행동 경향 묶음(OB-03)이 도입되었다. 두 체계 모두 개체의 정체를 분류하지 않는다 — 개체는 여전히 개별 사건 단위로만 다뤄진다.
     - revealStage: 5
       paragraphs:
         - 폐쇄 시설에 장기간 머문 개체는 내부에 오염 물질을 축적하며, 제압 과정에서 이를 방출한 사례가 보고되어 있다.
@@ -158,6 +160,126 @@
         - 일부 인원의 등록 기록에서 불일치가 보고되어 해당 기록은 제한 문서로 이관되었다. 이관 사유는 공개되지 않는다.
   relatedRecords: [repeated-treatment, fracture]
 
+- id: entity-response-grades
+  documentNumber: WF-09
+  title: 개체 대응 등급
+  categories: [field-response]
+  status: public
+  clearance: 공개 열람
+  basisStage: 1
+  summary: 격리 유지에 필요한 대응 규모를 기준으로 한 네 단계 등급.
+  explanation: 등급은 개체가 아니라 사건에 붙으며, 필요한 대응의 크기를 말한다.
+  sections:
+    - revealStage: 1
+      paragraphs:
+        - 대응 등급은 개체의 정체나 위험성 평가가 아니라, 격리 유지에 필요한 인력과 통제 범위에 붙는다. 같은 개체라도 재평가에 따라 등급이 오르내린다.
+        - 관(觀)급은 격리선 설정과 정기 관측만을 유지한다. 계(戒)급은 단일 구역 통제와 민간인 소개를 동반하는 표준 격리 대응이다.
+        - 위(危)급은 인접 구역 소개와 의료 지원 인력 배속이 의무화되는 확장 통제 단계다. 제압 검토는 위급에서만 승인된다.
+        - 멸(滅)급은 광역 상실을 전제로 한 최상위 등급이다. 제도 시행 이후 지정된 사례가 없으며, 지정 요건과 대응 절차는 제한 문서로 이관되어 있다.
+    - revealStage: 5
+      paragraphs:
+        - 위급 사건에서는 제압 과정의 오염 방출이 반복적으로 보고되어, 제압 승인에는 의료 부서의 사전 검토가 포함된다.
+  relatedRecords: [first-contact, fracture, the-one-who-stayed]
+
+- id: behavior-patterns
+  documentNumber: OB-03
+  title: 행동 경향 관측 묶음
+  categories: [observation]
+  status: partial
+  clearance: 부분 공개
+  basisStage: 5
+  summary: 반복 보고에서 사후적으로 묶인 개체 행동의 세 가지 경향.
+  explanation: 공식 분류가 아니라, 보고서에 반복 등장하는 서술을 정리한 것이다.
+  sections:
+    - revealStage: 1
+      paragraphs:
+        - 반복 보고에서 세 가지 경향이 사후적으로 묶였다. 정주형은 폐쇄 시설에 머무르며 움직이지 않는다. 배회형은 격리 구역 안을 일정하지 않은 간격으로 이동한다. 돌파형은 구조물과 격리 설비를 반복해서 타격한다.
+        - 배회형 개체가 음원에 접근하는 반응이 여러 현장에서 보고되었다. 격리 구역 내 구조 활동에서 소음 통제가 권고되는 근거다.
+    - revealStage: 5
+      paragraphs:
+        - 하나의 사건에서 경향을 넘나드는 개체가 보고된 뒤, 경향 묶음을 예측 도구로 쓰지 않도록 명시되었다.
+        - 대원들이 붙인 비공식 별칭이 보고서 여백에 남는 관행이 있다. 별칭은 색인되지 않으며, 같은 별칭이 서로 다른 사건에서 반복될 때만 참고된다.
+  relatedRecords: [first-contact, fracture, the-one-who-stayed]
+
+- id: aptitude-registry
+  documentNumber: WF-10
+  title: 적성 판정과 등록
+  categories: [organization]
+  status: public
+  clearance: 공개 열람
+  basisStage: 1
+  summary: 통상 범위를 넘는 신체 적성을 판정하고 등록하는 제도.
+  explanation: 특수기동대 같은 현장 부서의 선발이 이 판정 위에 서 있다.
+  sections:
+    - revealStage: 1
+      paragraphs:
+        - 일부 인원에게서 감각, 지구력, 회복이 통상 범위를 웃도는 신체 적성이 확인된다. 적성이 언제부터 나타났는지에 대한 합의된 기록은 없다.
+        - 적성은 판정 절차를 거쳐 등록되며, 특수기동대를 비롯한 현장 부서의 선발 요건에 포함된다. 현장 지휘관급 인원은 대부분 적성 등록자다.
+        - 적성의 원인은 확정되지 않았다. 유전과 훈련으로 설명되지 않는 발현 사례가 보고되어 연구가 계속되고 있다.
+    - revealStage: 5
+      paragraphs:
+        - 판정 절차에서 판정 불능으로 분류된 사례가 소수 존재한다. 계측 오류로 종결된 건이 대부분이며, 반복 판정 불능 기록은 제한 문서로 이관된다.
+  relatedRecords: [first-contact, fracture]
+
+- id: collected-folklore
+  documentNumber: OB-04
+  title: 채록 설화의 반복 존재
+  categories: [observation]
+  status: partial
+  clearance: 부분 공개
+  basisStage: 5
+  summary: 각지에서 채록된 오래된 이야기에 같은 존재들이 반복해서 등장한다.
+  explanation: 이야기 속에만 있다고 하기에는, 서로 모르는 이야기들이 너무 닮아 있다.
+  sections:
+    - revealStage: 1
+      paragraphs:
+        - 기관은 재난 기록 사업의 일환으로 각지의 오래된 이야기를 채록해 왔다. 시대와 지역이 다른 이야기들에 비슷한 존재가 반복해서 등장한다.
+        - 반복되는 모티프 가운데 가장 흔한 것은 두 가지다. 부르면 안 되는 것에 대한 경고, 그리고 죽을 자리에서 낯선 이에게 구해져 살아 돌아왔다는 이야기. 구전 설화의 전형적 모티프로 설명되어 있다.
+    - revealStage: 5
+      paragraphs:
+        - 설화 속 존재와 미확인 개체를 같은 것으로 보는 견해가 제기되었으나 채택되지 않았다. 경고 설화의 서술과 일부 사건 보고가 유사하다는 지적만 각주로 남아 있다.
+        - 근래의 사건 보고와 특정 설화의 서술이 세부까지 일치한 사례가 있어, 해당 대조표는 색인에서 제외되고 제한 문서로 이관되었다.
+  relatedRecords: [the-one-who-stayed]
+
+- id: undated-structures
+  documentNumber: WF-11
+  title: 연대 불명 구조물
+  categories: [anomaly]
+  status: partial
+  clearance: 부분 공개
+  basisStage: 5
+  summary: 축조 연대를 확정할 수 없는 구조물이 도시 지하와 외곽에서 확인된다.
+  explanation: 지금의 도시는, 언제 지어졌는지 모르는 것들 위에 서 있다.
+  sections:
+    - revealStage: 1
+      paragraphs:
+        - 재개발과 지반 정비 과정에서 축조 연대를 확정할 수 없는 구조물이 드러나는 사례가 있다. 현행 공법 및 자재 대장과 일치하지 않으며, 발견 즉시 보고가 의무화되어 있다.
+    - revealStage: 5
+      paragraphs:
+        - 폐쇄 시설형 사건 다수가 이러한 구조물과 겹친 위치에서 발생했다. 오염 방출로 종결된 지하 정수장 사건의 시설 역시 연대 불명 구조물 위에 증축된 것으로 사후 확인되었다.
+        - 장기 정주 개체와 구조물의 상관은 판단이 유보되어 있다. 일부 구조물 내부에서 판독되지 않는 표기가 확인되어 해당 기록은 제한 문서로 이관되었다.
+  relatedRecords: [fracture]
+
+- id: field-customs
+  documentNumber: OB-05
+  title: 격리선 안의 관습
+  categories: [observation]
+  status: partial
+  clearance: 부분 공개
+  basisStage: 5
+  summary: 규정에 없지만 대원들 사이에서 지켜지는 격리 구역 안의 습속.
+  explanation: 아무도 이유를 설명하지 않지만, 아무도 어기지 않는다.
+  sections:
+    - revealStage: 1
+      paragraphs:
+        - 격리선 안에서는 이름을 크게 부르지 않는다. 두드리는 소리에 응답하지 않는다. 어느 규정에도 없는 습속이지만, 신입 대원은 이유를 묻기 전에 먼저 배운다.
+        - 조마다 출동 전에 지키는 사소한 관습이 있다. 기록으로 남기지 않는 것이 관습의 일부다.
+    - revealStage: 5
+      paragraphs:
+        - 습속 다수가 채록 설화의 경고 모티프(OB-04)와 겹친다는 대조 결과가 있다. 습속이 미신이 아니라 잊힌 지침의 잔재라는 견해가 각주로 남아 있다.
+        - 두드림에 응답하지 않는 습속은 격리 구역 응답 규칙이 개정되기 전부터 존재했다. 규정이 습속을 뒤늦게 따라온 사례로 기록되어 있다.
+  relatedRecords: [the-one-who-stayed, first-contact]
+
 - id: recurring-anomalies
   documentNumber: OB-01
   title: 반복 관측 이상
@@ -195,6 +317,45 @@
         - 철수 기준 초과 후에도 처치 위치를 지킨 사례가 있다. 해당 건은 보고되지 않았다.
         - 중증 환자의 집중 치료 이후 담당 의료관에게서 뚜렷한 소모가 관측되었다. 사흘간 병상을 떠나지 않은 근무 기록이 남아 있다.
   relatedRecords: [field-accompaniment, fracture]
+
+- id: repeated-targeting
+  documentNumber: CL-02
+  title: 반복 표적화 관측 보고
+  categories: [classified]
+  status: locked
+  clearance: 제한 열람
+  basisStage: 5
+  summary: 일부 상위 등급 사건에서 자극 반응으로 설명되지 않는 행동이 확인되었다.
+  explanation: 개체가 배우고, 피하고, 부른다는 보고들이다.
+  sections:
+    - revealStage: 1
+      paragraphs: [일부 위급 사건에서 자극 반응만으로 설명되지 않는 행동 순서가 보고되었다.]
+    - revealStage: 5
+      paragraphs:
+        - 위급 사건 복수 건에서 학습·회피·유인에 해당하는 행동이 확인되었다. 순찰 조명의 주기에 맞춘 이동, 격리문 잠금 절차의 간격을 노린 타격이 대표 사례다.
+        - 구조 신호를 모사한 두드림이 관측된 사례가 있다. 해당 보고 이후 격리 구역 내 응답 규칙이 개정되었다.
+  relatedRecords: [fracture, the-one-who-stayed]
+  lockLabel: 대응 지침 개정 후 해금
+
+- id: pre-reconstruction-fragments
+  documentNumber: CL-03
+  title: 재건기 이전 기록 단편
+  categories: [classified]
+  status: locked
+  clearance: 제한 열람
+  basisStage: 5
+  summary: 기관이 보관한 가장 오래된 문서군은 연대 불명의 단편이다.
+  explanation: 지금의 세계가 무엇의 뒤에 세워졌는지에 대한, 확인되지 않는 조각들이다.
+  sections:
+    - revealStage: 1
+      paragraphs: [기관이 보관한 가장 오래된 문서군은 연대 불명의 단편으로, 상호 교차 검증이 불가능해 정식 기록으로 인정되지 않는다.]
+    - revealStage: 5
+      paragraphs:
+        - 단편들은 광역 상실기의 존재를 시사한다. 현재 문명이 소수 생존 집단의 재건에서 비롯했다는 해석이 있으나, 이를 확정할 기록은 남아 있지 않다. 단편들에는 그 시기를 가리키는 합의된 명칭조차 남아 있지 않다.
+        - 단편 다수가 같은 대상을 서로 다른 말로 가리키는 것으로 보인다. 형태에 대한 서술은 남아 있지 않고, 규모와 침묵에 대한 묘사만 반복된다.
+        - 멸(滅)급 대응 기준은 이 단편들에서 유래했다. 문서 번호가 붙은 기록만 정식 사건으로 인정하는 현행 기록 제도 역시 같은 시기의 교훈에서 비롯했다는 견해가 기관 내부에 있다.
+  relatedRecords: [the-one-who-stayed]
+  lockLabel: 연대 확정 전 열람 제한
 
 - id: cheonryeong-restricted
   documentNumber: CL-01

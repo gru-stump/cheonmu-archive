@@ -934,6 +934,7 @@
   border-left: 0.2rem solid transparent;
   font: 700 0.76rem/1.45 var(--font-label);
   text-decoration: none;
+  word-break: keep-all;
 }
 
 .world-index a[aria-current='page'] {
@@ -944,6 +945,51 @@
 
 .world-index a span { color: var(--ink-muted); }
 .world-index a[aria-current='page'] span { color: var(--paper-shadow); }
+
+/* 잠긴 문서 — 색인의 반잠금 표시 */
+.world-index a[data-status='locked'] {
+  position: relative;
+  padding-right: 1.9rem;
+  color: var(--ink-muted);
+  background: repeating-linear-gradient(
+    -45deg,
+    transparent 0 0.45rem,
+    rgb(112 45 43 / 8%) 0.45rem 0.62rem
+  );
+  border-left: 0.2rem dashed rgb(112 45 43 / 55%);
+}
+
+.world-index a[data-status='locked']::after {
+  content: '▣';
+  position: absolute;
+  top: 50%;
+  right: 0.55rem;
+  color: rgb(112 45 43 / 65%);
+  font-size: 0.8rem;
+  transform: translateY(-50%);
+}
+
+.world-index a[data-status='locked']:hover {
+  color: var(--ink);
+  border-left-style: solid;
+}
+
+.world-index a[data-status='locked'][aria-current='page'] {
+  color: var(--paper-raised);
+  background:
+    repeating-linear-gradient(
+      -45deg,
+      transparent 0 0.45rem,
+      rgb(112 45 43 / 28%) 0.45rem 0.62rem
+    ),
+    var(--muyeong-black);
+  border-left: 0.2rem solid var(--muyeong-red);
+}
+
+.world-index a[data-status='locked'][aria-current='page']::after {
+  color: rgb(216 203 178 / 75%);
+}
+
 .world-index-toggle { display: none; }
 
 .world-document {
@@ -969,6 +1015,7 @@
 .world-document h2 {
   margin: var(--space-xs) 0 var(--space-sm);
   font-size: clamp(1.8rem, 4vw, 3rem);
+  word-break: keep-all;
 }
 
 .world-explanation {
@@ -983,6 +1030,62 @@
   background: rgb(29 27 26 / 6%);
   border: 1px dashed var(--ink-muted);
   font-family: var(--font-label);
+}
+
+/* 잠긴 문서 — 기밀 문서 표현 */
+.world-document[data-status='locked'] {
+  position: relative;
+  overflow: hidden;
+  background:
+    repeating-linear-gradient(
+      -45deg,
+      transparent 0 1.25rem,
+      rgb(112 45 43 / 4%) 1.25rem 1.42rem
+    ),
+    rgb(247 239 223 / 88%);
+  border-block: 0.2rem double rgb(112 45 43 / 55%);
+}
+
+.world-document[data-status='locked']::before {
+  content: '제한 열람';
+  position: absolute;
+  top: 1.5rem;
+  right: 1.3rem;
+  padding: 0.32rem 0.85rem;
+  color: rgb(112 45 43 / 62%);
+  border: 0.16rem double rgb(112 45 43 / 50%);
+  font: 800 0.82rem/1.2 var(--font-label);
+  letter-spacing: 0.34em;
+  text-indent: 0.34em;
+  transform: rotate(6deg);
+  pointer-events: none;
+}
+
+.world-document[data-status='locked'] header {
+  border-bottom: 1px dashed rgb(112 45 43 / 45%);
+}
+
+.world-document[data-status='locked'] .world-explanation {
+  background:
+    repeating-linear-gradient(
+      -45deg,
+      transparent 0 0.5rem,
+      rgb(112 45 43 / 6%) 0.5rem 0.68rem
+    ),
+    rgb(216 203 178 / 30%);
+}
+
+.world-document[data-status='locked'] .world-lock {
+  padding: var(--space-md) var(--space-lg);
+  color: var(--paper-shadow);
+  background: repeating-linear-gradient(
+    90deg,
+    rgb(23 21 18 / 92%) 0 2.2rem,
+    rgb(29 27 26 / 80%) 2.2rem 2.6rem
+  );
+  border: 1px solid var(--muyeong-black);
+  border-left: 0.35rem solid var(--muyeong-red);
+  letter-spacing: 0.1em;
 }
 
 .world-related {

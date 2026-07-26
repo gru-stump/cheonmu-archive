@@ -86,6 +86,7 @@ export function WorldPage({
                   <Link
                     key={item.id}
                     to={`/world/${item.id}`}
+                    data-status={item.status}
                     aria-current={item.id === selected.id ? 'page' : undefined}
                     onKeyDown={(event) => {
                       if (indexOpen && event.key === 'Enter') {
@@ -101,7 +102,7 @@ export function WorldPage({
             );
           })}
         </nav>
-        <article className="world-document">
+        <article className="world-document" data-status={selected.status}>
           <header>
             <p>
               {selected.documentNumber} · {selected.clearance} · 상태 {STATUS_LABELS[selected.status]}
