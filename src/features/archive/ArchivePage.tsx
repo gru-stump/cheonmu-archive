@@ -127,7 +127,18 @@ export function ArchivePage({ content = loadAllContent() }: ArchivePageProps): J
 
       {visibleCards.length > 0 && (
         <section className="archive-section" aria-labelledby="archive-documents-title">
-          <h2 className="archive-section__title" id="archive-documents-title">인물 · 문서</h2>
+          <div className="archive-section__head">
+            <h2 className="archive-section__title" id="archive-documents-title">인물 · 문서</h2>
+            {(type !== 'all' || character !== 'all' || tag !== 'all') && (
+              <button
+                className="archive-section__more"
+                type="button"
+                onClick={() => { setType('all'); setCharacter('all'); setTag('all'); }}
+              >
+                전체 보기 →
+              </button>
+            )}
+          </div>
           <ul className="archive-card-grid">
             {visibleCards.map((card) => (
               <li key={`${card.type}-${card.id}`}>
@@ -145,7 +156,10 @@ export function ArchivePage({ content = loadAllContent() }: ArchivePageProps): J
 
       {visibleGalleryItems.length > 0 && (
         <section className="archive-section" aria-labelledby="archive-gallery-title">
-          <h2 className="archive-section__title" id="archive-gallery-title">화랑</h2>
+          <div className="archive-section__head">
+            <h2 className="archive-section__title" id="archive-gallery-title">화랑</h2>
+            <Link className="archive-section__more" to="/archive/gallery">전체 보기 →</Link>
+          </div>
           <ul className="gallery-grid archive-gallery-preview">
             {visibleGalleryItems.map((item, index) => (
               <li key={item.id}>
