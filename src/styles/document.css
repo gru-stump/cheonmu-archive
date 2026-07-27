@@ -492,9 +492,20 @@
   text-decoration: none;
 }
 
+/* 카드 전체를 클릭 영역으로 확장 (stretched link) */
+.record-card h2 a::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+}
+
 .record-card h2 a:hover {
   color: var(--muyeong-red);
   text-decoration: underline;
+}
+
+.record-card:has(h2 a:hover) .record-card__body {
+  border-top-color: var(--muyeong-red);
 }
 
 .record-card blockquote {
