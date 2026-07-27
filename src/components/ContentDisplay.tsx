@@ -41,7 +41,15 @@ export function RecordContentDisplay({ record, headingLevel = 1, cinematicEntry,
       <CreditLine credit={record.credit} />
     </div>}
     <div className="record-detail__layout">
-      <div className="markdown-document"><ReactMarkdown>{record.body}</ReactMarkdown></div>
+      <div className="markdown-document">
+        <ReactMarkdown>{record.body}</ReactMarkdown>
+        {!editorDetails && record.illustration && (
+          <figure className="record-illustration">
+            <img src={resolvePublicAssetUrl(record.illustration)} alt={record.illustrationAlt ?? ''} />
+            {record.credit && <figcaption>삽화 {record.credit.creator}</figcaption>}
+          </figure>
+        )}
+      </div>
       {!editorDetails && <aside className="record-detail__aside" aria-label="기록 정보">
         <div className="detail-portraits" aria-hidden="true">
           <img src={resolvePublicAssetUrl('/images/Cheonryeong_head.png')} alt="" />

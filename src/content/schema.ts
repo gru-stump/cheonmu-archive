@@ -22,6 +22,8 @@ export const recordMetaSchema = z.object({
   quote: nonEmptyText,
   cinematic: z.boolean(),
   credit: creditSchema.optional(),
+  illustration: nonEmptyText.regex(/^\/images\/[A-Za-z0-9_-]+\.(?:png|jpe?g|webp)$/i).optional(),
+  illustrationAlt: nonEmptyText.optional(),
 });
 
 export const profileMetaSchema = z.object({

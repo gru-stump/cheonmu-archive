@@ -9,6 +9,10 @@ tags: [전사, 구조, 과거]
 related: [first-contact]
 quote: "두고 가기엔 아깝잖아."
 cinematic: true
+credit:
+  creator: 리몽
+illustration: /images/Forgotten_record_first_meeting.png
+illustrationAlt: 무너진 건물과 흩날리는 불티 속에서 검은 머리 아이를 안은 흰 옷의 구조자가 뒤를 돌아보는 흑백 삽화
 ---
 
 **모두가 철수한 뒤에도 남아 있던 사람.**

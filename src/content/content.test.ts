@@ -6,6 +6,7 @@ const NEW_IMAGE_PATHS = [
   '/images/Cheonryeong_head.png',
   '/images/Muyeong_LD.png',
   '/images/Muyeong_head.png',
+  '/images/Forgotten_record_first_meeting.png',
   '/images/cheonmu_idol.png',
   '/images/cheonmu_setlog.png',
 ];
@@ -56,7 +57,7 @@ describe('initial Cheonmu archive content', () => {
     expect(validateContent(content).errors).not.toContain('무영 신장이 185cm와 189cm로 충돌합니다.');
   });
 
-  it('publishes only the six registered gallery images with credit', () => {
+  it('publishes only the seven registered gallery images with credit', () => {
     const gallery = loadAllContent().gallery;
 
     expect(gallery.map((item) => item.image)).toEqual(NEW_IMAGE_PATHS);
@@ -66,6 +67,7 @@ describe('initial Cheonmu archive content', () => {
       '불가사리',
       '불가사리',
       '불가사리',
+      '리몽',
       '고젓두',
       '땨땨',
     ]);

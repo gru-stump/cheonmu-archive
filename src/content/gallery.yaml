@@ -34,6 +34,15 @@
   tags: [두상, 캐릭터-디자인]
   public: true
 
+- id: forgotten-record-first-meeting
+  title: 잊혀진 기록 · 첫 만남
+  image: /images/Forgotten_record_first_meeting.png
+  alt: 무너진 건물과 흩날리는 불티 속에서 검은 머리 아이를 안은 흰 옷의 구조자가 뒤를 돌아보는 흑백 삽화
+  creator: 리몽
+  characters: [cheonryeong, muyeong]
+  tags: [삽화, 전사, 흑백]
+  public: true
+
 - id: cheonmu-idol
   title: 천령·무영 아이돌 페이스캠
   image: /images/cheonmu_idol.png
