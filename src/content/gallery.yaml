@@ -52,6 +52,15 @@
   tags: [삽화, 치료, 진료실]
   public: true
 
+- id: cheonmu-rain
+  title: 빗속에서
+  image: /images/cheonmu_rain.png
+  alt: 쏟아지는 밤비 속에 흰 가운의 천령과 전투복 차림의 무영이 서로 다른 곳을 바라보며 나란히 서 있는 푸른 톤의 일러스트
+  creator: 사냐
+  characters: [cheonryeong, muyeong]
+  tags: [2인, 비, 거리]
+  public: true
+
 - id: cheonmu-idol
   title: 천령·무영 아이돌 페이스캠
   image: /images/cheonmu_idol.png
