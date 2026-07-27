@@ -179,7 +179,8 @@
     - revealStage: 5
       paragraphs:
         - 위급 사건에서는 제압 과정의 오염 방출이 반복적으로 보고되어, 제압 승인에는 의료 부서의 사전 검토가 포함된다.
-  relatedRecords: [first-contact, fracture, the-one-who-stayed]
+        - 제압 교리는 차단, 압박, 후퇴 유도의 세 단계로 구성된다. 개체를 소멸시키는 것이 아니라 격리 가능한 위치로 되몰아 넣는 것이 목적이며, 화기는 살상 수단이 아니라 이동 축을 꺾는 수단으로 규정되어 있다.
+  relatedRecords: [first-contact, fracture, the-one-who-stayed, witnessing]
 
 - id: behavior-patterns
   documentNumber: OB-03
@@ -299,7 +300,8 @@
       paragraphs:
         - 응답회 관계자가 미공표 사건 정보를 사전에 인지하고 있던 정황이 복수 건 보고되었다. 정보 경로는 확인되지 않았다.
         - 상위 등급 사건의 발생 시기와 응답회 활동의 상관을 지적한 보고가 있으나, 인과는 판단이 유보되어 있다.
-  relatedRecords: []
+        - 작전 통신망에 정체불명의 음성이 침입한 사례가 보고되었다. 응답을 요청하는 내용이며, 발신 위치와 침입 경로는 확인되지 않았다.
+  relatedRecords: [witnessing]
 
 - id: recurring-anomalies
   documentNumber: OB-01

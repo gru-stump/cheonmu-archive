@@ -250,25 +250,10 @@ describe('RecordDetailPage', () => {
     expect(within(dialog).queryByLabelText('현재 장면')).not.toBeInTheDocument();
   });
 
-  // CM-07이 records/_hidden/에서 복원되면 skip을 해제할 것.
-  it.skip.each([
-    {
-      stage: 7,
-      scenes: [
-        '서로에게 반드시 돌아오기로 한 사이.',
-        '“이번에는 돌아와요.”',
-        '“전부 데리고 돌아오겠습니다.”',
-        '“당신도 포함해서.”',
-        '“……예. 나도 포함해서.”',
-      ],
-    },
-  ])('keeps actual stage $stage scenes non-empty and in source order', async ({ stage, scenes }) => {
+  it('presents the actual stage 7 sidecar scene as one continuous prose reading view', async () => {
     const user = userEvent.setup();
-    const record = actualRecords.find((item) => item.stage === stage);
-    expect(record).toBeDefined();
-
     render(
-      <MemoryRouter initialEntries={[`/records/${record!.id}`]}>
+      <MemoryRouter initialEntries={['/records/witnessing']}>
         <Routes>
           <Route path="records/:recordId" element={<RecordDetailPage records={actualRecords} />} />
         </Routes>
@@ -276,18 +261,13 @@ describe('RecordDetailPage', () => {
     );
 
     await user.click(screen.getByRole('button', { name: '장면 재구성 열기' }));
-    const dialog = screen.getByRole('dialog', { name: `${record!.title} 장면 재구성` });
-    expect(within(dialog).getByText(`1 / ${scenes.length}`)).toBeVisible();
+    const dialog = screen.getByRole('dialog', { name: '목격 장면 재구성' });
+    const prose = dialog.querySelector('.cinematic-scene__text--prose');
 
-    for (const [index, expectedText] of scenes.entries()) {
-      const sceneText = dialog.querySelector('.cinematic-scene__text');
-      expect(sceneText?.textContent?.trim()).toBe(expectedText);
-      expect(sceneText?.textContent?.trim()).not.toBe('');
-
-      if (index < scenes.length - 1) {
-        await user.click(within(dialog).getByRole('button', { name: '다음 장면' }));
-      }
-    }
+    expect(prose?.textContent).toContain('소매를 걷는 순서');
+    expect(prose?.textContent).toContain('사람의 몸은 그렇게 낫지 않는다');
+    expect(prose?.textContent).toContain('가벼운 부상이 아니었습니다');
+    expect(within(dialog).queryByLabelText('현재 장면')).not.toBeInTheDocument();
   });
 
   it('presents the actual stage 5 sidecar scene as one continuous prose reading view', async () => {

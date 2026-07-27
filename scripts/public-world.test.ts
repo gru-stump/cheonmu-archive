@@ -12,7 +12,8 @@ const FORBIDDEN_PUBLIC_SECRETS = [
   '흰 백사', '실제 나이 불명', '독과 약으로',
 ];
 
-const FORBIDDEN_FUTURE_RECORD_MARKERS = ['CM-07', 'promise-to-return', '귀환의 약속'];
+// CM-07은 새 「목격」 기록으로 공개되어 마커에서 제외됨. 폐기된 구 기록의 문구만 계속 차단한다.
+const FORBIDDEN_FUTURE_RECORD_MARKERS = ['promise-to-return', '귀환의 약속'];
 
 async function emittedText(directory: string): Promise<string> {
   const entries = await readdir(directory, { withFileTypes: true });

@@ -6,7 +6,7 @@ stage: 6
 status: confirmed
 characters: [cheonryeong, muyeong]
 tags: [거리, 보호, 통제]
-related: [fracture]
+related: [fracture, witnessing]
 quote: "누가 가볍다고 판단했어요?"
 cinematic: false
 ---

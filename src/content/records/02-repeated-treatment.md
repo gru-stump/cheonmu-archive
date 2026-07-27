@@ -9,6 +9,10 @@ tags: [치료, 귀환, 상처]
 related: [first-contact, field-accompaniment]
 quote: "이번에도 돌아왔네. 참 성실한 환자야."
 cinematic: false
+credit:
+  creator: 레이지빈
+illustration: /images/cheonmu_repeated_treatment.jpg
+illustrationAlt: 블라인드 사이로 볕이 드는 진료실에서 흰 가운에 붉은 완장을 찬 천령이 진료대에 앉은 전투복 차림 무영의 가슴에 손을 얹고 살피는 삽화
 ---
 
 **고질적인 환자와 사실상의 전담 의사.**

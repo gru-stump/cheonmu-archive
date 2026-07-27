@@ -43,6 +43,15 @@
   tags: [삽화, 전사, 흑백]
   public: true
 
+- id: cheonmu-repeated-treatment
+  title: 반복되는 치료
+  image: /images/cheonmu_repeated_treatment.jpg
+  alt: 블라인드 사이로 볕이 드는 진료실에서 흰 가운에 붉은 완장을 찬 천령이 진료대에 앉은 전투복 차림 무영의 가슴에 손을 얹고 살피는 삽화
+  creator: 레이지빈
+  characters: [cheonryeong, muyeong]
+  tags: [삽화, 치료, 진료실]
+  public: true
+
 - id: cheonmu-idol
   title: 천령·무영 아이돌 페이스캠
   image: /images/cheonmu_idol.png

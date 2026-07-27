@@ -19,6 +19,7 @@ export function RecordCard({ record }: RecordCardProps): JSX.Element {
       <div className="record-card__body">
         <div className="record-card__meta">
           <span>{record.recordNumber}</span>
+          {record.illustration && <em className="record-card__art">삽화</em>}
           <StatusStamp status={record.status} />
         </div>
         <h2>

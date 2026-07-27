@@ -7,6 +7,7 @@ const NEW_IMAGE_PATHS = [
   '/images/Muyeong_LD.png',
   '/images/Muyeong_head.png',
   '/images/Forgotten_record_first_meeting.png',
+  '/images/cheonmu_repeated_treatment.jpg',
   '/images/cheonmu_idol.png',
   '/images/cheonmu_setlog.png',
 ];
@@ -27,14 +28,14 @@ const FORBIDDEN_PUBLIC_SECRETS = [
 ];
 
 describe('initial Cheonmu archive content', () => {
-  // CM-07·08은 공개 전까지 records/_hidden/에 보관한다. 복원 시 8단계 기대값으로 되돌릴 것.
-  it('contains the prequel and six confirmed stages with cinematics at 0, 1, 3, and 5', () => {
+  // 구 CM-07·08(귀환의 약속·연인 직전)은 폐기됨(.trash/records/). 새 8단계 기록이 추가되면 기대값을 확장할 것.
+  it('contains the prequel and seven confirmed stages with cinematics at 0, 1, 3, 5, and 7', () => {
     const content = loadAllContent();
 
-    expect(content.records.map((record) => record.stage)).toEqual([0, 1, 2, 3, 4, 5, 6]);
+    expect(content.records.map((record) => record.stage)).toEqual([0, 1, 2, 3, 4, 5, 6, 7]);
     expect(content.records.filter((record) => record.cinematic).map((record) => record.stage))
-      .toEqual([0, 1, 3, 5]);
-    expect(content.records.map((record) => record.status)).toEqual(Array(7).fill('confirmed'));
+      .toEqual([0, 1, 3, 5, 7]);
+    expect(content.records.map((record) => record.status)).toEqual(Array(8).fill('confirmed'));
   });
 
   it('keeps the public first-contact summary separate from the cinematic prose', () => {
@@ -57,7 +58,7 @@ describe('initial Cheonmu archive content', () => {
     expect(validateContent(content).errors).not.toContain('무영 신장이 185cm와 189cm로 충돌합니다.');
   });
 
-  it('publishes only the seven registered gallery images with credit', () => {
+  it('publishes only the eight registered gallery images with credit', () => {
     const gallery = loadAllContent().gallery;
 
     expect(gallery.map((item) => item.image)).toEqual(NEW_IMAGE_PATHS);
@@ -68,6 +69,7 @@ describe('initial Cheonmu archive content', () => {
       '불가사리',
       '불가사리',
       '리몽',
+      '레이지빈',
       '고젓두',
       '땨땨',
     ]);

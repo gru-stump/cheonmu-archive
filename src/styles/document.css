@@ -408,7 +408,7 @@
 .record-card__meta {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: var(--space-sm);
   color: var(--ink-muted);
   font-family: var(--font-label);
@@ -419,7 +419,19 @@
 
 .record-card__meta .status-stamp {
   min-height: 1.55rem;
+  margin-left: auto;
   font-size: 0.62rem;
+}
+
+.record-card__art {
+  padding: 0.08rem 0.45rem;
+  color: var(--cheonryeong-green);
+  border: 1px solid rgb(86 103 88 / 55%);
+  font-family: var(--font-label);
+  font-size: 0.62rem;
+  font-style: normal;
+  font-weight: 800;
+  letter-spacing: 0.14em;
 }
 
 /* 잊혀진 기록(전사) — 빛바랜 옛 문서 */
