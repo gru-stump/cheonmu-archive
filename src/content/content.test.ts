@@ -6,6 +6,9 @@ const NEW_IMAGE_PATHS = [
   '/images/Cheonryeong_head.png',
   '/images/Muyeong_LD.png',
   '/images/Muyeong_head.png',
+  '/images/Cheonryeong_head_2.png',
+  '/images/Muyeong_head_2.png',
+  '/images/logo.png',
   '/images/Forgotten_record_first_meeting.png',
   '/images/cheonmu_repeated_treatment.jpg',
   '/images/cheonmu_rain.png',
@@ -59,7 +62,7 @@ describe('initial Cheonmu archive content', () => {
     expect(validateContent(content).errors).not.toContain('무영 신장이 185cm와 189cm로 충돌합니다.');
   });
 
-  it('publishes only the nine registered gallery images with credit', () => {
+  it('publishes only the twelve registered gallery images with credit', () => {
     const gallery = loadAllContent().gallery;
 
     expect(gallery.map((item) => item.image)).toEqual(NEW_IMAGE_PATHS);
@@ -69,6 +72,9 @@ describe('initial Cheonmu archive content', () => {
       '불가사리',
       '불가사리',
       '불가사리',
+      '곽준팔',
+      '곽준팔',
+      '공영',
       '리몽',
       '레이지빈',
       '사냐',

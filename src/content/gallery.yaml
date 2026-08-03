@@ -34,6 +34,33 @@
   tags: [두상, 캐릭터-디자인]
   public: true
 
+- id: cheonryeong-head-2
+  title: 천령 두상 Ⅱ
+  image: /images/Cheonryeong_head_2.png
+  alt: 붉은 노리개 귀걸이에 은발을 땋아 내리고, 옅은 눈으로 눈웃음 짓는 천령의 상반신 일러스트
+  creator: 곽준팔
+  characters: [cheonryeong]
+  tags: [두상, 캐릭터-디자인]
+  public: true
+
+- id: muyeong-head-2
+  title: 무영 두상 Ⅱ
+  image: /images/Muyeong_head_2.png
+  alt: 붉은 매듭단추 전투복에 전술 장갑을 낀 손을 들어 올린, 얼굴의 흉터와 금빛 눈이 보이는 무영의 상반신 일러스트
+  creator: 곽준팔
+  characters: [muyeong]
+  tags: [두상, 캐릭터-디자인]
+  public: true
+
+- id: cheonmu-logo
+  title: 천무 페어 로고
+  image: /images/logo.png
+  alt: 天無 서체에 뱀과 늑대의 형상이 감겨 있는 페어 로고 — RETURN TO ME ALIVE 문구가 함께 있다
+  creator: 공영
+  characters: [cheonryeong, muyeong]
+  tags: [로고]
+  public: true
+
 - id: forgotten-record-first-meeting
   title: 잊혀진 기록 · 첫 만남
   image: /images/Forgotten_record_first_meeting.png

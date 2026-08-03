@@ -165,6 +165,13 @@
   line-height: 0.95;
 }
 
+.home-logo {
+  display: block;
+  width: min(23rem, 92%);
+  height: auto;
+  margin: 0 0 var(--space-md) -0.5rem;
+}
+
 .home-hanja {
   margin: -0.35rem 0 var(--space-lg) 0.35rem;
   color: var(--cheonryeong-green);

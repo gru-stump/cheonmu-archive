@@ -13,8 +13,12 @@ export function HomePage(): JSX.Element {
     <section className="home-page" aria-labelledby="home-title">
       <div className="home-copy">
         <p className="document-kicker">Special Disaster Agency · Pair File</p>
-        <h1 id="home-title">천무</h1>
-        <p className="home-hanja" aria-hidden="true">天無</p>
+        <h1 id="home-title" className="sr-only">천무</h1>
+        <img
+          className="home-logo"
+          src={resolvePublicAssetUrl('/images/logo.png')}
+          alt="천무 페어 로고 — RETURN TO ME ALIVE"
+        />
         <p className="home-lede">사람을 두고 나오지 못하는 지휘관과, 그런 지휘관을 죽게 두지 못하는 의사.</p>
         <blockquote>“당신이 돌아올 곳에, 내가 있다.”</blockquote>
         <div className="home-actions">
@@ -40,6 +44,7 @@ export function HomePage(): JSX.Element {
 
       <footer className="home-file-note">
         <span>FILE CM–PAIR</span>
+        <span>로고 공영</span>
         <span>{relationship?.title ?? '천무 관계 프로필'}</span>
       </footer>
     </section>
