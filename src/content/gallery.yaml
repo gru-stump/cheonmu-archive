@@ -106,3 +106,30 @@
   characters: [cheonryeong, muyeong]
   tags: [2인, SD, 셋로그]
   public: true
+
+- id: cheonmu-charging
+  title: Charging
+  image: /images/Cheonmu_charging.png
+  alt: 검은 전투복 차림의 무영이 흰 의료복 차림의 천령 뒤에 기대어 어깨를 감싸고 있는 2인 일러스트
+  creator: Forlavo1796
+  characters: [cheonryeong, muyeong]
+  tags: [2인, 밀착, 휴식]
+  public: true
+
+- id: cheonmu-lighthouse
+  title: lighthouse
+  image: /images/Cheonmu_lighthouse.jpg
+  alt: 밝은 빛을 등진 천령과 방독면을 손에 든 무영이 서로를 마주 보는 장면을 위아래로 배치한 일러스트
+  creator: 레이지빈
+  characters: [cheonryeong, muyeong]
+  tags: [2인, 빛, 시선]
+  public: true
+
+- id: cheonmu-body
+  title: body
+  image: /images/Cheonmu_body.png
+  alt: 상의를 벗은 무영과 천령의 체형과 흉터를 나란히 보여 주는 설정 일러스트
+  creator: 깡통에 보리밥
+  characters: [cheonryeong, muyeong]
+  tags: [2인, 체형, 캐릭터-디자인]
+  public: true
