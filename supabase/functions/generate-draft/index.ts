@@ -19,7 +19,7 @@ export interface GenerationCommand {
   revision?: { selectedText: string; instruction: string };
 }
 
-export interface TrustedGenerationPolicy {
+export interface GenerationPolicyValues {
   providerSettingId: string;
   modelKey: string;
   maxInputTokens: number;
@@ -30,7 +30,12 @@ export interface TrustedGenerationPolicy {
   fixedCostMicros: number;
 }
 
-export interface FrozenGenerationPolicy extends TrustedGenerationPolicy {
+export interface TrustedGenerationPolicy extends GenerationPolicyValues {
+  providerKey: 'openai' | 'anthropic' | 'fake-local-provider';
+  secretRef: string | null;
+}
+
+export interface FrozenGenerationPolicy extends GenerationPolicyValues {
   attemptToken: string;
   worstCaseCostMicros: number;
   contextVersionIds: string[];
@@ -69,7 +74,7 @@ export interface GenerationDependencies {
     | { status: 'reserved'; budgetStatus: string; remainingMicros: number | null }
     | { status: 'blocked'; budgetStatus: string; remainingMicros: number | null }
   >;
-  provider: NarrativeProvider;
+  resolveProvider(loadedPolicy: TrustedGenerationPolicy, frozenPolicy: FrozenGenerationPolicy): NarrativeProvider | Promise<NarrativeProvider>;
   parseProviderResponse(value: unknown): NarrativeProviderResponse;
   checkContinuity(result: GenerationResult, context: ContinuityContext): ContinuityCheck;
   finalizeSuccess(input: {
@@ -135,7 +140,7 @@ const abortResultSchema = z.discriminatedUnion('outcome', [
   z.object({ outcome: z.literal('completed'), result: generationResponseSchema }),
 ]);
 
-export function estimateWorstCaseCostMicros(policy: TrustedGenerationPolicy, mode: GenerationMode): number {
+export function estimateWorstCaseCostMicros(policy: GenerationPolicyValues, mode: GenerationMode): number {
   const outputTokens = mode === 'revise_selection' ? Math.min(policy.maxOutputTokens, policy.maxRevisionOutputTokens) : policy.maxOutputTokens;
   const cost = policy.fixedCostMicros
     + Math.ceil(policy.maxInputTokens * policy.inputCostMicrosPerMillion / 1_000_000)
@@ -145,7 +150,7 @@ export function estimateWorstCaseCostMicros(policy: TrustedGenerationPolicy, mod
 }
 
 /** Provider-reported money is audit data; accounting always uses frozen trusted rates. */
-export function estimateActualCostMicros(policy: TrustedGenerationPolicy, usage: Usage): number {
+export function estimateActualCostMicros(policy: GenerationPolicyValues, usage: Usage): number {
   const cost = policy.fixedCostMicros
     + Math.ceil(usage.inputTokens * policy.inputCostMicrosPerMillion / 1_000_000)
     + Math.ceil(usage.outputTokens * policy.outputCostMicrosPerMillion / 1_000_000);
@@ -211,6 +216,15 @@ function prerequisiteApproved(mode: GenerationMode, phase: string | null): boole
   return true;
 }
 
+function sameFrozenPolicy(loaded: TrustedGenerationPolicy, frozen: FrozenGenerationPolicy): boolean {
+  return loaded.providerSettingId === frozen.providerSettingId && loaded.modelKey === frozen.modelKey
+    && loaded.maxInputTokens === frozen.maxInputTokens && loaded.maxOutputTokens === frozen.maxOutputTokens
+    && loaded.maxRevisionOutputTokens === frozen.maxRevisionOutputTokens
+    && loaded.inputCostMicrosPerMillion === frozen.inputCostMicrosPerMillion
+    && loaded.outputCostMicrosPerMillion === frozen.outputCostMicrosPerMillion
+    && loaded.fixedCostMicros === frozen.fixedCostMicros;
+}
+
 const stableConflictCodes = new Set([
   'duplicate_generation', 'stale_transition', 'stale_version', 'workflow_phase_not_approved',
   'mode_kind_mismatch', 'active_provider_setting_required', 'context_budget_too_small', 'stale_attempt',
@@ -266,7 +280,8 @@ export async function runGeneration(deps: GenerationDependencies, command: Gener
   } catch (error) { return abortAfterFreeze(deps, command, attemptToken, 'freeze_failed', error, mapPersistence(error)); }
   let continuityContext: ContinuityContext;
   try {
-    if (frozenPolicy.attemptToken !== attemptToken || estimateWorstCaseCostMicros(frozenPolicy, command.mode) !== frozenPolicy.worstCaseCostMicros) throw new GenerationError(500, 'invalid_provider_setting');
+    if (frozenPolicy.attemptToken !== attemptToken || !sameFrozenPolicy(loadedPolicy, frozenPolicy)
+      || estimateWorstCaseCostMicros(frozenPolicy, command.mode) !== frozenPolicy.worstCaseCostMicros) throw new GenerationError(500, 'invalid_provider_setting');
     const frozenSelection = selectionFromSnapshot(frozenPolicy.contextVersionIds, frozenPolicy.contextSnapshot);
     continuityContext = buildFrozenContinuityContext(frozenSelection);
   } catch (error) { return abortAfterFreeze(deps, command, attemptToken, 'frozen_validation_failed', error, mapPersistence(error)); }
@@ -285,7 +300,10 @@ export async function runGeneration(deps: GenerationDependencies, command: Gener
   };
 
   let raw: unknown;
-  try { raw = await deps.provider.generate(request); }
+  try {
+    const provider = await deps.resolveProvider(loadedPolicy, frozenPolicy);
+    raw = await provider.generate(request);
+  }
   catch (error) { return abortAfterFreeze(deps, command, attemptToken, 'provider_generation_failed', error, new GenerationError(502, 'provider_generation_failed')); }
   let providerResponse: NarrativeProviderResponse;
   try { providerResponse = deps.parseProviderResponse(raw); }
@@ -341,8 +359,8 @@ function safeInteger(value: unknown, minimum: number): number {
   return parsed;
 }
 
-function policyFromRecord(value: Record<string, unknown>): TrustedGenerationPolicy {
-  const parsed: TrustedGenerationPolicy = {
+function policyFromRecord(value: Record<string, unknown>): GenerationPolicyValues {
+  const parsed: GenerationPolicyValues = {
     providerSettingId: String(value.id ?? value.provider_setting_id ?? ''), modelKey: String(value.model_key ?? ''),
     maxInputTokens: safeInteger(value.max_input_tokens, 1), maxOutputTokens: safeInteger(value.max_output_tokens, 1),
     maxRevisionOutputTokens: safeInteger(value.max_revision_output_tokens, 1),
@@ -353,7 +371,26 @@ function policyFromRecord(value: Record<string, unknown>): TrustedGenerationPoli
   return parsed;
 }
 
-export function createSupabaseGenerationDependencies(config: SupabaseRestConfig, authToken: string, provider: NarrativeProvider): GenerationDependencies {
+function trustedSettingFromRecord(value: Record<string, unknown>, ownerId: string): TrustedGenerationPolicy {
+  if (value.owner_id !== ownerId || value.enabled !== true) throw new Error('invalid_trusted_provider_setting');
+  const providerKey = value.provider_key;
+  if (providerKey !== 'openai' && providerKey !== 'anthropic' && providerKey !== 'fake-local-provider') throw new Error('invalid_trusted_provider_setting');
+  const configuration = value.configuration && typeof value.configuration === 'object' ? value.configuration as Record<string, unknown> : {};
+  let secretRef: string | null = null;
+  if (providerKey === 'fake-local-provider') {
+    if (configuration.mode !== 'fixture') throw new Error('invalid_trusted_provider_setting');
+  } else {
+    if (typeof configuration.apiKeyEnv !== 'string' || !/^[A-Z][A-Z0-9_]*$/.test(configuration.apiKeyEnv)) throw new Error('invalid_trusted_provider_setting');
+    secretRef = configuration.apiKeyEnv;
+  }
+  return { ...policyFromRecord(value), providerKey, secretRef };
+}
+
+export function createSupabaseGenerationDependencies(
+  config: SupabaseRestConfig,
+  authToken: string,
+  resolveProvider: GenerationDependencies['resolveProvider'],
+): GenerationDependencies {
   const request = config.fetch ?? globalThis.fetch;
   const userHeaders = { apikey: config.anonKey, authorization: `Bearer ${authToken}`, 'content-type': 'application/json' };
   const serviceHeaders = { apikey: config.serviceRoleKey, authorization: `Bearer ${config.serviceRoleKey}`, 'content-type': 'application/json' };
@@ -393,10 +430,12 @@ export function createSupabaseGenerationDependencies(config: SupabaseRestConfig,
       return version ? { draftId: job.draft_id, versionId: version.id, status: 'generated', continuityLevel: version.continuity_level } : null;
     },
     loadPolicy: async (ownerId) => {
-      const values = await callWith(serviceHeaders, `/rest/v1/provider_settings?select=id,model_key,max_input_tokens,max_output_tokens,max_revision_output_tokens,input_cost_micros_per_million,output_cost_micros_per_million,fixed_cost_micros&enabled=eq.true&owner_id=eq.${encodeURIComponent(ownerId)}`);
-      if (!Array.isArray(values) || values.length !== 1) throw new GenerationError(409, 'active_provider_setting_required');
-      const value = values[0] as Record<string, unknown>;
-      return policyFromRecord(value);
+      const values = await callWith(serviceHeaders, `/rest/v1/provider_settings?select=id,owner_id,provider_key,enabled,configuration,model_key,max_input_tokens,max_output_tokens,max_revision_output_tokens,input_cost_micros_per_million,output_cost_micros_per_million,fixed_cost_micros&enabled=eq.true&owner_id=eq.${encodeURIComponent(ownerId)}`);
+      const ownerSettings = (Array.isArray(values) ? values : []).filter((candidate) => candidate && typeof candidate === 'object'
+        && (candidate as Record<string, unknown>).owner_id === ownerId && (candidate as Record<string, unknown>).enabled === true);
+      if (ownerSettings.length !== 1) throw new GenerationError(409, 'active_provider_setting_required');
+      try { return trustedSettingFromRecord(ownerSettings[0] as Record<string, unknown>, ownerId); }
+      catch { throw new GenerationError(500, 'invalid_provider_setting'); }
     },
     selectContext: async (_ownerId, command, inputTokenBudget) => {
       const values = await call('/rest/v1/memory_items?select=id,memory_type,content,status,blocking,metadata,updated_at&status=in.(active,approved)');
@@ -419,7 +458,7 @@ export function createSupabaseGenerationDependencies(config: SupabaseRestConfig,
       };
     },
     reserveAndStart: async (input) => reservationResultSchema.parse(await rpc('reserve_and_start_generation', { p_job_id: input.jobId, p_attempt_token: input.attemptToken, p_amount_micros: input.worstCaseCostMicros })),
-    provider, parseProviderResponse: parseNarrativeProviderResponse, checkContinuity,
+    resolveProvider, parseProviderResponse: parseNarrativeProviderResponse, checkContinuity,
     finalizeSuccess: async (input) => {
       const version = row<{ id: string; draft_id?: string }>(await rpc('finalize_generation_success', { p_job_id: input.jobId, p_attempt_token: input.attemptToken, p_actual_micros: input.actualCostMicros, p_usage_json: input.usage, p_content: input.result, p_continuity_level: input.continuityLevel, p_continuity_findings: input.findings, p_provider_response_id: input.providerResponseId, p_policy_version: input.continuityPolicyVersion }));
       if (!version?.id) throw new Error('success_finalization_missing_version');
@@ -436,16 +475,17 @@ const defaultFakeResult: GenerationResult = { title: '로컬 생성 초안', kin
 if (typeof Deno !== 'undefined' && (import.meta as ImportMeta & { main?: boolean }).main) {
   const url = Deno.env.get('SUPABASE_URL'); const anonKey = Deno.env.get('SUPABASE_ANON_KEY'); const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
   if (!url || !anonKey || !serviceRoleKey) throw new Error('SUPABASE_URL, SUPABASE_ANON_KEY, and SUPABASE_SERVICE_ROLE_KEY are required');
-  const provider: NarrativeProvider = {
-    generate: async (providerRequest) => {
-      const settingsResponse = await fetch(`${url}/rest/v1/provider_settings?select=provider_key,enabled,model_key,configuration&enabled=eq.true`, { headers: { apikey: serviceRoleKey, authorization: `Bearer ${serviceRoleKey}` } });
-      if (!settingsResponse.ok) throw new Error('provider_configuration_unavailable');
-      const settings = await settingsResponse.json();
-      return createServerNarrativeProvider(Array.isArray(settings) ? settings : [], (name) => Deno.env.get(name), { timeoutMs: 30_000 }).generate(providerRequest);
-    },
+  const fakeLocalProvider: NarrativeProvider | undefined = Deno.env.get('NARRATIVE_FAKE_LOCAL_FIXTURE') === 'true' ? {
+    generate: async (providerRequest) => ({ result: { ...defaultFakeResult, kind: providerRequest.kind }, usage: { inputTokens: 14, outputTokens: 9 }, rawId: `fake-${providerRequest.kind}` }),
+  } : undefined;
+  const resolveProvider: GenerationDependencies['resolveProvider'] = (loadedPolicy) => {
+    const configuration = loadedPolicy.providerKey === 'fake-local-provider'
+      ? { mode: 'fixture' }
+      : { apiKeyEnv: loadedPolicy.secretRef };
+    return createServerNarrativeProvider([{ provider_key: loadedPolicy.providerKey, enabled: true, model_key: loadedPolicy.modelKey, configuration }], (name) => Deno.env.get(name), { timeoutMs: 30_000, ...(fakeLocalProvider ? { fakeLocalProvider } : {}) });
   };
   Deno.serve((request) => {
     const token = request.headers.get('authorization')?.replace(/^Bearer\s+/i, '') ?? '';
-    return createGenerateDraftHandler(createSupabaseGenerationDependencies({ url, anonKey, serviceRoleKey }, token, provider))(request);
+    return createGenerateDraftHandler(createSupabaseGenerationDependencies({ url, anonKey, serviceRoleKey }, token, resolveProvider))(request);
   });
 }

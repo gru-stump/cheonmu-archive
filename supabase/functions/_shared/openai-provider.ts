@@ -2,10 +2,10 @@ import { parseGenerationResult, type GenerationRequest } from '../../../shared/n
 import type { NarrativeProvider, NarrativeProviderResponse } from './provider.ts';
 
 export class ProviderRequestError extends Error {
-  constructor(public readonly code: 'timeout' | 'rate_limited' | 'upstream_unavailable' | 'malformed_response') { super(code); this.name = 'ProviderRequestError'; }
+  constructor(public readonly code: 'timeout' | 'rate_limited' | 'upstream_unavailable' | 'malformed_response' | 'provider_setting_mismatch') { super(code); this.name = 'ProviderRequestError'; }
 }
 
-export interface ProviderHttpOptions { apiKey: string; fetch?: typeof globalThis.fetch; timeoutMs: number; clock?: () => number; setTimer?: typeof setTimeout; clearTimer?: typeof clearTimeout }
+export interface ProviderHttpOptions { apiKey: string; modelKey?: string; fetch?: typeof globalThis.fetch; timeoutMs: number; clock?: () => number; setTimer?: typeof setTimeout; clearTimer?: typeof clearTimeout }
 
 const resultSchema = {
   type: 'object', additionalProperties: false,
@@ -38,7 +38,9 @@ async function safeJson(response: Response): Promise<unknown> { try { return awa
 export async function oneRequest(options: ProviderHttpOptions, url: string, init: RequestInit): Promise<unknown> {
   if (!options.apiKey.trim()) throw new ProviderRequestError('upstream_unavailable');
   const controller = new AbortController();
-  const timer = (options.setTimer ?? setTimeout)(() => controller.abort(), options.timeoutMs);
+  const clock = options.clock ?? Date.now;
+  const deadline = clock() + options.timeoutMs;
+  const timer = (options.setTimer ?? setTimeout)(() => controller.abort(), Math.max(0, deadline - clock()));
   try {
     const response = await (options.fetch ?? globalThis.fetch)(url, { ...init, signal: controller.signal });
     if (response.status === 429) throw new ProviderRequestError('rate_limited');
@@ -54,16 +56,22 @@ export async function oneRequest(options: ProviderHttpOptions, url: string, init
 export class OpenAiNarrativeProvider implements NarrativeProvider {
   constructor(private readonly options: ProviderHttpOptions) {}
   async generate(request: GenerationRequest): Promise<NarrativeProviderResponse> {
+    if (this.options.modelKey && request.modelKey !== this.options.modelKey) throw new ProviderRequestError('provider_setting_mismatch');
     const value = await oneRequest(this.options, 'https://api.openai.com/v1/responses', {
       method: 'POST', headers: { authorization: `Bearer ${this.options.apiKey}`, 'content-type': 'application/json' },
       body: JSON.stringify({ model: request.modelKey, input: narrativePrompt(request), max_output_tokens: request.maxOutputTokens, text: { format: { type: 'json_schema', name: 'narrative_result', strict: true, schema: narrativeJsonSchema() } } }),
     });
     const record = value && typeof value === 'object' ? value as Record<string, unknown> : null;
     const id = typeof record?.id === 'string' && record.id ? record.id : null;
-    if (record?.status !== 'completed') throw new ProviderRequestError('malformed_response');
+    if (record?.object !== 'response' || record?.status !== 'completed' || record?.model !== request.modelKey) throw new ProviderRequestError('malformed_response');
     const output = Array.isArray(record?.output) ? record.output : [];
-    const text = output.flatMap((item) => item && typeof item === 'object' && Array.isArray((item as { content?: unknown }).content) ? (item as { content: unknown[] }).content : [])
-      .find((item) => item && typeof item === 'object' && (item as { type?: unknown }).type === 'output_text' && typeof (item as { text?: unknown }).text === 'string') as { text: string } | undefined;
+    const message = output.find((item) => {
+      if (!item || typeof item !== 'object') return false;
+      const candidate = item as Record<string, unknown>;
+      return typeof candidate.id === 'string' && candidate.id.length > 0 && candidate.type === 'message'
+        && candidate.role === 'assistant' && candidate.status === 'completed' && Array.isArray(candidate.content);
+    }) as { content: unknown[] } | undefined;
+    const text = message?.content.find((item) => item && typeof item === 'object' && (item as { type?: unknown }).type === 'output_text' && typeof (item as { text?: unknown }).text === 'string') as { text: string } | undefined;
     if (!id || !text) throw new ProviderRequestError('malformed_response');
     try { return { result: parseGenerationResult(JSON.parse(text.text)), usage: usageFromUpstream(value), rawId: id }; }
     catch { throw new ProviderRequestError('malformed_response'); }

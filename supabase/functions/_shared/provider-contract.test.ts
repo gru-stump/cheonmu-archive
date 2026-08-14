@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { AnthropicNarrativeProvider } from './anthropic-provider.ts';
-import { OpenAiNarrativeProvider } from './openai-provider.ts';
+import { OpenAiNarrativeProvider, type ProviderHttpOptions } from './openai-provider.ts';
 import { createServerNarrativeProvider } from './provider.ts';
 import type { GenerationRequest, GenerationResult } from '../../../shared/narrative/contracts.ts';
 
@@ -11,21 +11,25 @@ const result: GenerationResult = {
 const request: GenerationRequest = { kind: 'short_dialogue', mode: 'new', modelKey: 'server-model', maxInputTokens: 500, maxOutputTokens: 150, contextVersionIds: ['canon-1'], contextMemories: [{ versionId: 'canon-1', memoryType: 'canon', content: 'Canon', tokenCount: 1 }] };
 const schemaResult = JSON.stringify(result);
 
+function completedEnvelope(provider: 'openai' | 'anthropic', overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return provider === 'openai'
+    ? { id: 'resp-1', object: 'response', status: 'completed', model: 'server-model', output: [{ id: 'message-1', type: 'message', role: 'assistant', status: 'completed', content: [{ type: 'output_text', text: schemaResult, annotations: [] }] }], usage: { input_tokens: 12, output_tokens: 34, total_tokens: 46 }, ...overrides }
+    : { id: 'msg-1', type: 'message', role: 'assistant', model: 'server-model', stop_reason: 'tool_use', stop_sequence: null, content: [{ type: 'tool_use', id: 'tool-1', name: 'narrative_result', input: result }], usage: { input_tokens: 12, output_tokens: 34 }, ...overrides };
+}
+
 function fetchOnce(response: Response): { fetch: typeof globalThis.fetch; calls: Array<{ input: string; init?: RequestInit }> } {
   const calls: Array<{ input: string; init?: RequestInit }> = [];
   return { calls, fetch: async (input, init) => { calls.push({ input: String(input), init }); return response; } };
 }
 
 describe.each([
-  ['openai', (fetch: typeof globalThis.fetch) => new OpenAiNarrativeProvider({ apiKey: 'openai-secret', fetch, timeoutMs: 1_000 })],
-  ['anthropic', (fetch: typeof globalThis.fetch) => new AnthropicNarrativeProvider({ apiKey: 'anthropic-secret', fetch, timeoutMs: 1_000 })],
+  ['openai', (options: Partial<ProviderHttpOptions>) => new OpenAiNarrativeProvider({ apiKey: 'openai-secret', timeoutMs: 1_000, ...options })],
+  ['anthropic', (options: Partial<ProviderHttpOptions>) => new AnthropicNarrativeProvider({ apiKey: 'anthropic-secret', timeoutMs: 1_000, ...options })],
 ] as const)('%s narrative provider', (_name, create) => {
   it('sends one strict structured request and parses usage when present', async () => {
-    const upstream = _name === 'openai'
-      ? Response.json({ id: 'resp-1', status: 'completed', output: [{ type: 'message', role: 'assistant', status: 'completed', content: [{ type: 'output_text', text: schemaResult }] }], usage: { input_tokens: 12, output_tokens: 34 } })
-      : Response.json({ id: 'msg-1', type: 'message', role: 'assistant', stop_reason: 'tool_use', content: [{ type: 'tool_use', id: 'tool-1', name: 'narrative_result', input: result }], usage: { input_tokens: 12, output_tokens: 34 } });
+    const upstream = Response.json(completedEnvelope(_name));
     const h = fetchOnce(upstream);
-    await expect(create(h.fetch).generate(request)).resolves.toEqual({ result, usage: { inputTokens: 12, outputTokens: 34 }, rawId: _name === 'openai' ? 'resp-1' : 'msg-1' });
+    await expect(create({ fetch: h.fetch }).generate(request)).resolves.toEqual({ result, usage: { inputTokens: 12, outputTokens: 34 }, rawId: _name === 'openai' ? 'resp-1' : 'msg-1' });
     expect(h.calls).toHaveLength(1);
     expect(h.calls[0].input).toBe(_name === 'openai' ? 'https://api.openai.com/v1/responses' : 'https://api.anthropic.com/v1/messages');
     const body = JSON.parse(String(h.calls[0].init?.body));
@@ -38,40 +42,107 @@ describe.each([
     ['rate_limited', Response.json({ error: { message: 'secret upstream body' } }, { status: 429 })],
   ])('returns a stable sanitized %s error and never retries', async (expected, upstream) => {
     const h = fetchOnce(upstream);
-    await expect(create(h.fetch).generate(request)).rejects.toMatchObject({ code: expected });
-    await expect(create(h.fetch).generate(request)).rejects.not.toThrow(/secret|openai-secret|anthropic-secret/i);
+    await expect(create({ fetch: h.fetch }).generate(request)).rejects.toMatchObject({ code: expected });
+    await expect(create({ fetch: h.fetch }).generate(request)).rejects.not.toThrow(/secret|openai-secret|anthropic-secret/i);
     expect(h.calls).toHaveLength(2);
   });
 
-  it('maps abort timeout without leaking the abort reason', async () => {
-    const fetch: typeof globalThis.fetch = async (_input, init) => await new Promise<Response>((_resolve, reject) => init?.signal?.addEventListener('abort', () => reject(new Error('provider key leaked'))));
-    await expect(create(fetch).generate(request)).rejects.toMatchObject({ code: 'timeout' });
+  it('uses the injected deadline timer, aborts one fetch, sanitizes the error, and clears the timer', async () => {
+    const delays: number[] = []; const cleared: unknown[] = []; let fire: (() => void) | undefined; let calls = 0;
+    const fetch: typeof globalThis.fetch = async (_input, init) => {
+      calls += 1;
+      return await new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () => reject(new Error('provider key leaked')));
+        queueMicrotask(() => fire?.());
+      });
+    };
+    const times = [1_000, 1_250, 2_000, 2_250];
+    const provider = create({
+      fetch,
+      clock: () => times.shift() ?? 2_250,
+      setTimer: ((callback: () => void, delay: number) => { fire = callback; delays.push(delay); return 77 as never; }) as typeof setTimeout,
+      clearTimer: ((timer: unknown) => { cleared.push(timer); }) as typeof clearTimeout,
+    });
+    await expect(provider.generate(request)).rejects.toMatchObject({ code: 'timeout', message: 'timeout' });
+    await expect(provider.generate(request)).rejects.not.toThrow(/provider key leaked|openai-secret|anthropic-secret/i);
+    expect(calls).toBe(2);
+    expect(delays).toEqual([750, 750]);
+    expect(cleared).toEqual([77, 77]);
   });
 
-  it('rejects absent usage so it can never be settled as zero', async () => {
-    const upstream = _name === 'openai'
-      ? Response.json({ id: 'resp-2', output: [{ type: 'message', content: [{ type: 'output_text', text: schemaResult }] }] })
-      : Response.json({ id: 'msg-2', content: [{ type: 'tool_use', id: 'tool-1', name: 'narrative_result', input: result }] });
+  it.each([
+    ['absent', undefined],
+    ['malformed', { input_tokens: -1, output_tokens: '34' }],
+  ])('rejects %s usage so it can never be settled as zero', async (_case, usage) => {
+    const upstream = Response.json(completedEnvelope(_name, { usage }));
     const h = fetchOnce(upstream);
-    await expect(create(h.fetch).generate(request)).rejects.toMatchObject({ code: 'malformed_response' });
+    await expect(create({ fetch: h.fetch }).generate(request)).rejects.toMatchObject({ code: 'malformed_response' });
   });
 
-  it('preserves ordered claims and continuity facts in the shared director instruction', async () => {
-    const upstream = _name === 'openai'
-      ? Response.json({ id: 'resp-3', status: 'completed', output: [{ type: 'message', role: 'assistant', status: 'completed', content: [{ type: 'output_text', text: schemaResult }] }], usage: { input_tokens: 1, output_tokens: 1 } })
-      : Response.json({ id: 'msg-3', type: 'message', role: 'assistant', stop_reason: 'tool_use', content: [{ type: 'tool_use', id: 'tool-1', name: 'narrative_result', input: result }], usage: { input_tokens: 1, output_tokens: 1 } });
-    const h = fetchOnce(upstream);
-    await create(h.fetch).generate({ ...request, contextMemories: [{ ...request.contextMemories[0], claims: [{ id: 'claim-1', sourceId: 'canon', sourcePriority: 1, status: 'unresolved', revealStage: 9, text: 'hidden truth' }], continuityFacts: { relationshipStage: 7, forbiddenReveals: [{ term: 'truth', allowedAtRelationshipStage: 9 }] } }] });
-    expect(String(h.calls[0].init?.body)).toContain('sourcePriority');
-    expect(String(h.calls[0].init?.body)).toContain('unresolved');
+  it.each([
+    ['missing message/tool id', _name === 'openai'
+      ? completedEnvelope('openai', { output: [{ type: 'message', role: 'assistant', status: 'completed', content: [{ type: 'output_text', text: schemaResult }] }] })
+      : completedEnvelope('anthropic', { content: [{ type: 'tool_use', name: 'narrative_result', input: result }] })],
+    ['wrong response model', completedEnvelope(_name, { model: 'other-owner-model' })],
+    ['wrong output role/status', _name === 'openai'
+      ? completedEnvelope('openai', { output: [{ id: 'message-1', type: 'message', role: 'user', status: 'in_progress', content: [{ type: 'output_text', text: schemaResult }] }] })
+      : completedEnvelope('anthropic', { stop_reason: 'end_turn' })],
+  ])('rejects a completed-looking envelope with %s', async (_case, envelope) => {
+    const h = fetchOnce(Response.json(envelope));
+    await expect(create({ fetch: h.fetch }).generate(request)).rejects.toMatchObject({ code: 'malformed_response' });
+    expect(h.calls).toHaveLength(1);
+  });
+});
+
+it('uses one identical explicit director/canon prompt with ordered source and claim metadata for both adapters', async () => {
+  const detailedRequest: GenerationRequest = {
+    ...request,
+    contextVersionIds: ['canon-1', 'feedback-2'],
+    contextMemories: [
+      { ...request.contextMemories[0], claims: [
+        { id: 'claim-later', sourceId: 'canon-source', sourcePriority: 20, status: 'unresolved', revealStage: 9, text: 'hidden truth' },
+        { id: 'claim-binding', sourceId: 'canon-source', sourcePriority: 1, status: 'confirmed', revealStage: 0, text: 'binding truth' },
+      ], continuityFacts: { relationshipStage: 7, forbiddenReveals: [{ term: 'truth', allowedAtRelationshipStage: 9 }] } },
+      { versionId: 'feedback-2', memoryType: 'feedback', content: 'Avoid a rejected motif.', tokenCount: 2 },
+    ],
+  };
+  const openAi = fetchOnce(Response.json(completedEnvelope('openai')));
+  const anthropic = fetchOnce(Response.json(completedEnvelope('anthropic')));
+  await new OpenAiNarrativeProvider({ apiKey: 'openai-secret', fetch: openAi.fetch, timeoutMs: 1_000 }).generate(detailedRequest);
+  await new AnthropicNarrativeProvider({ apiKey: 'anthropic-secret', fetch: anthropic.fetch, timeoutMs: 1_000 }).generate(detailedRequest);
+  const openAiPrompt = JSON.parse(String(JSON.parse(String(openAi.calls[0].init?.body)).input));
+  const anthropicPrompt = JSON.parse(String(JSON.parse(String(anthropic.calls[0].init?.body)).messages[0].content));
+  expect(openAiPrompt).toEqual(anthropicPrompt);
+  expect(openAiPrompt).toMatchObject({
+    directorInstruction: expect.stringContaining('confirmed canon'),
+    contextVersionIds: ['canon-1', 'feedback-2'],
+    context: [{ versionId: 'canon-1', claims: [
+      { id: 'claim-later', sourceId: 'canon-source', sourcePriority: 20, status: 'unresolved', revealStage: 9 },
+      { id: 'claim-binding', sourceId: 'canon-source', sourcePriority: 1, status: 'confirmed', revealStage: 0 },
+    ] }, { versionId: 'feedback-2' }],
   });
 });
 
 describe('server provider factory', () => {
   it('accepts exactly one active server-owned setting and never browser-selected provider details', () => {
     const fetch: typeof globalThis.fetch = async () => Response.json({ id: 'resp', output: [] });
-    expect(createServerNarrativeProvider([{ provider_key: 'openai', enabled: true, model_key: 'server-model', configuration: { apiKeyEnv: 'OPENAI_KEY' } }], (name) => name === 'OPENAI_KEY' ? 'server-secret' : undefined, { fetch, timeoutMs: 50 })).toBeInstanceOf(OpenAiNarrativeProvider);
+    const requestedSecrets: string[] = [];
+    expect(createServerNarrativeProvider([{ provider_key: 'openai', enabled: true, model_key: 'server-model', configuration: { apiKeyEnv: 'OPENAI_KEY' } }], (name) => { requestedSecrets.push(name); return name === 'OPENAI_KEY' ? 'server-secret' : undefined; }, { fetch, timeoutMs: 50 })).toBeInstanceOf(OpenAiNarrativeProvider);
+    expect(requestedSecrets).toEqual(['OPENAI_KEY']);
     expect(() => createServerNarrativeProvider([], () => undefined, { fetch, timeoutMs: 50 })).toThrow('active_provider_setting_required');
     expect(() => createServerNarrativeProvider([{ provider_key: 'openai', enabled: true, model_key: 'a', configuration: { apiKeyEnv: 'OPENAI_KEY' } }, { provider_key: 'anthropic', enabled: true, model_key: 'b', configuration: { apiKeyEnv: 'ANTHROPIC_KEY' } }], () => 'secret', { fetch, timeoutMs: 50 })).toThrow('active_provider_setting_required');
+  });
+
+  it('binds the adapter to the selected model before any HTTP request', async () => {
+    const h = fetchOnce(Response.json(completedEnvelope('openai')));
+    const provider = createServerNarrativeProvider([{ provider_key: 'openai', enabled: true, model_key: 'server-model', configuration: { apiKeyEnv: 'OWNER_ONE_OPENAI_KEY' } }], () => 'owner-one-secret', { fetch: h.fetch, timeoutMs: 50 });
+    await expect(provider.generate({ ...request, modelKey: 'other-owner-model' })).rejects.toMatchObject({ code: 'provider_setting_mismatch' });
+    expect(h.calls).toHaveLength(0);
+  });
+
+  it('allows fake-local only when an explicit fixture provider is supplied', async () => {
+    const fixture = { generate: async () => ({ result, usage: { inputTokens: 1, outputTokens: 1 }, rawId: 'fixture' }) };
+    expect(() => createServerNarrativeProvider([{ provider_key: 'fake-local-provider', enabled: true, model_key: 'fake-local-model', configuration: { mode: 'fixture' } }], () => undefined, { timeoutMs: 50 })).toThrow('unsupported_provider_setting');
+    await expect(createServerNarrativeProvider([{ provider_key: 'fake-local-provider', enabled: true, model_key: 'fake-local-model', configuration: { mode: 'fixture' } }], () => undefined, { timeoutMs: 50, fakeLocalProvider: fixture } as never).generate({ ...request, modelKey: 'fake-local-model' })).resolves.toMatchObject({ rawId: 'fixture' });
   });
 });

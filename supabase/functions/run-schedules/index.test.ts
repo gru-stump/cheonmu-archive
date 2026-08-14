@@ -1,12 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { createScheduleHandler, evaluateAccessTrigger, runSchedules, type ScheduleDependencies } from './index.ts';
+import { createScheduleHandler, createSupabaseScheduleDependencies, evaluateAccessTrigger, runSchedules, type ScheduleDependencies } from './index.ts';
 
 function harness(overrides: Partial<ScheduleDependencies> = {}) {
   const inserted: Array<Record<string, unknown>> = [];
+  const events: string[] = [];
   const byIdempotencyKey = new Map<string, Record<string, unknown>>();
   const deps: ScheduleDependencies = {
     now: () => new Date('2026-08-14T00:00:00Z'),
-    authenticate: async (token) => token === 'token' ? { ownerId: 'owner-1' } : null,
+    authenticate: async (token) => { events.push('authenticate'); return token === 'token' ? { ownerId: 'owner-1' } : null; },
     listSchedules: async () => [{ ownerId: 'owner-1', scheduleKey: 'daily', cronExpression: '0 9 * * *', enabled: true, payload: { kind: 'daily_event' } }, { ownerId: 'owner-1', scheduleKey: 'weekly', cronExpression: '0 9 * * 1', enabled: true, payload: { kind: 'daily_event' } }, { ownerId: 'owner-1', scheduleKey: 'manual', cronExpression: 'manual', enabled: true, payload: { kind: 'short_dialogue' } }],
     budgetState: async () => 'normal',
     insertQueuedJob: async (job) => {
@@ -14,11 +15,13 @@ function harness(overrides: Partial<ScheduleDependencies> = {}) {
       const existing = byIdempotencyKey.get(key); if (existing) return existing as Awaited<ReturnType<ScheduleDependencies['insertQueuedJob']>>;
       const created = { id: `job-${inserted.length + 1}`, ...job }; byIdempotencyKey.set(key, created); inserted.push(created); return created;
     },
-    recentAccessJob: async () => null,
-    accessEligibility: async () => ({ lastSuccessAt: null, nextAllowedAt: null, dailyCallCount: 0, budgetState: 'normal' }),
+    queueAccessJob: async (ownerId, now) => {
+      events.push('queue-access');
+      return deps.insertQueuedJob({ ownerId, scheduleKey: `access:${ownerId}`, scheduledFor: new Date(Math.floor(now.getTime() / 60_000) * 60_000).toISOString(), payload: { kind: 'short_dialogue', source: 'access' } });
+    },
     ...overrides,
   };
-  return { deps, inserted };
+  return { deps, inserted, events };
 }
 
 describe('runSchedules', () => {
@@ -46,15 +49,12 @@ describe('runSchedules', () => {
 });
 
 describe('evaluateAccessTrigger', () => {
-  it('requires authentication, returns a recent job, then queues one idempotent short dialogue after the interval', async () => {
-    const h = harness({ recentAccessJob: async () => ({ id: 'recent' }) });
-    await expect(evaluateAccessTrigger(h.deps, 'token')).resolves.toEqual({ id: 'recent' });
-    expect(h.inserted).toEqual([]);
-    h.deps.recentAccessJob = async () => null;
-    h.deps.accessEligibility = async () => ({ lastSuccessAt: '2026-08-13T00:00:00Z', nextAllowedAt: '2026-08-13T01:00:00Z', dailyCallCount: 0, budgetState: 'normal' });
+  it('authenticates once, then delegates repeated access loads to one atomic queue operation', async () => {
+    const h = harness();
     await expect(evaluateAccessTrigger(h.deps, 'token')).resolves.toMatchObject({ scheduleKey: 'access:owner-1', payload: { kind: 'short_dialogue', source: 'access' } });
     await expect(evaluateAccessTrigger(h.deps, 'token')).resolves.toMatchObject({ scheduleKey: 'access:owner-1' });
     expect(h.inserted).toHaveLength(1);
+    expect(h.events).toEqual(['authenticate', 'queue-access', 'authenticate', 'queue-access']);
     await expect(evaluateAccessTrigger(h.deps, 'nope')).rejects.toMatchObject({ code: 'authentication_required' });
   });
 
@@ -66,5 +66,33 @@ describe('evaluateAccessTrigger', () => {
     const access = await handler(new Request('http://local/run-schedules', { method: 'POST', headers: { authorization: 'Bearer token', 'content-type': 'application/json' }, body: JSON.stringify({ action: 'access' }) }));
     expect(access.status).toBe(202);
     await expect(access.json()).resolves.toMatchObject({ scheduleKey: 'access:owner-1' });
+  });
+
+  it('uses the user token only for identity and the service role only for the atomic access RPC', async () => {
+    const seen: Array<{ path: string; authorization: string | null; body: unknown }> = [];
+    const fetch: typeof globalThis.fetch = async (input, init) => {
+      const path = new URL(String(input)).pathname;
+      const body = init?.body ? JSON.parse(String(init.body)) : null;
+      seen.push({ path, authorization: new Headers(init?.headers).get('authorization'), body });
+      if (path === '/auth/v1/user') return Response.json({ id: 'owner-1' });
+      if (path === '/rest/v1/rpc/queue_narrative_access_job') return Response.json({ id: 'persisted-job', owner_id: 'owner-1', schedule_key: 'access:owner-1', scheduled_for: '2026-08-14T00:00:00+00:00', payload: { kind: 'short_dialogue', source: 'access' } });
+      return Response.json({ message: 'unexpected split access RPC' }, { status: 500 });
+    };
+    const deps = createSupabaseScheduleDependencies({ url: 'http://supabase', anonKey: 'anon', serviceRoleKey: 'service-secret', fetch }, 'user-token');
+    await expect(evaluateAccessTrigger(deps, 'user-token')).resolves.toEqual({ id: 'persisted-job', ownerId: 'owner-1', scheduleKey: 'access:owner-1', scheduledFor: '2026-08-14T00:00:00+00:00', payload: { kind: 'short_dialogue', source: 'access' } });
+    expect(seen).toEqual([
+      { path: '/auth/v1/user', authorization: 'Bearer user-token', body: null },
+      { path: '/rest/v1/rpc/queue_narrative_access_job', authorization: 'Bearer service-secret', body: { p_owner_id: 'owner-1', p_now: expect.any(String) } },
+    ]);
+  });
+
+  it.each(['access_interval_not_elapsed', 'daily_access_limit', 'budget_risk'])('preserves the atomic RPC conflict %s without exposing persistence details', async (code) => {
+    const fetch: typeof globalThis.fetch = async (input) => new URL(String(input)).pathname === '/auth/v1/user'
+      ? Response.json({ id: 'owner-1' })
+      : Response.json({ code: 'P0001', message: code, details: 'private database detail' }, { status: 409 });
+    const handler = createScheduleHandler(createSupabaseScheduleDependencies({ url: 'http://supabase', anonKey: 'anon', serviceRoleKey: 'service-secret', fetch }, 'user-token'));
+    const response = await handler(new Request('http://local/run-schedules', { method: 'POST', headers: { authorization: 'Bearer user-token', 'content-type': 'application/json' }, body: JSON.stringify({ action: 'access', ownerId: 'other-owner', dailyLimit: 999 }) }));
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toEqual({ error: code });
   });
 });

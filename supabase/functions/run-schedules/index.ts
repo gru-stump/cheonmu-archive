@@ -1,10 +1,9 @@
 export type BudgetState = 'normal' | 'warning' | 'risk';
 export interface QueuedJob { id?: string; ownerId: string; scheduleKey: string; scheduledFor: string; payload: { kind: 'short_dialogue' | 'daily_event'; source: 'schedule' | 'access' } }
 export interface ScheduleRecord { ownerId: string; scheduleKey: string; cronExpression: string; enabled: boolean; payload: { kind: 'short_dialogue' | 'daily_event' } }
-export interface AccessEligibility { lastSuccessAt: string | null; nextAllowedAt: string | null; dailyCallCount: number; budgetState: BudgetState }
 export interface ScheduleDependencies {
   now(): Date; authenticate(token: string): Promise<{ ownerId: string } | null>; listSchedules(): Promise<ScheduleRecord[]>; budgetState(ownerId: string): Promise<BudgetState>;
-  insertQueuedJob(job: Omit<QueuedJob, 'id'>): Promise<QueuedJob>; recentAccessJob(ownerId: string): Promise<QueuedJob | null>; accessEligibility(ownerId: string): Promise<AccessEligibility>; accessDailyCallLimit?: number;
+  insertQueuedJob(job: Omit<QueuedJob, 'id'>): Promise<QueuedJob>; queueAccessJob(ownerId: string, now: Date): Promise<QueuedJob>;
 }
 export class ScheduleError extends Error { constructor(public readonly code: string) { super(code); this.name = 'ScheduleError'; } }
 
@@ -30,13 +29,7 @@ export async function runSchedules(deps: ScheduleDependencies): Promise<QueuedJo
 
 export async function evaluateAccessTrigger(deps: ScheduleDependencies, authToken: string): Promise<QueuedJob> {
   const owner = await deps.authenticate(authToken); if (!owner) throw new ScheduleError('authentication_required');
-  const recent = await deps.recentAccessJob(owner.ownerId); if (recent) return recent;
-  const eligibility = await deps.accessEligibility(owner.ownerId); const now = deps.now();
-  if (eligibility.budgetState === 'risk') throw new ScheduleError('budget_risk');
-  if (eligibility.dailyCallCount >= (deps.accessDailyCallLimit ?? 1)) throw new ScheduleError('daily_access_limit');
-  if (eligibility.nextAllowedAt && new Date(eligibility.nextAllowedAt).getTime() > now.getTime()) throw new ScheduleError('access_interval_not_elapsed');
-  const scheduledFor = eligibility.nextAllowedAt ?? scheduledInstant(now);
-  return deps.insertQueuedJob({ ownerId: owner.ownerId, scheduleKey: `access:${owner.ownerId}`, scheduledFor, payload: { kind: 'short_dialogue', source: 'access' } });
+  return deps.queueAccessJob(owner.ownerId, deps.now());
 }
 
 export function createScheduleHandler(deps: ScheduleDependencies, dispatchToken?: string): (request: Request) => Promise<Response> {
@@ -52,7 +45,8 @@ export function createScheduleHandler(deps: ScheduleDependencies, dispatchToken?
     try { return Response.json(await evaluateAccessTrigger(deps, token), { status: 202 }); }
     catch (error) {
       const code = error instanceof ScheduleError ? error.code : 'internal_error';
-      return Response.json({ error: code }, { status: code === 'authentication_required' ? 401 : 409 });
+      const status = code === 'authentication_required' ? 401 : ['access_interval_not_elapsed', 'daily_access_limit', 'budget_risk'].includes(code) ? 409 : 500;
+      return Response.json({ error: code }, { status });
     }
   };
 }
@@ -64,10 +58,25 @@ export function createSupabaseScheduleDependencies(config: SupabaseScheduleConfi
   const serviceHeaders = { apikey: config.serviceRoleKey, authorization: `Bearer ${config.serviceRoleKey}`, 'content-type': 'application/json' };
   const call = async (headers: Record<string, string>, path: string, init: RequestInit = {}): Promise<unknown> => {
     const response = await request(`${config.url}${path}`, { ...init, headers: { ...headers, ...init.headers } });
-    if (!response.ok) throw new ScheduleError('persistence_failed');
-    return response.status === 204 ? null : response.json();
+    const value = response.status === 204 ? null : await response.json();
+    if (!response.ok) {
+      const databaseCode = value && typeof value === 'object' && 'code' in value ? String((value as { code: unknown }).code) : '';
+      const message = value && typeof value === 'object' && 'message' in value ? String((value as { message: unknown }).message) : '';
+      if (databaseCode === 'P0001' && ['access_interval_not_elapsed', 'daily_access_limit', 'budget_risk'].includes(message)) throw new ScheduleError(message);
+      throw new ScheduleError('persistence_failed');
+    }
+    return value;
   };
   const rpc = (name: string, body: Record<string, unknown>) => call(serviceHeaders, `/rest/v1/rpc/${name}`, { method: 'POST', body: JSON.stringify(body) });
+  const queuedJob = (value: unknown, expectedOwnerId?: string): QueuedJob => {
+    if (!value || typeof value !== 'object') throw new ScheduleError('invalid_queue_response');
+    const record = value as Record<string, unknown>;
+    if (typeof record.id !== 'string' || typeof record.owner_id !== 'string' || typeof record.schedule_key !== 'string' || typeof record.scheduled_for !== 'string' || !record.payload || typeof record.payload !== 'object') throw new ScheduleError('invalid_queue_response');
+    const payload = record.payload as Record<string, unknown>;
+    if ((payload.kind !== 'short_dialogue' && payload.kind !== 'daily_event') || (payload.source !== 'schedule' && payload.source !== 'access')
+      || (expectedOwnerId && (record.owner_id !== expectedOwnerId || record.schedule_key !== `access:${expectedOwnerId}` || payload.kind !== 'short_dialogue' || payload.source !== 'access'))) throw new ScheduleError('invalid_queue_response');
+    return { id: record.id, ownerId: record.owner_id, scheduleKey: record.schedule_key, scheduledFor: record.scheduled_for, payload: { kind: payload.kind, source: payload.source } };
+  };
   return {
     now: () => new Date(),
     authenticate: async () => { const value = await call(userHeaders, '/auth/v1/user') as { id?: unknown }; return typeof value.id === 'string' ? { ownerId: value.id } : null; },
@@ -76,21 +85,8 @@ export function createSupabaseScheduleDependencies(config: SupabaseScheduleConfi
       return rows.map((row) => { const value = row as Record<string, unknown>; return { ownerId: String(value.owner_id), scheduleKey: String(value.schedule_key), cronExpression: String(value.cron_expression), enabled: value.enabled === true, payload: value.payload as ScheduleRecord['payload'] }; });
     },
     budgetState: async (ownerId) => String(await rpc('narrative_schedule_budget_state', { p_owner_id: ownerId })) as BudgetState,
-    insertQueuedJob: async (job) => {
-      const value = await rpc('queue_narrative_schedule_job', { p_owner_id: job.ownerId, p_schedule_key: job.scheduleKey, p_scheduled_for: job.scheduledFor, p_payload: job.payload }) as Record<string, unknown>;
-      if (typeof value.id !== 'string' || typeof value.owner_id !== 'string' || typeof value.schedule_key !== 'string' || typeof value.scheduled_for !== 'string' || !value.payload || typeof value.payload !== 'object') throw new ScheduleError('invalid_queue_response');
-      const payload = value.payload as Record<string, unknown>;
-      if ((payload.kind !== 'short_dialogue' && payload.kind !== 'daily_event') || (payload.source !== 'schedule' && payload.source !== 'access')) throw new ScheduleError('invalid_queue_response');
-      return { id: value.id, ownerId: value.owner_id, scheduleKey: value.schedule_key, scheduledFor: value.scheduled_for, payload: { kind: payload.kind, source: payload.source } as QueuedJob['payload'] };
-    },
-    recentAccessJob: async (ownerId) => {
-      const value = await rpc('recent_narrative_access_job', { p_owner_id: ownerId }) as Record<string, unknown> | null;
-      return value?.id ? { id: String(value.id), ownerId, scheduleKey: String(value.schedule_key), scheduledFor: String(value.scheduled_for), payload: value.payload as QueuedJob['payload'] } : null;
-    },
-    accessEligibility: async (ownerId) => {
-      const value = await rpc('narrative_access_eligibility', { p_owner_id: ownerId }) as Record<string, unknown>;
-      return { lastSuccessAt: typeof value.last_success_at === 'string' ? value.last_success_at : null, nextAllowedAt: typeof value.next_allowed_at === 'string' ? value.next_allowed_at : null, dailyCallCount: Number(value.daily_call_count ?? 0), budgetState: String(value.budget_state ?? 'risk') as BudgetState };
-    },
+    insertQueuedJob: async (job) => queuedJob(await rpc('queue_narrative_schedule_job', { p_owner_id: job.ownerId, p_schedule_key: job.scheduleKey, p_scheduled_for: job.scheduledFor, p_payload: job.payload })),
+    queueAccessJob: async (ownerId, now) => queuedJob(await rpc('queue_narrative_access_job', { p_owner_id: ownerId, p_now: now.toISOString() }), ownerId),
   };
 }
 
