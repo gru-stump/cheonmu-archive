@@ -2,8 +2,7 @@ import { z } from 'zod';
 import { draftKinds, generationModes, type DraftKind, type DraftStatus, type GenerationMode, type GenerationRequest, type GenerationResult, type Usage } from '../../../shared/narrative/contracts.ts';
 import { selectNarrativeContext, type ContextSelection, type NarrativeMemory } from '../_shared/context.ts';
 import { checkContinuity, type ContinuityCheck, type ContinuityContext } from '../_shared/continuity.ts';
-import { FakeNarrativeProvider } from '../_shared/fake-provider.ts';
-import { parseNarrativeProviderResponse, type NarrativeProvider, type NarrativeProviderResponse } from '../_shared/provider.ts';
+import { createServerNarrativeProvider, parseNarrativeProviderResponse, type NarrativeProvider, type NarrativeProviderResponse } from '../_shared/provider.ts';
 
 export const CONTINUITY_POLICY_VERSION = 'cheonmu-continuity-v1';
 export type { GenerationMode };
@@ -393,8 +392,8 @@ export function createSupabaseGenerationDependencies(config: SupabaseRestConfig,
       const version = row<{ id: string; continuity_level: ContinuityCheck['level'] }>(await call(`/rest/v1/draft_versions?select=id,continuity_level&generation_job_id=eq.${job.id}`));
       return version ? { draftId: job.draft_id, versionId: version.id, status: 'generated', continuityLevel: version.continuity_level } : null;
     },
-    loadPolicy: async () => {
-      const values = await call('/rest/v1/provider_settings?select=id,model_key,max_input_tokens,max_output_tokens,max_revision_output_tokens,input_cost_micros_per_million,output_cost_micros_per_million,fixed_cost_micros&enabled=eq.true');
+    loadPolicy: async (ownerId) => {
+      const values = await callWith(serviceHeaders, `/rest/v1/provider_settings?select=id,model_key,max_input_tokens,max_output_tokens,max_revision_output_tokens,input_cost_micros_per_million,output_cost_micros_per_million,fixed_cost_micros&enabled=eq.true&owner_id=eq.${encodeURIComponent(ownerId)}`);
       if (!Array.isArray(values) || values.length !== 1) throw new GenerationError(409, 'active_provider_setting_required');
       const value = values[0] as Record<string, unknown>;
       return policyFromRecord(value);
@@ -437,8 +436,14 @@ const defaultFakeResult: GenerationResult = { title: '로컬 생성 초안', kin
 if (typeof Deno !== 'undefined' && (import.meta as ImportMeta & { main?: boolean }).main) {
   const url = Deno.env.get('SUPABASE_URL'); const anonKey = Deno.env.get('SUPABASE_ANON_KEY'); const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
   if (!url || !anonKey || !serviceRoleKey) throw new Error('SUPABASE_URL, SUPABASE_ANON_KEY, and SUPABASE_SERVICE_ROLE_KEY are required');
-  const fixture = Deno.env.get('FAKE_NARRATIVE_FIXTURE');
-  const provider = new FakeNarrativeProvider(fixture ? JSON.parse(fixture) as GenerationResult : defaultFakeResult);
+  const provider: NarrativeProvider = {
+    generate: async (providerRequest) => {
+      const settingsResponse = await fetch(`${url}/rest/v1/provider_settings?select=provider_key,enabled,model_key,configuration&enabled=eq.true`, { headers: { apikey: serviceRoleKey, authorization: `Bearer ${serviceRoleKey}` } });
+      if (!settingsResponse.ok) throw new Error('provider_configuration_unavailable');
+      const settings = await settingsResponse.json();
+      return createServerNarrativeProvider(Array.isArray(settings) ? settings : [], (name) => Deno.env.get(name), { timeoutMs: 30_000 }).generate(providerRequest);
+    },
+  };
   Deno.serve((request) => {
     const token = request.headers.get('authorization')?.replace(/^Bearer\s+/i, '') ?? '';
     return createGenerateDraftHandler(createSupabaseGenerationDependencies({ url, anonKey, serviceRoleKey }, token, provider))(request);

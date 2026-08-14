@@ -294,7 +294,7 @@ describe('Supabase generation adapter', () => {
     await expect(deps.abortGenerationAttempt({ jobId: 'job-1', attemptToken, idempotencyKey: 'key', failureCode: 'finalization_failed' })).resolves.toMatchObject({ outcome: 'aborted' });
     expect(calls).toEqual(expect.arrayContaining(['POST /rest/v1/rpc/reserve_and_start_generation', 'POST /rest/v1/rpc/finalize_generation_success']));
     expect(calls.some((call) => call.includes('reconcile_generation_budget') || call.includes('store_generation_result'))).toBe(false);
-    expect(authorizations.find(({ path }) => path.startsWith('/rest/v1/provider_settings?'))?.value).toBe('Bearer token');
+    expect(authorizations.find(({ path }) => path.startsWith('/rest/v1/provider_settings?'))?.value).toBe('Bearer service-secret');
     expect(authorizations.filter(({ path }) => path.startsWith('/rest/v1/rpc/')).map(({ value }) => value)).toEqual(['Bearer service-secret', 'Bearer service-secret', 'Bearer service-secret', 'Bearer service-secret']);
   });
 

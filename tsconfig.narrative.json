@@ -8,9 +8,12 @@
     "scripts/export-narrative-canon.ts",
     "supabase/functions/_shared/context.ts",
     "supabase/functions/_shared/provider.ts",
+    "supabase/functions/_shared/openai-provider.ts",
+    "supabase/functions/_shared/anthropic-provider.ts",
     "supabase/functions/_shared/fake-provider.ts",
     "supabase/functions/_shared/continuity.ts",
     "supabase/functions/generate-draft/index.ts",
-    "supabase/functions/review-draft/index.ts"
+    "supabase/functions/review-draft/index.ts",
+    "supabase/functions/run-schedules/index.ts"
   ]
 }

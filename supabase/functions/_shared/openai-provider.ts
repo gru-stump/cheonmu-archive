@@ -1,0 +1,69 @@
+import { parseGenerationResult, type GenerationRequest } from '../../../shared/narrative/contracts.ts';
+import type { NarrativeProvider, NarrativeProviderResponse } from './provider.ts';
+
+export class ProviderRequestError extends Error {
+  constructor(public readonly code: 'timeout' | 'rate_limited' | 'upstream_unavailable' | 'malformed_response') { super(code); this.name = 'ProviderRequestError'; }
+}
+
+export interface ProviderHttpOptions { apiKey: string; fetch?: typeof globalThis.fetch; timeoutMs: number; clock?: () => number }
+
+const resultSchema = {
+  type: 'object', additionalProperties: false,
+  required: ['title', 'kind', 'setting', 'body', 'emotionalStart', 'emotionalEnd', 'continuityUsed', 'continuityCandidates', 'canonChangeCandidates', 'unresolvedCallbacks', 'riskFlags'],
+  properties: {
+    title: { type: 'string' }, kind: { type: 'string', enum: ['short_dialogue', 'daily_event', 'major_event_proposal'] },
+    setting: { type: 'object', additionalProperties: false, required: ['time', 'place'], properties: { time: { type: 'string' }, place: { type: 'string' } } },
+    body: { type: 'string' }, emotionalStart: { type: 'string' }, emotionalEnd: { type: 'string' },
+    continuityUsed: { type: 'array', items: { type: 'string' } }, continuityCandidates: { type: 'array', items: { type: 'string' } },
+    canonChangeCandidates: { type: 'array', items: { type: 'string' } }, unresolvedCallbacks: { type: 'array', items: { type: 'string' } }, riskFlags: { type: 'array', items: { type: 'string' } },
+  },
+} as const;
+
+export function narrativeJsonSchema(): Record<string, unknown> { return structuredClone(resultSchema); }
+
+export function narrativePrompt(request: GenerationRequest): string {
+  return JSON.stringify({ kind: request.kind, mode: request.mode, seed: request.seed, revision: request.revision, contextVersionIds: request.contextVersionIds, context: request.contextMemories.map(({ versionId, memoryType, content }) => ({ versionId, memoryType, content })) });
+}
+
+export function usageFromUpstream(value: unknown): { inputTokens: number; outputTokens: number } {
+  const usage = value && typeof value === 'object' && 'usage' in value ? (value as { usage?: unknown }).usage : undefined;
+  const record = usage && typeof usage === 'object' ? usage as Record<string, unknown> : {};
+  const valid = (v: unknown) => typeof v === 'number' && Number.isSafeInteger(v) && v >= 0 ? v : 0;
+  return { inputTokens: valid(record.input_tokens), outputTokens: valid(record.output_tokens) };
+}
+
+async function safeJson(response: Response): Promise<unknown> { try { return await response.json(); } catch { throw new ProviderRequestError('malformed_response'); } }
+
+export async function oneRequest(options: ProviderHttpOptions, url: string, init: RequestInit): Promise<unknown> {
+  if (!options.apiKey.trim()) throw new ProviderRequestError('upstream_unavailable');
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), options.timeoutMs);
+  try {
+    const response = await (options.fetch ?? globalThis.fetch)(url, { ...init, signal: controller.signal });
+    if (response.status === 429) throw new ProviderRequestError('rate_limited');
+    if (!response.ok) throw new ProviderRequestError('upstream_unavailable');
+    return await safeJson(response);
+  } catch (error) {
+    if (error instanceof ProviderRequestError) throw error;
+    if (controller.signal.aborted) throw new ProviderRequestError('timeout');
+    throw new ProviderRequestError('upstream_unavailable');
+  } finally { clearTimeout(timer); }
+}
+
+export class OpenAiNarrativeProvider implements NarrativeProvider {
+  constructor(private readonly options: ProviderHttpOptions) {}
+  async generate(request: GenerationRequest): Promise<NarrativeProviderResponse> {
+    const value = await oneRequest(this.options, 'https://api.openai.com/v1/responses', {
+      method: 'POST', headers: { authorization: `Bearer ${this.options.apiKey}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ model: request.modelKey, input: narrativePrompt(request), max_output_tokens: request.maxOutputTokens, text: { format: { type: 'json_schema', name: 'narrative_result', strict: true, schema: narrativeJsonSchema() } } }),
+    });
+    const record = value && typeof value === 'object' ? value as Record<string, unknown> : null;
+    const id = typeof record?.id === 'string' && record.id ? record.id : null;
+    const output = Array.isArray(record?.output) ? record.output : [];
+    const text = output.flatMap((item) => item && typeof item === 'object' && Array.isArray((item as { content?: unknown }).content) ? (item as { content: unknown[] }).content : [])
+      .find((item) => item && typeof item === 'object' && (item as { type?: unknown }).type === 'output_text' && typeof (item as { text?: unknown }).text === 'string') as { text: string } | undefined;
+    if (!id || !text) throw new ProviderRequestError('malformed_response');
+    try { return { result: parseGenerationResult(JSON.parse(text.text)), usage: usageFromUpstream(value), rawId: id }; }
+    catch { throw new ProviderRequestError('malformed_response'); }
+  }
+}
