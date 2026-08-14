@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { parseGenerationResult, type GenerationRequest, type GenerationResult, type Usage } from '../../../shared/narrative/contracts';
+import { parseGenerationResult, type GenerationRequest, type GenerationResult, type Usage } from '../../../shared/narrative/contracts.ts';
 
 export interface NarrativeProviderResponse {
   result: GenerationResult;

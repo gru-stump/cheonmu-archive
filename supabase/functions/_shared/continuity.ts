@@ -1,4 +1,4 @@
-import type { GenerationResult } from '../../../shared/narrative/contracts';
+import type { GenerationResult } from '../../../shared/narrative/contracts.ts';
 
 export type FindingLevel = 'pass' | 'review' | 'block';
 

@@ -20,7 +20,7 @@ export default defineConfig(({ command, isPreview }) => ({
       'scripts/**/*.test.ts',
       'editor/**/*.test.ts',
       'shared/**/*.test.ts',
-      'supabase/functions/_shared/**/*.test.ts',
+      'supabase/functions/**/*.test.ts',
     ],
     setupFiles: './src/test/setup.ts',
   },

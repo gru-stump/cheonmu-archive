@@ -1,5 +1,5 @@
-import type { GenerationRequest, GenerationResult, Usage } from '../../../shared/narrative/contracts';
-import { parseNarrativeProviderResponse, type NarrativeProvider, type NarrativeProviderResponse } from './provider';
+import type { GenerationRequest, GenerationResult, Usage } from '../../../shared/narrative/contracts.ts';
+import { parseNarrativeProviderResponse, type NarrativeProvider, type NarrativeProviderResponse } from './provider.ts';
 
 export interface FakeProviderFixture {
   result: GenerationResult;
