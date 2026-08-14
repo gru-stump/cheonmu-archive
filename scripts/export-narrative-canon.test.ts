@@ -6,6 +6,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 import { exportNarrativeCanon } from './export-narrative-canon';
+import { selectNarrativeContext } from '../supabase/functions/_shared/context';
 
 const fixtureRoots: string[] = [];
 
@@ -20,7 +21,29 @@ async function createFixture(): Promise<string> {
   fixtureRoots.push(root);
 
   await Promise.all([
-    writeFixture(root, '천무_캐릭터_프로필.md', '# Character profile\n\n## 확정\n\n- root priority canon\n'),
+    writeFixture(root, '천무_캐릭터_프로필.md', [
+      '# Character profile',
+      '',
+      '## Confirmed canon',
+      '',
+      '- root priority canon',
+      '',
+      '### Relationship stage 8',
+      '',
+      '- stage eight profile fact',
+      '',
+      '#### Detail',
+      '',
+      '- nested stage eight profile fact',
+      '',
+      '## Unresolved design',
+      '',
+      '- unresolved design question',
+      '',
+      '### Birthday candidates',
+      '',
+      '- birthday candidate',
+    ].join('\n')),
     writeFixture(root, 'src/content/profiles/cheonryeong.md', '---\nid: cheonryeong\ntitle: 천령\n---\npublicBody'),
     writeFixture(root, 'src/content/profiles/_hidden/cheonryeong-full.md', '---\nid: cheonryeong\ntitle: 천령\n---\nprivateBody'),
     writeFixture(root, 'src/content/documents/relationship.md', '---\nid: relationship\ntitle: 관계\n---\npublicBody'),
@@ -86,6 +109,31 @@ describe('exportNarrativeCanon', () => {
     const second = JSON.stringify(await exportNarrativeCanon(fixtureRoot));
 
     expect(second).toBe(first);
+  });
+
+  it('keeps nested status and reveal-stage scopes when snapshot claims enter context selection', async () => {
+    const fixtureRoot = await createFixture();
+    const snapshot = await exportNarrativeCanon(fixtureRoot);
+    const selection = selectNarrativeContext({
+      memories: [{
+        versionId: 'fixture-canon-v1',
+        memoryType: 'canon',
+        content: 'must be replaced by allowed claims',
+        tokenCount: 100,
+        status: 'approved',
+        claims: snapshot.claims,
+      }],
+      tokenBudget: 200,
+      tags: [],
+      currentRelationshipStage: 7,
+    });
+
+    expect(selection.fixedCanon[0].content).toContain('root priority canon');
+    expect(selection.fixedCanon[0].content).not.toContain('stage eight profile fact');
+    expect(selection.fixedCanon[0].content).not.toContain('unresolved design question');
+    expect(selection.fixedCanon[0].content).not.toContain('birthday candidate');
+    expect(selection.claims.some((claim) => claim.revealStage > 7)).toBe(false);
+    expect(selection.claims.some((claim) => claim.status === 'unresolved')).toBe(false);
   });
 
   it('keeps application compilation separate from focused narrative compilation', async () => {

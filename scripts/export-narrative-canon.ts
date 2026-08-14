@@ -117,40 +117,58 @@ function asStatus(metadata: CanonMetadata): string {
 
 function boundedStage(value: number): number { return Math.max(0, Math.min(8, value)); }
 
+function explicitStage(text: string): number | undefined {
+  const match = /\bstage\s*(\d+)\b|(\d+)\s*단계/i.exec(text);
+  const value = match?.[1] ?? match?.[2];
+  return value === undefined ? undefined : boundedStage(Number(value));
+}
+
 function stageFromText(text: string, fallback: number): number {
-  const match = /(?:stage\s*|)(\d+)\s*(?:단계|stage)/i.exec(text);
-  return match ? boundedStage(Number(match[1])) : fallback;
+  return explicitStage(text) ?? fallback;
 }
 
-function statusFromHeading(heading: string, fallback: CanonClaimStatus): CanonClaimStatus {
-  if (/추가 결정|미해결|미확정|unresolved/i.test(heading)) return 'unresolved';
-  if (/충돌|conflict/i.test(heading)) return 'conflicting';
-  if (/요청|질문|request/i.test(heading)) return 'request-only';
-  if (/확정|confirmed/i.test(heading)) return 'confirmed';
-  return fallback;
-}
-
-function statusFromText(text: string, fallback: CanonClaimStatus): CanonClaimStatus {
-  if (/미확정|미해결|미정|미회수|잠김|unresolved/i.test(text)) return 'unresolved';
+function explicitStatus(text: string): CanonClaimStatus | undefined {
   if (/충돌|conflict/i.test(text)) return 'conflicting';
-  if (/request-only|요청 전용/i.test(text)) return 'request-only';
-  return fallback;
+  if (/추가 결정|미해결|미확정|미정|미회수|잠김|unresolved/i.test(text)) return 'unresolved';
+  if (/request-only|요청 전용|요청|질문|후보|candidate/i.test(text)) return 'request-only';
+  if (/(?:^|\s)확정|\bconfirmed\b/i.test(text)) return 'confirmed';
+  return undefined;
 }
 
 function markdownClaims(source: string, sourceIdValue: string, sourcePriorityValue: number, fallbackStatus: CanonClaimStatus, fallbackStage: number): CanonClaim[] {
-  let status = fallbackStatus;
+  const scopes: Array<{ depth: number; status: CanonClaimStatus; revealStage: number }> = [{
+    depth: 0,
+    status: fallbackStatus,
+    revealStage: fallbackStage,
+  }];
   const claims: CanonClaim[] = [];
   for (const rawLine of source.split(/\r?\n/)) {
     const line = rawLine.trim();
-    if (line.startsWith('#')) {
-      status = statusFromHeading(line.replace(/^#+\s*/, ''), fallbackStatus);
+    const heading = /^(#+)\s+(.+)$/.exec(line);
+    if (heading) {
+      const depth = heading[1].length;
+      while (scopes[scopes.length - 1].depth >= depth) scopes.pop();
+      const parent = scopes[scopes.length - 1];
+      scopes.push({
+        depth,
+        status: explicitStatus(heading[2]) ?? parent.status,
+        revealStage: explicitStage(heading[2]) ?? parent.revealStage,
+      });
       continue;
     }
     const bullet = /^(?:[-*]|\d+[.)])\s+(.+)$/.exec(line);
     const table = line.startsWith('|') && !/^\|?\s*:?-{3,}/.test(line) ? line.split('|').map((cell) => cell.trim()).filter(Boolean).join(': ') : undefined;
     const text = bullet?.[1] ?? table;
     if (!text) continue;
-    claims.push({ id: `${sourceIdValue}:${claims.length + 1}`, sourceId: sourceIdValue, sourcePriority: sourcePriorityValue, status: statusFromText(text, status), revealStage: stageFromText(text, fallbackStage), text });
+    const scope = scopes[scopes.length - 1];
+    claims.push({
+      id: `${sourceIdValue}:${claims.length + 1}`,
+      sourceId: sourceIdValue,
+      sourcePriority: sourcePriorityValue,
+      status: explicitStatus(text) ?? scope.status,
+      revealStage: stageFromText(text, scope.revealStage),
+      text,
+    });
   }
   return claims;
 }
