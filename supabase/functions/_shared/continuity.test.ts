@@ -177,4 +177,28 @@ describe('checkContinuity', () => {
   it('rejects contexts without real selected source IDs', () => {
     expect(() => checkContinuity(baseResult, { ...stage7Context, selectedSourceIds: [] })).toThrow('continuity_context_missing_source_ids');
   });
+
+  it('rejects empty or whitespace-only voice/title source arrays before they can produce an empty finding', () => {
+    for (const voiceAndTitleSourceIds of [[], ['  ']]) {
+      expect(() => checkContinuity(
+        { ...baseResult, riskFlags: ['voice-deviation'] },
+        { ...stage7Context, voiceAndTitleSourceIds },
+      )).toThrow('continuity_context_missing_source_ids');
+    }
+  });
+
+  it('blocks a Korean forbidden secret phrase when a postposition follows it', () => {
+    const result = checkContinuity(
+      { ...baseResult, body: '그는 불멸의 기원을 말하지 않았다.' },
+      {
+        ...stage7Context,
+        forbiddenRevealTerms: [{ term: '불멸의 기원', sourceId: 'reveal-plan-age-origin', allowedAtRelationshipStage: 9 }],
+      },
+    );
+
+    expect(result.level).toBe('block');
+    expect(result.findings).toContainEqual(expect.objectContaining({
+      code: 'forbidden_reveal_term', level: 'block', sourceIds: ['reveal-plan-age-origin'],
+    }));
+  });
 });

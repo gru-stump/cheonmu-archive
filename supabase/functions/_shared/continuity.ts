@@ -66,7 +66,11 @@ function ensureContinuityContext(context: ContinuityContext): void {
     ...(context.approvedContinuity ?? []).map(({ sourceId }) => sourceId),
     ...(context.rejectedMotifs ?? []).map(({ sourceId }) => sourceId),
   ];
-  if (!nonEmptySourceIds(context.selectedSourceIds) || !nonEmptySourceIds(sourceIds)) {
+  if (
+    !nonEmptySourceIds(context.selectedSourceIds)
+    || !nonEmptySourceIds(sourceIds)
+    || (context.voiceAndTitleSourceIds !== undefined && !nonEmptySourceIds(context.voiceAndTitleSourceIds))
+  ) {
     throw new Error('continuity_context_missing_source_ids');
   }
 }
@@ -167,7 +171,7 @@ export function checkContinuity(result: GenerationResult, context: ContinuityCon
   }
 
   for (const reveal of context.forbiddenRevealTerms ?? []) {
-    if (context.currentRelationshipStage < reveal.allowedAtRelationshipStage && phraseOccurs(text, normalise(reveal.term))) {
+    if (context.currentRelationshipStage < reveal.allowedAtRelationshipStage && text.includes(normalise(reveal.term))) {
       findings.push({
         code: 'forbidden_reveal_term',
         level: 'block',
