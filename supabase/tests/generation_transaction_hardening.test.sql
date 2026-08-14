@@ -1,6 +1,6 @@
 begin;
 
-select plan(32);
+select plan(39);
 
 update public.provider_settings
 set enabled = true,
@@ -53,6 +53,16 @@ select set_config('request.jwt.claim.role', 'authenticated', true);
 select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000001', true);
 set local role authenticated;
 
+select throws_ok(
+  $$ select public.reserve_and_start_generation('a2000000-0000-0000-0000-000000000001', 100) $$,
+  '42501', 'permission denied for function reserve_and_start_generation',
+  'an authenticated owner cannot directly invoke generation finalization plumbing'
+);
+
+reset role;
+select set_config('request.jwt.claim.role', 'service_role', true);
+set local role service_role;
+
 select lives_ok(
   $$ select public.freeze_generation_context(
     'a2000000-0000-0000-0000-000000000001',
@@ -68,6 +78,7 @@ select lives_ok(
 select is((select phase from public.major_event_workflows where id = 'a3000000-0000-0000-0000-000000000001'), 'proposal_approved', 'freezing never advances the workflow phase');
 select is((select context_snapshot -> 0 ->> 'content' from public.generation_jobs where id = 'a2000000-0000-0000-0000-000000000001'), 'frozen canon', 'the selected content is frozen with its exact version id');
 select is((select public.reserve_and_start_generation('a2000000-0000-0000-0000-000000000001', 100) ->> 'status'), 'blocked', 'a blocked reservation reports blocked');
+select is((select public.abort_generation_attempt('a2000000-0000-0000-0000-000000000001', 'major-retry-key', 'budget_blocked') ->> 'outcome'), 'aborted', 'a 402 uses the idempotent abort cleanup');
 select is((select idempotency_key from public.generation_jobs where id = 'a2000000-0000-0000-0000-000000000001'), null, 'a 402 clears the idempotency key for retry');
 select is((select status from public.drafts where id = 'a1000000-0000-0000-0000-000000000001'), 'queued', 'a 402 leaves the draft queued');
 select is((select phase from public.major_event_workflows where id = 'a3000000-0000-0000-0000-000000000001'), 'proposal_approved', 'a 402 does not consume the major-event phase');
@@ -76,7 +87,8 @@ reset role;
 update public.budget_periods
 set limit_micros = 1000, daily_limit_micros = 1000
 where id = '13000000-0000-0000-0000-000000000001';
-set local role authenticated;
+select set_config('request.jwt.claim.role', 'service_role', true);
+set local role service_role;
 
 select lives_ok(
   $$ select public.freeze_generation_context(
@@ -116,6 +128,8 @@ select is((select status from public.generation_jobs where id = 'a2000000-0000-0
 select is((select status from public.drafts where id = 'a1000000-0000-0000-0000-000000000001'), 'generated', 'success finalization legally advances the draft');
 select is((select count(*) from public.draft_versions where generation_job_id = 'a2000000-0000-0000-0000-000000000001' and continuity_policy_version = 'cheonmu-continuity-v1' and context_snapshot -> 0 ->> 'content' = 'frozen canon'), 1::bigint, 'success creates one policy-stamped immutable version with frozen context');
 select is((select count(*) from public.budget_entries where generation_job_id = 'a2000000-0000-0000-0000-000000000001' and entry_type = 'reconciliation'), 1::bigint, 'success creates one reconciliation in the transaction');
+select is((select public.abort_generation_attempt('a2000000-0000-0000-0000-000000000001', 'major-retry-key', 'finalization_failed') ->> 'outcome'), 'completed', 'abort detects an already committed finalization');
+select is((select phase from public.major_event_workflows where id = 'a3000000-0000-0000-0000-000000000001'), 'scene_plan', 'abort never reverts a completed major-event phase');
 
 select lives_ok(
   $$ select public.freeze_generation_context(
@@ -131,8 +145,8 @@ select lives_ok(
 );
 select is((select public.reserve_and_start_generation('a2000000-0000-0000-0000-000000000002', 100) ->> 'status'), 'reserved', 'failure fixture reserves before provider work');
 select lives_ok(
-  $$ select public.finalize_generation_failure('a2000000-0000-0000-0000-000000000002', null::jsonb, 'provider_generation_failed') $$,
-  'failure finalization conservatively settles without usage'
+  $$ select public.abort_generation_attempt('a2000000-0000-0000-0000-000000000002', 'failure-retry-key', 'provider_generation_failed') $$,
+  'abort conservatively settles a reservation after response loss'
 );
 select is((select status from public.generation_jobs where id = 'a2000000-0000-0000-0000-000000000002'), 'failed', 'failure finalization leaves a clear terminal job state');
 select is((select status from public.drafts where id = 'a1000000-0000-0000-0000-000000000002'), 'queued', 'failure finalization legally returns the draft to queued');
@@ -150,6 +164,25 @@ select lives_ok(
   ) $$,
   'a new queued job can reuse the failed attempt idempotency key'
 );
+select is((select public.abort_generation_attempt('a2000000-0000-0000-0000-000000000003', 'failure-retry-key', 'freeze_failed') ->> 'jobStatus'), 'queued', 'an unreserved frozen attempt resets to queued');
+select is((select idempotency_key from public.generation_jobs where id = 'a2000000-0000-0000-0000-000000000003'), null, 'unreserved abort clears its frozen idempotency key');
+select lives_ok(
+  $$ select public.freeze_generation_context(
+    'a2000000-0000-0000-0000-000000000003',
+    'a1000000-0000-0000-0000-000000000002',
+    'new',
+    'failure-retry-key',
+    array['15000000-0000-0000-0000-000000000001'],
+    '[{"versionId":"15000000-0000-0000-0000-000000000001","memoryType":"canon","content":"frozen canon","tokenCount":14}]'::jsonb,
+    '12000000-0000-0000-0000-000000000001'
+  ) $$,
+  'the same job can refreeze after an unreserved abort'
+);
+
+reset role;
+select set_config('request.jwt.claim.role', 'authenticated', true);
+select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000001', true);
+set local role authenticated;
 
 select throws_ok(
   $$ select public.review_draft_atomic('a1000000-0000-0000-0000-000000000011', 'a4000000-0000-0000-0000-000000000011', 'reviewing', 'approve_private', null, 'blocked-approve', 'cheonmu-continuity-v1') $$,

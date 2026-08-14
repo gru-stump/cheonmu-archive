@@ -5,6 +5,7 @@ import { parseNarrativeProviderResponse } from './provider';
 
 const request: GenerationRequest = {
   kind: 'short_dialogue',
+  mode: 'new',
   modelKey: 'fake-model',
   seed: 'A quiet return to the medical center.',
   maxInputTokens: 400,

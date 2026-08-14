@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 export const draftKinds = ['short_dialogue', 'daily_event', 'major_event_proposal'] as const;
+export const generationModes = ['new', 'revise_selection', 'major_event_scene_plan', 'major_event_draft'] as const;
 export const draftStatuses = [
   'queued',
   'generating',
@@ -16,6 +17,7 @@ export const draftStatuses = [
 ] as const;
 
 export type DraftKind = typeof draftKinds[number];
+export type GenerationMode = typeof generationModes[number];
 export type DraftStatus = typeof draftStatuses[number];
 
 export interface Usage {
@@ -26,6 +28,7 @@ export interface Usage {
 
 export interface GenerationRequest {
   kind: DraftKind;
+  mode: GenerationMode;
   modelKey: string;
   seed?: string;
   maxInputTokens: number;

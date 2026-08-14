@@ -60,3 +60,22 @@ Addressed every Critical and Important review finding with RED/GREEN coverage:
 ### Remaining scope
 
 - Real provider adapters, retry scheduling, and publish workers remain intentionally deferred; this task still wires only the deterministic fake provider.
+
+## Fix Round 2
+
+- Added migration `202608140006_generation_service_boundary.sql`. Context freeze, reserve/start, success finalization, failure finalization, and abort are now service-role-only; `PUBLIC`, `anon`, and `authenticated` execute privileges are revoked. The owner review RPC remains authenticated and retains its locked owner/version/policy checks.
+- The Edge adapter now maintains separate user and service clients. Authentication, authorization, idempotency lookup, policy loading, and context selection use the caller token; generation mutation RPCs use only the server-side service credential and continue to derive ownership from locked jobs/drafts without an owner parameter.
+- Added idempotent `abort_generation_attempt(job_id, idempotency_key, sanitized_code)`. It resets an unreserved frozen attempt to queued, conservatively settles a committed reservation and marks that job failed, clears the frozen idempotency key, handles repeated/terminal calls, and returns a completed immutable result without reverting it when finalization already committed.
+- Every post-freeze failure path now routes through abort, including freeze commit/response loss, frozen-response validation, reserve commit/response loss or malformed response, 402, provider/parse/usage/continuity failure, and finalization response loss. A completed abort result recovers the committed version; major-event phases are never reverted or advanced by cleanup.
+- `GenerationRequest` now carries the exact generation mode. Tests distinguish `major_event_scene_plan` from `major_event_draft` provider requests while retaining bounded explicit revision payloads.
+- Database conflict mapping uses an exact `P0001` allowlist for duplicate generation, stale transition/version, workflow prerequisite, mode-kind, active-setting, and context-budget conflicts. Unknown infrastructure text remains a sanitized 500.
+
+### Fix Round 2 verification
+
+- Focused generation/review/provider/context Vitest: 53 passed.
+- Fresh reset plus all pgTAP: 6 files, 175 passed, including execute privileges, an actual authenticated denial, service-role success, unreserved/reserved abort, completed no-op recovery, and phase preservation.
+- Budget and review concurrency: passed.
+- Full Vitest: 28 files, 271 passed, 3 skipped.
+- Narrative TypeScript check and production build: passed.
+- Local Edge runtime: direct authenticated reserve RPC returned 403; the same owner generated through the Edge service path with HTTP 200 / `review`, then reviewed to HTTP 200 / `approved_private`.
+- `git diff --check`: passed. No subagent or external reviewer was used.
