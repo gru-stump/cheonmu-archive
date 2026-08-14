@@ -1,4 +1,5 @@
-import type { GenerationRequest, GenerationResult, Usage } from '../../../shared/narrative/contracts';
+import { z } from 'zod';
+import { parseGenerationResult, type GenerationRequest, type GenerationResult, type Usage } from '../../../shared/narrative/contracts';
 
 export interface NarrativeProviderResponse {
   result: GenerationResult;
@@ -8,4 +9,25 @@ export interface NarrativeProviderResponse {
 
 export interface NarrativeProvider {
   generate(request: GenerationRequest): Promise<NarrativeProviderResponse>;
+}
+
+const safeUsageValue = z.number().finite().int().safe().nonnegative();
+
+const providerResponseSchema = z.object({
+  result: z.unknown(),
+  usage: z.object({
+    inputTokens: safeUsageValue,
+    outputTokens: safeUsageValue,
+    costMicros: safeUsageValue.optional(),
+  }),
+  rawId: z.string().trim().min(1),
+}).transform(({ result, usage, rawId }): NarrativeProviderResponse => ({
+  result: parseGenerationResult(result),
+  usage,
+  rawId,
+}));
+
+/** Validates every provider response at the adapter boundary. */
+export function parseNarrativeProviderResponse(value: unknown): NarrativeProviderResponse {
+  return providerResponseSchema.parse(value);
 }

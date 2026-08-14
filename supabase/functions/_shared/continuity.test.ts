@@ -17,6 +17,7 @@ const baseResult: GenerationResult = {
 };
 
 const stage7Context: ContinuityContext = {
+  selectedSourceIds: ['canon-v1', 'relationship-profile'],
   currentRelationshipStage: 7,
   relationshipSourceId: 'relationship-profile',
   forbiddenRevealTerms: [{ term: 'immortal origin', sourceId: 'reveal-plan-age-origin', allowedAtRelationshipStage: 9 }],
@@ -34,10 +35,8 @@ describe('checkContinuity', () => {
       stage7Context,
     );
 
-    expect(result).toMatchObject({
-      level: 'block',
-      findings: [{ code: 'forbidden_reveal_term', level: 'block', sourceIds: ['reveal-plan-age-origin'] }],
-    });
+    expect(result.level).toBe('block');
+    expect(result.findings).toContainEqual(expect.objectContaining({ code: 'forbidden_reveal_term', level: 'block', sourceIds: ['reveal-plan-age-origin'] }));
   });
 
   it('blocks metadata that advances the relationship beyond the approved stage', () => {
@@ -46,10 +45,8 @@ describe('checkContinuity', () => {
       stage7Context,
     );
 
-    expect(result).toMatchObject({
-      level: 'block',
-      findings: [{ code: 'relationship_stage_advance', level: 'block', sourceIds: ['relationship-profile'] }],
-    });
+    expect(result.level).toBe('block');
+    expect(result.findings).toContainEqual(expect.objectContaining({ code: 'relationship_stage_advance', level: 'block', sourceIds: ['relationship-profile'] }));
   });
 
   it('blocks a provider-reported relationship advancement risk', () => {
@@ -58,10 +55,8 @@ describe('checkContinuity', () => {
       stage7Context,
     );
 
-    expect(result).toMatchObject({
-      level: 'block',
-      findings: [{ code: 'relationship_stage_advance', level: 'block', sourceIds: ['relationship-profile'] }],
-    });
+    expect(result.level).toBe('block');
+    expect(result.findings).toContainEqual(expect.objectContaining({ code: 'relationship_stage_advance', level: 'block', sourceIds: ['relationship-profile'] }));
   });
 
   it('blocks unsupported permanent entities and settings from structured candidates', () => {
@@ -73,13 +68,9 @@ describe('checkContinuity', () => {
       stage7Context,
     );
 
-    expect(result).toMatchObject({
-      level: 'block',
-      findings: [
-        { code: 'unknown_permanent_entity', level: 'block', sourceIds: ['canon-context'] },
-        { code: 'unknown_permanent_setting', level: 'block', sourceIds: ['canon-context'] },
-      ],
-    });
+    expect(result.level).toBe('block');
+    expect(result.findings).toContainEqual(expect.objectContaining({ code: 'unknown_permanent_entity', level: 'block', sourceIds: ['canon-v1', 'relationship-profile'] }));
+    expect(result.findings).toContainEqual(expect.objectContaining({ code: 'unknown_permanent_setting', level: 'block', sourceIds: ['canon-v1', 'relationship-profile'] }));
   });
 
   it('blocks conflicts with an approved continuity record and rejected motifs', () => {
@@ -92,13 +83,9 @@ describe('checkContinuity', () => {
       stage7Context,
     );
 
-    expect(result).toMatchObject({
-      level: 'block',
-      findings: [
-        { code: 'approved_continuity_conflict', level: 'block', sourceIds: ['CM-07'] },
-        { code: 'rejected_motif', level: 'block', sourceIds: ['feedback-no-waiting'] },
-      ],
-    });
+    expect(result.level).toBe('block');
+    expect(result.findings).toContainEqual(expect.objectContaining({ code: 'approved_continuity_conflict', level: 'block', sourceIds: ['CM-07'] }));
+    expect(result.findings).toContainEqual(expect.objectContaining({ code: 'possible_rejected_motif', level: 'review', sourceIds: ['feedback-no-waiting'] }));
   });
 
   it('marks voice and title deviations for review without blocking a draft', () => {
@@ -116,11 +103,78 @@ describe('checkContinuity', () => {
           message: 'Generated metadata reports a voice or title deviation that needs review.',
           sourceIds: ['relationship-profile'],
         },
+        {
+          code: 'manual_semantic_review',
+          level: 'review',
+          message: 'Voice, title, POV, and intimacy require manual semantic review.',
+          sourceIds: ['canon-v1', 'relationship-profile'],
+        },
       ],
     });
   });
 
-  it('passes when structured metadata and policy terms remain within canon', () => {
-    expect(checkContinuity(baseResult, stage7Context)).toEqual({ level: 'pass', findings: [] });
+  it('requires manual semantic review when deterministic hard checks find no violation', () => {
+    expect(checkContinuity(baseResult, stage7Context)).toEqual({
+      level: 'review',
+      findings: [{
+        code: 'manual_semantic_review',
+        level: 'review',
+        message: 'Voice, title, POV, and intimacy require manual semantic review.',
+        sourceIds: ['canon-v1', 'relationship-profile'],
+      }],
+    });
+  });
+
+  it('reviews unrecognized or malformed metadata instead of silently passing it', () => {
+    const result = checkContinuity({
+      ...baseResult,
+      canonChangeCandidates: ['relationship-stage:eight', 'new-canon:unknown'],
+      riskFlags: ['unmodeled-provider-risk'],
+    }, stage7Context);
+
+    expect(result.level).toBe('review');
+    expect(result.findings).toContainEqual(expect.objectContaining({ code: 'malformed_relationship_stage', level: 'review' }));
+    expect(result.findings).toContainEqual(expect.objectContaining({ code: 'unknown_canon_change_candidate', level: 'review' }));
+    expect(result.findings).toContainEqual(expect.objectContaining({ code: 'unknown_risk_flag', level: 'review' }));
+  });
+
+  it('reviews an unrecognized continuity reference instead of discarding it', () => {
+    const result = checkContinuity(
+      { ...baseResult, canonChangeCandidates: ['continuity-conflict:missing-record'] },
+      stage7Context,
+    );
+
+    expect(result.level).toBe('review');
+    expect(result.findings).toContainEqual(expect.objectContaining({ code: 'unknown_continuity_reference', level: 'review' }));
+  });
+
+  it('does not treat a rejected motif substring as a hard violation', () => {
+    const result = checkContinuity(
+      { ...baseResult, body: 'They completed emergency training before sunrise.' },
+      { ...stage7Context, rejectedMotifs: [{ term: 'rain', sourceId: 'feedback-no-rain' }] },
+    );
+
+    expect(result.findings.map((finding) => finding.code)).not.toContain('rejected_motif');
+    expect(result.findings.map((finding) => finding.code)).not.toContain('possible_rejected_motif');
+  });
+
+  it('reviews lexical rejected motifs but blocks structured evidence', () => {
+    const lexical = checkContinuity(
+      { ...baseResult, body: 'Rain falls beyond the window.' },
+      { ...stage7Context, rejectedMotifs: [{ term: 'rain', sourceId: 'feedback-no-rain' }] },
+    );
+    const structured = checkContinuity(
+      { ...baseResult, riskFlags: ['rejected-motif:rain'] },
+      { ...stage7Context, rejectedMotifs: [{ term: 'rain', sourceId: 'feedback-no-rain' }] },
+    );
+
+    expect(lexical.level).toBe('review');
+    expect(lexical.findings).toContainEqual(expect.objectContaining({ code: 'possible_rejected_motif', level: 'review' }));
+    expect(structured.level).toBe('block');
+    expect(structured.findings).toContainEqual(expect.objectContaining({ code: 'rejected_motif', level: 'block' }));
+  });
+
+  it('rejects contexts without real selected source IDs', () => {
+    expect(() => checkContinuity(baseResult, { ...stage7Context, selectedSourceIds: [] })).toThrow('continuity_context_missing_source_ids');
   });
 });
