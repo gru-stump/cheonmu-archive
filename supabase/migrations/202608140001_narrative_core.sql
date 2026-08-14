@@ -133,6 +133,23 @@ create trigger draft_versions_are_immutable
 before update or delete on public.draft_versions
 for each row execute function public.reject_draft_version_mutation();
 
+create function public.reject_direct_draft_status_change()
+returns trigger
+language plpgsql
+as $$
+begin
+  if old.status is distinct from new.status and current_user = 'authenticated' then
+    raise exception 'illegal draft status change' using errcode = 'P0001';
+  end if;
+
+  return new;
+end;
+$$;
+
+create trigger drafts_require_transition_rpc
+before update on public.drafts
+for each row execute function public.reject_direct_draft_status_change();
+
 alter table public.owner_profiles enable row level security;
 alter table public.drafts enable row level security;
 alter table public.draft_versions enable row level security;
@@ -158,9 +175,13 @@ create policy "owner can manage budget periods" on public.budget_periods for all
 create policy "owner can manage budget entries" on public.budget_entries for all using (auth.uid() = owner_id) with check (auth.uid() = owner_id);
 create policy "owner can manage audit events" on public.audit_events for all using (auth.uid() = owner_id) with check (auth.uid() = owner_id);
 
+grant select, insert, update, delete on public.drafts to authenticated;
+
 create function public.transition_draft(p_draft_id uuid, p_expected text, p_next text)
 returns public.drafts
 language plpgsql
+security definer
+set search_path = ''
 as $$
 declare
   transitioned_draft public.drafts;
@@ -190,6 +211,7 @@ begin
       updated_at = now()
   where id = p_draft_id
     and status = p_expected
+    and owner_id = auth.uid()
   returning * into transitioned_draft;
 
   if not found then
@@ -199,3 +221,5 @@ begin
   return transitioned_draft;
 end;
 $$;
+
+grant execute on function public.transition_draft(uuid, text, text) to authenticated;
