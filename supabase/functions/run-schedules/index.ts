@@ -27,6 +27,7 @@ function scheduledInstant(now: Date): string { return new Date(Math.floor(now.ge
 export async function runSchedules(deps: ScheduleDependencies): Promise<QueuedJob[]> {
   const now = deps.now(); const jobs: QueuedJob[] = [];
   for (const schedule of await deps.listSchedules()) {
+    if (!schedule.enabled) continue;
     const time = automaticScheduleTime(schedule);
     if (!time || !scheduleDue(schedule, time, now)) continue;
     const budget = await deps.budgetState(schedule.ownerId);

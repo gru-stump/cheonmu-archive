@@ -67,6 +67,15 @@ describe('runSchedules', () => {
     await expect(runSchedules(h.deps)).resolves.toEqual([]);
     expect(h.inserted).toEqual([]);
   });
+
+  it('does not consume a quarantined disabled legacy expression', async () => {
+    const h = harness({ listSchedules: async () => [
+      { ownerId: 'owner-1', scheduleKey: 'legacy-disabled', scheduleType: 'automatic', cronExpression: '*/15 9 * * *', enabled: false, payload: { kind: 'daily_event' } },
+      { ownerId: 'owner-1', scheduleKey: 'daily', scheduleType: 'automatic', cronExpression: '0 9 * * *', enabled: true, payload: { kind: 'daily_event' } },
+    ] });
+    await expect(runSchedules(h.deps)).resolves.toHaveLength(1);
+    expect(h.inserted.map((job) => job.scheduleKey)).toEqual(['owner-1:daily:2026-08-14']);
+  });
 });
 
 describe('evaluateAccessTrigger', () => {

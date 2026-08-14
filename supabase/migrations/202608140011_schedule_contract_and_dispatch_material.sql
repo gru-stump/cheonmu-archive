@@ -1,13 +1,40 @@
 -- Constrain the scheduler to the daily/weekly grammar implemented by the Edge dispatcher.
 alter table public.schedules
   add column schedule_type text not null default 'automatic',
-  alter column cron_expression drop not null,
+  alter column cron_expression drop not null;
+
+-- Migration 010 represented manual schedules with a sentinel cron value.
+update public.schedules
+set schedule_type = 'manual', cron_expression = null
+where cron_expression = 'manual';
+
+-- Keep unsupported legacy expressions available for an operator to correct, but
+-- prevent them from running under grammar the dispatcher does not implement.
+update public.schedules
+set enabled = false
+where schedule_type = 'automatic'
+  and (
+    cron_expression is null
+    or cron_expression !~ '^([0-9]|[1-5][0-9]) ([0-9]|1[0-9]|2[0-3]) [*] [*] ([*]|[0-6])$'
+  );
+
+alter table public.schedules
   add constraint schedules_schedule_type_check check (schedule_type in ('automatic', 'manual')),
   add constraint schedules_supported_cron_check check (
     (schedule_type = 'manual' and cron_expression is null)
     or
-    (schedule_type = 'automatic' and cron_expression ~ '^([0-9]|[1-5][0-9]) ([0-9]|1[0-9]|2[0-3]) [*] [*] ([*]|[0-6])$')
-  );
+    (
+      schedule_type = 'automatic'
+      and cron_expression is not null
+      and (
+        not enabled
+        or cron_expression ~ '^([0-9]|[1-5][0-9]) ([0-9]|1[0-9]|2[0-3]) [*] [*] ([*]|[0-6])$'
+      )
+    )
+  ) not valid;
+
+alter table public.schedules
+  validate constraint schedules_supported_cron_check;
 
 -- Separate Vault materialization from transport so lookup and argument wiring
 -- can be verified without issuing an HTTP request.
