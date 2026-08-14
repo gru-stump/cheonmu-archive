@@ -22,8 +22,8 @@ describe.each([
 ] as const)('%s narrative provider', (_name, create) => {
   it('sends one strict structured request and parses usage when present', async () => {
     const upstream = _name === 'openai'
-      ? Response.json({ id: 'resp-1', output: [{ type: 'message', content: [{ type: 'output_text', text: schemaResult }] }], usage: { input_tokens: 12, output_tokens: 34 } })
-      : Response.json({ id: 'msg-1', content: [{ type: 'tool_use', id: 'tool-1', name: 'narrative_result', input: result }], usage: { input_tokens: 12, output_tokens: 34 } });
+      ? Response.json({ id: 'resp-1', status: 'completed', output: [{ type: 'message', role: 'assistant', status: 'completed', content: [{ type: 'output_text', text: schemaResult }] }], usage: { input_tokens: 12, output_tokens: 34 } })
+      : Response.json({ id: 'msg-1', type: 'message', role: 'assistant', stop_reason: 'tool_use', content: [{ type: 'tool_use', id: 'tool-1', name: 'narrative_result', input: result }], usage: { input_tokens: 12, output_tokens: 34 } });
     const h = fetchOnce(upstream);
     await expect(create(h.fetch).generate(request)).resolves.toEqual({ result, usage: { inputTokens: 12, outputTokens: 34 }, rawId: _name === 'openai' ? 'resp-1' : 'msg-1' });
     expect(h.calls).toHaveLength(1);
@@ -48,12 +48,22 @@ describe.each([
     await expect(create(fetch).generate(request)).rejects.toMatchObject({ code: 'timeout' });
   });
 
-  it('accepts absent usage as zero usage', async () => {
+  it('rejects absent usage so it can never be settled as zero', async () => {
     const upstream = _name === 'openai'
       ? Response.json({ id: 'resp-2', output: [{ type: 'message', content: [{ type: 'output_text', text: schemaResult }] }] })
       : Response.json({ id: 'msg-2', content: [{ type: 'tool_use', id: 'tool-1', name: 'narrative_result', input: result }] });
     const h = fetchOnce(upstream);
-    await expect(create(h.fetch).generate(request)).resolves.toMatchObject({ usage: { inputTokens: 0, outputTokens: 0 } });
+    await expect(create(h.fetch).generate(request)).rejects.toMatchObject({ code: 'malformed_response' });
+  });
+
+  it('preserves ordered claims and continuity facts in the shared director instruction', async () => {
+    const upstream = _name === 'openai'
+      ? Response.json({ id: 'resp-3', status: 'completed', output: [{ type: 'message', role: 'assistant', status: 'completed', content: [{ type: 'output_text', text: schemaResult }] }], usage: { input_tokens: 1, output_tokens: 1 } })
+      : Response.json({ id: 'msg-3', type: 'message', role: 'assistant', stop_reason: 'tool_use', content: [{ type: 'tool_use', id: 'tool-1', name: 'narrative_result', input: result }], usage: { input_tokens: 1, output_tokens: 1 } });
+    const h = fetchOnce(upstream);
+    await create(h.fetch).generate({ ...request, contextMemories: [{ ...request.contextMemories[0], claims: [{ id: 'claim-1', sourceId: 'canon', sourcePriority: 1, status: 'unresolved', revealStage: 9, text: 'hidden truth' }], continuityFacts: { relationshipStage: 7, forbiddenReveals: [{ term: 'truth', allowedAtRelationshipStage: 9 }] } }] });
+    expect(String(h.calls[0].init?.body)).toContain('sourcePriority');
+    expect(String(h.calls[0].init?.body)).toContain('unresolved');
   });
 });
 

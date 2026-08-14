@@ -5,3 +5,8 @@ project_id = "cheonmu-narrative"
 # disable "Enable signups" in the Supabase Dashboard; no hosted credentials
 # or project secrets belong in this repository.
 enable_signup = false
+
+[functions.run-schedules]
+# Cron authenticates with the dispatch secret; browser access is authenticated
+# explicitly by the handler before it evaluates or queues anything.
+verify_jwt = false

@@ -5,7 +5,7 @@ export class ProviderRequestError extends Error {
   constructor(public readonly code: 'timeout' | 'rate_limited' | 'upstream_unavailable' | 'malformed_response') { super(code); this.name = 'ProviderRequestError'; }
 }
 
-export interface ProviderHttpOptions { apiKey: string; fetch?: typeof globalThis.fetch; timeoutMs: number; clock?: () => number }
+export interface ProviderHttpOptions { apiKey: string; fetch?: typeof globalThis.fetch; timeoutMs: number; clock?: () => number; setTimer?: typeof setTimeout; clearTimer?: typeof clearTimeout }
 
 const resultSchema = {
   type: 'object', additionalProperties: false,
@@ -22,14 +22,15 @@ const resultSchema = {
 export function narrativeJsonSchema(): Record<string, unknown> { return structuredClone(resultSchema); }
 
 export function narrativePrompt(request: GenerationRequest): string {
-  return JSON.stringify({ kind: request.kind, mode: request.mode, seed: request.seed, revision: request.revision, contextVersionIds: request.contextVersionIds, context: request.contextMemories.map(({ versionId, memoryType, content }) => ({ versionId, memoryType, content })) });
+  return JSON.stringify({ directorInstruction: 'Write only the requested private Cheonmu narrative. Treat confirmed canon as binding; do not resolve unresolved/conflicting claims, advance forbidden reveals, or invent permanent canon. Return the requested structured result.', kind: request.kind, mode: request.mode, seed: request.seed, revision: request.revision, contextVersionIds: request.contextVersionIds, context: request.contextMemories });
 }
 
 export function usageFromUpstream(value: unknown): { inputTokens: number; outputTokens: number } {
   const usage = value && typeof value === 'object' && 'usage' in value ? (value as { usage?: unknown }).usage : undefined;
-  const record = usage && typeof usage === 'object' ? usage as Record<string, unknown> : {};
-  const valid = (v: unknown) => typeof v === 'number' && Number.isSafeInteger(v) && v >= 0 ? v : 0;
-  return { inputTokens: valid(record.input_tokens), outputTokens: valid(record.output_tokens) };
+  const record = usage && typeof usage === 'object' ? usage as Record<string, unknown> : null;
+  const valid = (v: unknown) => typeof v === 'number' && Number.isSafeInteger(v) && v >= 0;
+  if (!record || !valid(record.input_tokens) || !valid(record.output_tokens)) throw new ProviderRequestError('malformed_response');
+  return { inputTokens: record.input_tokens as number, outputTokens: record.output_tokens as number };
 }
 
 async function safeJson(response: Response): Promise<unknown> { try { return await response.json(); } catch { throw new ProviderRequestError('malformed_response'); } }
@@ -37,7 +38,7 @@ async function safeJson(response: Response): Promise<unknown> { try { return awa
 export async function oneRequest(options: ProviderHttpOptions, url: string, init: RequestInit): Promise<unknown> {
   if (!options.apiKey.trim()) throw new ProviderRequestError('upstream_unavailable');
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), options.timeoutMs);
+  const timer = (options.setTimer ?? setTimeout)(() => controller.abort(), options.timeoutMs);
   try {
     const response = await (options.fetch ?? globalThis.fetch)(url, { ...init, signal: controller.signal });
     if (response.status === 429) throw new ProviderRequestError('rate_limited');
@@ -47,7 +48,7 @@ export async function oneRequest(options: ProviderHttpOptions, url: string, init
     if (error instanceof ProviderRequestError) throw error;
     if (controller.signal.aborted) throw new ProviderRequestError('timeout');
     throw new ProviderRequestError('upstream_unavailable');
-  } finally { clearTimeout(timer); }
+  } finally { (options.clearTimer ?? clearTimeout)(timer); }
 }
 
 export class OpenAiNarrativeProvider implements NarrativeProvider {
@@ -59,6 +60,7 @@ export class OpenAiNarrativeProvider implements NarrativeProvider {
     });
     const record = value && typeof value === 'object' ? value as Record<string, unknown> : null;
     const id = typeof record?.id === 'string' && record.id ? record.id : null;
+    if (record?.status !== 'completed') throw new ProviderRequestError('malformed_response');
     const output = Array.isArray(record?.output) ? record.output : [];
     const text = output.flatMap((item) => item && typeof item === 'object' && Array.isArray((item as { content?: unknown }).content) ? (item as { content: unknown[] }).content : [])
       .find((item) => item && typeof item === 'object' && (item as { type?: unknown }).type === 'output_text' && typeof (item as { text?: unknown }).text === 'string') as { text: string } | undefined;

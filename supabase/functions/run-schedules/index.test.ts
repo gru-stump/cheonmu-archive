@@ -7,7 +7,7 @@ function harness(overrides: Partial<ScheduleDependencies> = {}) {
   const deps: ScheduleDependencies = {
     now: () => new Date('2026-08-14T00:00:00Z'),
     authenticate: async (token) => token === 'token' ? { ownerId: 'owner-1' } : null,
-    listSchedules: async () => [{ ownerId: 'owner-1', scheduleKey: 'daily', cronExpression: 'daily', enabled: true, payload: { kind: 'daily_event' } }, { ownerId: 'owner-1', scheduleKey: 'weekly', cronExpression: 'weekly', enabled: true, payload: { kind: 'daily_event' } }, { ownerId: 'owner-1', scheduleKey: 'manual', cronExpression: 'manual', enabled: true, payload: { kind: 'short_dialogue' } }],
+    listSchedules: async () => [{ ownerId: 'owner-1', scheduleKey: 'daily', cronExpression: '0 9 * * *', enabled: true, payload: { kind: 'daily_event' } }, { ownerId: 'owner-1', scheduleKey: 'weekly', cronExpression: '0 9 * * 1', enabled: true, payload: { kind: 'daily_event' } }, { ownerId: 'owner-1', scheduleKey: 'manual', cronExpression: 'manual', enabled: true, payload: { kind: 'short_dialogue' } }],
     budgetState: async () => 'normal',
     insertQueuedJob: async (job) => {
       const key = `${job.scheduleKey}:${job.scheduledFor}`;
@@ -25,7 +25,7 @@ describe('runSchedules', () => {
   it('uses the Seoul calendar date and only queues one daily job across duplicate invocations', async () => {
     const h = harness();
     await runSchedules(h.deps); await runSchedules(h.deps);
-    expect(h.inserted).toEqual([{ id: 'job-1', ownerId: 'owner-1', scheduleKey: 'owner-1:daily:2026-08-14', scheduledFor: '2026-08-13T15:00:00.000Z', payload: { kind: 'daily_event', source: 'schedule' } }, { id: 'job-2', ownerId: 'owner-1', scheduleKey: 'owner-1:weekly:2026-08-14', scheduledFor: '2026-08-13T15:00:00.000Z', payload: { kind: 'daily_event', source: 'schedule' } }]);
+    expect(h.inserted).toEqual([{ id: 'job-1', ownerId: 'owner-1', scheduleKey: 'owner-1:daily:2026-08-14', scheduledFor: '2026-08-14T00:00:00.000Z', payload: { kind: 'daily_event', source: 'schedule' } }]);
   });
 
   it('skips weekly at warning and every automatic job at risk, never creating manual jobs', async () => {
@@ -35,6 +35,13 @@ describe('runSchedules', () => {
     const risk = harness({ budgetState: async () => 'risk' });
     await runSchedules(risk.deps);
     expect(risk.inserted).toEqual([]);
+  });
+
+  it('queues an actual weekly cron only at its Seoul Monday instant', async () => {
+    const h = harness({ now: () => new Date('2026-08-17T00:00:00Z') });
+    await runSchedules(h.deps);
+    expect(h.inserted.map((job) => job.scheduleKey)).toEqual(['owner-1:daily:2026-08-17', 'owner-1:weekly:2026-08-17']);
+    expect(h.inserted.map((job) => job.scheduledFor)).toEqual(['2026-08-17T00:00:00.000Z', '2026-08-17T00:00:00.000Z']);
   });
 });
 
