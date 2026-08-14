@@ -1,0 +1,10 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": ["node"]
+  },
+  "include": [
+    "scripts/export-narrative-canon.ts",
+    "supabase/functions/_shared/context.ts"
+  ]
+}

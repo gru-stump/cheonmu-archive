@@ -48,4 +48,37 @@ describe('selectNarrativeContext', () => {
     expect(selection.feedback.map((memory) => memory.versionId)).toEqual(['block-v5']);
     expect(selection.recent).toEqual([]);
   });
+
+  it('throws context_budget_too_small instead of dropping fixed canon or blocking feedback', () => {
+    expect(() => selectNarrativeContext({
+      memories: [
+        { ...memories[3], tokenCount: 200 },
+        { ...memories[0], versionId: 'blocking-v3', blocking: true, tokenCount: 200 },
+      ],
+      tokenBudget: 300,
+      tags: [],
+    })).toThrow('context_budget_too_small');
+  });
+
+  it('exposes only allowed claims at the current relationship stage', () => {
+    const selection = selectNarrativeContext({
+      memories: [{
+        versionId: 'canon-claims-v1', memoryType: 'canon', content: 'unfiltered prose', tokenCount: 100,
+        status: 'approved',
+        claims: [
+          { id: 'confirmed-now', sourceId: 'root', sourcePriority: 1, status: 'confirmed', revealStage: 7, text: 'allowed' },
+          { id: 'unresolved-now', sourceId: 'unresolved', sourcePriority: 4, status: 'unresolved', revealStage: 7, text: 'blocked unresolved' },
+          { id: 'future', sourceId: 'world', sourcePriority: 3, status: 'confirmed', revealStage: 8, text: 'blocked future' },
+          { id: 'approved-request', sourceId: 'request', sourcePriority: 5, status: 'request-only', revealStage: 7, text: 'allowed request' },
+        ],
+      }],
+      tokenBudget: 200,
+      tags: [],
+      currentRelationshipStage: 7,
+      requestApprovedClaimIds: ['approved-request'],
+    });
+
+    expect(selection.fixedCanon[0].content).toBe('allowed\nallowed request');
+    expect(selection.claims.map((claim) => claim.id)).toEqual(['confirmed-now', 'approved-request']);
+  });
 });
