@@ -3,7 +3,7 @@ begin;
 select plan(6);
 
 select has_table('public', 'drafts', 'drafts exists');
-select policies_are('public', 'drafts', array['owner can manage drafts']);
+select policies_are('public', 'drafts', array['owner can read drafts']);
 select throws_ok(
   $$ select transition_draft(gen_random_uuid(), 'generated', 'published') $$,
   'P0001',
@@ -38,19 +38,29 @@ values (
 )
 on conflict (id) do nothing;
 
-insert into public.drafts (id, owner_id, kind, status, title)
+insert into public.drafts (id, owner_id, kind, title)
 values
-  ('30000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001', 'daily_event', 'generated', 'Direct update guard'),
-  ('30000000-0000-0000-0000-000000000002', '10000000-0000-0000-0000-000000000001', 'daily_event', 'generated', 'Legal transition'),
-  ('30000000-0000-0000-0000-000000000003', '20000000-0000-0000-0000-000000000002', 'daily_event', 'generated', 'Other owner draft');
+  ('30000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001', 'daily_event', 'Direct update guard'),
+  ('30000000-0000-0000-0000-000000000002', '10000000-0000-0000-0000-000000000001', 'daily_event', 'Legal transition'),
+  ('30000000-0000-0000-0000-000000000003', '20000000-0000-0000-0000-000000000002', 'daily_event', 'Other owner draft');
 
+update public.drafts
+set status = 'generated'
+where id in (
+  '30000000-0000-0000-0000-000000000001',
+  '30000000-0000-0000-0000-000000000002',
+  '30000000-0000-0000-0000-000000000003'
+);
+
+select set_config('request.jwt.claim.role', 'authenticated', true);
 select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000001', true);
 set local role authenticated;
 
 select throws_ok(
   $$ update public.drafts set status = 'published' where id = '30000000-0000-0000-0000-000000000001' $$,
-  'P0001',
-  'illegal draft status change'
+  '42501',
+  null,
+  'authenticated cannot update draft status directly'
 );
 select is(
   (select status from public.transition_draft('30000000-0000-0000-0000-000000000002', 'generated', 'reviewing')),

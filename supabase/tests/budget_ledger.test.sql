@@ -30,6 +30,9 @@ values (
 )
 on conflict (id) do nothing;
 
+delete from public.budget_periods
+where owner_id = '10000000-0000-0000-0000-000000000001';
+
 insert into public.budget_periods (
   id,
   owner_id,
@@ -44,8 +47,8 @@ values
     '51000000-0000-0000-0000-000000000001',
     '10000000-0000-0000-0000-000000000001',
     'USD',
-    (current_timestamp at time zone 'UTC')::date,
-    (current_timestamp at time zone 'UTC')::date,
+    (current_timestamp at time zone 'Asia/Seoul')::date,
+    (current_timestamp at time zone 'Asia/Seoul')::date,
     1000,
     100
   ),
@@ -53,8 +56,8 @@ values
     '51000000-0000-0000-0000-000000000002',
     '50000000-0000-0000-0000-000000000001',
     'USD',
-    (current_timestamp at time zone 'UTC')::date - 1,
-    (current_timestamp at time zone 'UTC')::date,
+    (current_timestamp at time zone 'Asia/Seoul')::date - 1,
+    (current_timestamp at time zone 'Asia/Seoul')::date,
     100,
     1000
   );
@@ -84,9 +87,9 @@ values (
   null,
   60,
   'reservation',
-  (current_timestamp at time zone 'UTC')::date - 1,
+  (current_timestamp at time zone 'Asia/Seoul')::date - 1,
   'existing period reservation',
-  (date_trunc('day', current_timestamp at time zone 'UTC') - interval '12 hours') at time zone 'UTC'
+  (date_trunc('day', current_timestamp at time zone 'Asia/Seoul') - interval '12 hours') at time zone 'Asia/Seoul'
 ),
 (
   '10000000-0000-0000-0000-000000000001',
@@ -94,32 +97,31 @@ values (
   '52000000-0000-0000-0000-000000000003',
   60,
   'reservation',
-  (current_timestamp at time zone 'UTC')::date - 1,
-  'prior UTC-day reservation',
-  (date_trunc('day', current_timestamp at time zone 'UTC') - interval '12 hours') at time zone 'UTC'
+  (current_timestamp at time zone 'Asia/Seoul')::date - 1,
+  'prior Seoul-day reservation',
+  (date_trunc('day', current_timestamp at time zone 'Asia/Seoul') - interval '12 hours') at time zone 'Asia/Seoul'
 );
 
+select set_config('request.jwt.claim.role', 'authenticated', true);
 select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000001', true);
 set local role authenticated;
 select set_config(
   'TimeZone',
   case
-    when extract(hour from current_timestamp at time zone 'UTC') < 10 then 'Pacific/Pago_Pago'
+    when extract(hour from current_timestamp at time zone 'Asia/Seoul') < 10 then 'Pacific/Pago_Pago'
     else 'Pacific/Kiritimati'
   end,
   true
 );
 select isnt(
   current_date,
-  (current_timestamp at time zone 'UTC')::date,
-  'the session date differs from the UTC day used for budget accounting'
+  (current_timestamp at time zone 'Asia/Seoul')::date,
+  'the session date differs from the Seoul day used for budget accounting'
 );
 
--- pgTAP runs this script through one connection, so it cannot hold the first
--- row lock while issuing a second RPC. These two distinct jobs exercise the
--- same budget-period critical section in deterministic commit order; the
--- reservation RPC's FOR UPDATE lock makes a simultaneous caller observe the
--- first reservation before applying the same daily-limit assertion.
+-- pgTAP runs this script through one connection, so these calls cover the
+-- deterministic cap behavior. budget_concurrency.test.mjs supplements this
+-- with two real psql connections and proves the shared period-row lock.
 select lives_ok(
   $$ select public.reserve_generation_budget('52000000-0000-0000-0000-000000000001', 60) $$,
   'the first competing job reserves within the daily cap'
@@ -199,7 +201,7 @@ select is(
 );
 select lives_ok(
   $$ select public.reconcile_generation_budget('52000000-0000-0000-0000-000000000003', 0, '{"inputTokens":0,"outputTokens":0,"costMicros":0}'::jsonb) $$,
-  'a prior UTC-day reservation settles without changing today''s bucket'
+  'a prior Seoul-day reservation settles without changing today''s bucket'
 );
 select throws_ok(
   $$ select public.reserve_generation_budget('52000000-0000-0000-0000-000000000002', 71) $$,
@@ -215,6 +217,7 @@ select is(
 
 reset role;
 
+select set_config('request.jwt.claim.role', 'authenticated', true);
 select set_config('request.jwt.claim.sub', '50000000-0000-0000-0000-000000000001', true);
 set local role authenticated;
 
