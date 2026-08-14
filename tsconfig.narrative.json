@@ -5,6 +5,9 @@
   },
   "include": [
     "scripts/export-narrative-canon.ts",
-    "supabase/functions/_shared/context.ts"
+    "supabase/functions/_shared/context.ts",
+    "supabase/functions/_shared/provider.ts",
+    "supabase/functions/_shared/fake-provider.ts",
+    "supabase/functions/_shared/continuity.ts"
   ]
 }
