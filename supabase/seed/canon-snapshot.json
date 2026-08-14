@@ -2160,7 +2160,7 @@
       "id": "root-character-profile:137",
       "sourceId": "root-character-profile",
       "sourcePriority": 1,
-      "status": "confirmed",
+      "status": "unresolved",
       "revealStage": 7,
       "text": "페어명: 천무"
     },
@@ -2168,7 +2168,7 @@
       "id": "root-character-profile:138",
       "sourceId": "root-character-profile",
       "sourcePriority": 1,
-      "status": "confirmed",
+      "status": "unresolved",
       "revealStage": 7,
       "text": "천령: 외관상 20대, 186cm, 의사·연구원, 특재청 제3의료센터"
     },
@@ -2176,7 +2176,7 @@
       "id": "root-character-profile:139",
       "sourceId": "root-character-profile",
       "sourcePriority": 1,
-      "status": "confirmed",
+      "status": "unresolved",
       "revealStage": 7,
       "text": "무영: 28세, 185cm, 현장 지휘관, 특재청 특수기동대"
     },
@@ -2184,7 +2184,7 @@
       "id": "root-character-profile:140",
       "sourceId": "root-character-profile",
       "sourcePriority": 1,
-      "status": "confirmed",
+      "status": "unresolved",
       "revealStage": 7,
       "text": "천령은 인외, 무영은 인간"
     },
@@ -2192,7 +2192,7 @@
       "id": "root-character-profile:141",
       "sourceId": "root-character-profile",
       "sourcePriority": 1,
-      "status": "confirmed",
+      "status": "unresolved",
       "revealStage": 7,
       "text": "천령은 공, 무영은 수"
     },
@@ -2200,7 +2200,7 @@
       "id": "root-character-profile:142",
       "sourceId": "root-character-profile",
       "sourcePriority": 1,
-      "status": "confirmed",
+      "status": "unresolved",
       "revealStage": 7,
       "text": "천령 동물화: 큰 흰 백사"
     },
@@ -2208,7 +2208,7 @@
       "id": "root-character-profile:143",
       "sourceId": "root-character-profile",
       "sourcePriority": 1,
-      "status": "confirmed",
+      "status": "unresolved",
       "revealStage": 7,
       "text": "무영 동물화: 검은 늑대"
     },
@@ -2216,7 +2216,7 @@
       "id": "root-character-profile:144",
       "sourceId": "root-character-profile",
       "sourcePriority": 1,
-      "status": "confirmed",
+      "status": "unresolved",
       "revealStage": 7,
       "text": "무영은 얼굴과 몸에 흉터가 많음"
     },
@@ -2224,7 +2224,7 @@
       "id": "root-character-profile:145",
       "sourceId": "root-character-profile",
       "sourcePriority": 1,
-      "status": "confirmed",
+      "status": "unresolved",
       "revealStage": 7,
       "text": "관계 핵심: 불쾌한 신뢰, 상처 치료, 반복되는 귀환"
     },
@@ -2232,7 +2232,7 @@
       "id": "root-character-profile:146",
       "sourceId": "root-character-profile",
       "sourcePriority": 1,
-      "status": "confirmed",
+      "status": "unresolved",
       "revealStage": 7,
       "text": "천령의 피는 독이자 약"
     },
@@ -2240,7 +2240,7 @@
       "id": "root-character-profile:147",
       "sourceId": "root-character-profile",
       "sourcePriority": 1,
-      "status": "confirmed",
+      "status": "unresolved",
       "revealStage": 7,
       "text": "무영은 9세에 상가 붕괴 특수재난의 격리 구역에서 소속 미상의 의료 인력(천령)에게 구조됨 — 얼굴·이름은 남지 않고 감각 단편(차가운 손, 느린 목소리, 흰 옷자락)만 기억. '구하는 사람'이 되기로 한 결심의 기원 (잊혀진 기록 「남아 있던 사람」)"
     },
@@ -2248,7 +2248,7 @@
       "id": "root-character-profile:148",
       "sourceId": "root-character-profile",
       "sourcePriority": 1,
-      "status": "confirmed",
+      "status": "unresolved",
       "revealStage": 7,
       "text": "무영은 특재청 적성 판정을 받은 등록 적성자 — 감각·지구력·회복이 통상 범위를 웃도는 신체 강화 계열 (WF-10). 동물화(검은 늑대)는 캐릭터 모티프로 유지"
     },
@@ -2256,7 +2256,7 @@
       "id": "root-character-profile:149",
       "sourceId": "root-character-profile",
       "sourcePriority": 1,
-      "status": "confirmed",
+      "status": "unresolved",
       "revealStage": 7,
       "text": "세계에는 적성자(공인 제도)와, 설화·신화 속 존재들이 실재한다는 단편·소문이 함께 있음 — 존재의 실재는 공인되지 않음 (OB-04, CL-03)"
     },
@@ -2264,7 +2264,7 @@
       "id": "root-character-profile:150",
       "sourceId": "root-character-profile",
       "sourcePriority": 1,
-      "status": "confirmed",
+      "status": "unresolved",
       "revealStage": 7,
       "text": "천령과 무영이 알고 지낸 기간은 약 5년 (CM-07 「목격」 시점 기준)"
     },
@@ -2272,7 +2272,7 @@
       "id": "root-character-profile:151",
       "sourceId": "root-character-profile",
       "sourcePriority": 1,
-      "status": "confirmed",
+      "status": "unresolved",
       "revealStage": 7,
       "text": "7단계 「목격」에서 무영이 천령의 비밀 두 겹(사람이 아님, 피가 사람을 살림)을 목격 — 기제·한계·나이·기원·잔류 이유는 여전히 미공개"
     },
@@ -3328,7 +3328,7 @@
       "id": "reveal-plan:4",
       "sourceId": "reveal-plan",
       "sourcePriority": 4,
-      "status": "confirmed",
+      "status": "unresolved",
       "revealStage": 7,
       "text": "age/origin: 빠진 기록, 회피하는 날짜, 시대에 맞지 않는 지식: 서로 모순되는 기관 기록: 사용자가 canon을 확정"
     },
@@ -3336,7 +3336,7 @@
       "id": "reveal-plan:5",
       "sourceId": "reveal-plan",
       "sourcePriority": 4,
-      "status": "confirmed",
+      "status": "unresolved",
       "revealStage": 7,
       "text": "reason for staying: 회피, 이례적인 합의: 부분적인 거래 또는 의무: 사용자가 동기를 확정"
     },

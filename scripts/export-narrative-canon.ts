@@ -6,6 +6,19 @@ import { parse as parseYaml } from 'yaml';
 type CanonMetadata = Record<string, unknown>;
 export type CanonClaimStatus = 'confirmed' | 'unresolved' | 'conflicting' | 'request-only';
 
+// Higher values are more conservative. A descendant can only increase this rank.
+export const CLAIM_STATUS_CONSERVATISM: Record<CanonClaimStatus, number> = {
+  confirmed: 0,
+  'request-only': 1,
+  unresolved: 2,
+  conflicting: 3,
+};
+
+export function mergeClaimStatus(parent: CanonClaimStatus, descendant?: CanonClaimStatus): CanonClaimStatus {
+  if (descendant === undefined) return parent;
+  return CLAIM_STATUS_CONSERVATISM[descendant] > CLAIM_STATUS_CONSERVATISM[parent] ? descendant : parent;
+}
+
 export interface CanonSource {
   id: string;
   path: string;
@@ -151,7 +164,7 @@ function markdownClaims(source: string, sourceIdValue: string, sourcePriorityVal
       const parent = scopes[scopes.length - 1];
       scopes.push({
         depth,
-        status: explicitStatus(heading[2]) ?? parent.status,
+        status: mergeClaimStatus(parent.status, explicitStatus(heading[2])),
         revealStage: explicitStage(heading[2]) ?? parent.revealStage,
       });
       continue;
@@ -165,7 +178,7 @@ function markdownClaims(source: string, sourceIdValue: string, sourcePriorityVal
       id: `${sourceIdValue}:${claims.length + 1}`,
       sourceId: sourceIdValue,
       sourcePriority: sourcePriorityValue,
-      status: explicitStatus(text) ?? scope.status,
+      status: mergeClaimStatus(scope.status, explicitStatus(text)),
       revealStage: stageFromText(text, scope.revealStage),
       text,
     });

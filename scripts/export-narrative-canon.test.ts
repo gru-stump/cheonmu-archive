@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
-import { exportNarrativeCanon } from './export-narrative-canon';
+import { exportNarrativeCanon, mergeClaimStatus } from './export-narrative-canon';
 import { selectNarrativeContext } from '../supabase/functions/_shared/context';
 
 const fixtureRoots: string[] = [];
@@ -70,6 +70,13 @@ afterEach(async () => {
 });
 
 describe('exportNarrativeCanon', () => {
+  it('uses a deterministic monotonic conservatism order for claim statuses', () => {
+    expect(mergeClaimStatus('confirmed', 'request-only')).toBe('request-only');
+    expect(mergeClaimStatus('request-only', 'unresolved')).toBe('unresolved');
+    expect(mergeClaimStatus('unresolved', 'confirmed')).toBe('unresolved');
+    expect(mergeClaimStatus('conflicting', 'confirmed')).toBe('conflicting');
+  });
+
   it('derives relationship stage 7 from the latest confirmed public record in this canon', async () => {
     const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -134,6 +141,29 @@ describe('exportNarrativeCanon', () => {
     expect(selection.fixedCanon[0].content).not.toContain('birthday candidate');
     expect(selection.claims.some((claim) => claim.revealStage > 7)).toBe(false);
     expect(selection.claims.some((claim) => claim.status === 'unresolved')).toBe(false);
+  });
+
+  it('keeps real reveal-plan claims restrictive when they enter a stage-7 context', async () => {
+    const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+    const snapshot = await exportNarrativeCanon(projectRoot);
+    const revealClaims = snapshot.claims.filter((claim) => claim.id === 'reveal-plan:4' || claim.id === 'reveal-plan:5');
+    const selection = selectNarrativeContext({
+      memories: [{
+        versionId: 'real-canon-v1',
+        memoryType: 'canon',
+        content: 'must be replaced by allowed claims',
+        tokenCount: 100,
+        status: 'approved',
+        claims: snapshot.claims,
+      }],
+      tokenBudget: 500,
+      tags: [],
+      currentRelationshipStage: 7,
+    });
+
+    expect(revealClaims.map((claim) => claim.id)).toEqual(['reveal-plan:4', 'reveal-plan:5']);
+    expect(revealClaims.every((claim) => claim.status !== 'confirmed')).toBe(true);
+    expect(selection.claims.map((claim) => claim.id)).not.toEqual(expect.arrayContaining(revealClaims.map((claim) => claim.id)));
   });
 
   it('keeps application compilation separate from focused narrative compilation', async () => {
