@@ -79,3 +79,24 @@ Addressed every Critical and Important review finding with RED/GREEN coverage:
 - Narrative TypeScript check and production build: passed.
 - Local Edge runtime: direct authenticated reserve RPC returned 403; the same owner generated through the Edge service path with HTTP 200 / `review`, then reviewed to HTTP 200 / `approved_private`.
 - `git diff --check`: passed. No subagent or external reviewer was used.
+
+## Fix Round 3
+
+- Added migration `202608140007_generation_attempt_epoch.sql` and an indexed nullable `generation_jobs.attempt_token`. The trusted Edge core creates one UUID before freeze; freeze persists and returns it, and reserve, success finalization, and abort all require the exact immutable token.
+- Tokenless generation RPC signatures are no longer callable. Their proven atomic transaction bodies were renamed to private internal functions with all client execute grants revoked; only token-scoped service-role wrappers remain exposed. The obsolete tokenless failure writer was removed.
+- A losing same-key freeze cleanup and a delayed cleanup from an earlier retry now return `{ outcome: "stale" }` without changing the live job, draft, budget, frozen context, or idempotency key. Exact-token abort still conservatively settles failures, while exact-token abort after committed success still recovers the immutable completed result.
+- `stale_attempt` is an explicit storage race conflict mapped narrowly to HTTP 409. Null tokens are rejected at every mutation boundary, and the Edge validates that the token returned by freeze exactly matches the one it generated.
+
+### Fix Round 3 TDD and verification
+
+- RED: focused generation tests failed 3 regressions because freeze-loss cleanup had no attempt identity. GREEN: focused generation suite passed 38 tests, including concurrent loser and delayed-abort simulations.
+- Clean seeded Supabase reset applied all seven additive migrations; all pgTAP passed: 7 files / 194 assertions. Attempt-epoch coverage proves stale freeze, reserve, finalize, and delayed abort cannot mutate a replacement.
+- All concurrency scripts passed: shared budget reservation, atomic public review, and a real two-connection duplicate freeze race whose losing abort preserved the winner.
+- Full Vitest passed: 28 files, 274 passed, 3 skipped. Narrative TypeScript check and production build passed. `git diff --check` passed.
+- Local fake Edge verification returned `generated` / `review`; the database contained one immutable version, one reconciliation, and the completed attempt token needed for response-loss recovery.
+
+### Fix Round 3 self-review
+
+- Confirmed browser/authenticated callers have no execute privilege on tokenized or internal generation mutations; the owner review boundary is unchanged.
+- Confirmed every post-freeze cleanup receives the locally generated token, blocked reservations release it atomically, completed attempts retain it, and stale/no-op cleanup never masks the original sanitized response.
+- Confirmed no Task 4 provider, retry worker, or publishing scope was introduced. No subagent or external reviewer was used.

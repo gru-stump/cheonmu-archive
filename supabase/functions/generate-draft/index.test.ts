@@ -30,6 +30,7 @@ const feedback: NarrativeMemory = { versionId: 'feedback-v3', memoryType: 'feedb
 const selection: ContextSelection = { versionIds: ['canon-v1', 'feedback-v3', 'continuity-v2'], fixedCanon: [canon], continuity: [continuity], recent: [], feedback: [feedback], claims: canon.claims ?? [], tokenCount: 38 };
 const policy: TrustedGenerationPolicy = { providerSettingId: 'setting-1', modelKey: 'fake-model', maxInputTokens: 500, maxOutputTokens: 200, maxRevisionOutputTokens: 80, inputCostMicrosPerMillion: 1_000_000, outputCostMicrosPerMillion: 2_000_000, fixedCostMicros: 5 };
 const baseCommand = { authToken: 'valid-token', jobId: 'job-1', draftId: 'draft-1', idempotencyKey: 'request-1', mode: 'new' as const, kind: 'short_dialogue' as const };
+const attemptToken = 'd3000000-0000-4000-8000-000000000001';
 
 function harness(overrides: Partial<GenerationDependencies> = {}) {
   const events: string[] = [];
@@ -37,12 +38,13 @@ function harness(overrides: Partial<GenerationDependencies> = {}) {
   const finalized: unknown[] = [];
   const aborts: unknown[] = [];
   const deps = {
+    createAttemptToken: () => attemptToken,
     authenticate: async () => { events.push('authenticate'); return { ownerId: 'owner-1' }; },
     authorize: async () => { events.push('authorize'); return { draftStatus: 'queued', draftKind: 'short_dialogue', workflowPhase: null }; },
     findIdempotent: async () => { events.push('idempotency'); return null; },
     loadPolicy: async () => { events.push('policy'); return policy; },
     selectContext: async () => { events.push('select'); return selection; },
-    freezeContext: async (input) => { events.push('freeze'); return { ...policy, worstCaseCostMicros: estimateWorstCaseCostMicros(policy, input.mode), contextVersionIds: input.contextVersionIds, contextSnapshot: input.contextSnapshot }; },
+    freezeContext: async (input) => { events.push('freeze'); return { ...policy, attemptToken: input.attemptToken, worstCaseCostMicros: estimateWorstCaseCostMicros(policy, input.mode), contextVersionIds: input.contextVersionIds, contextSnapshot: input.contextSnapshot }; },
     reserveAndStart: async () => { events.push('reserve-start'); return { status: 'reserved', budgetStatus: 'normal', remainingMicros: 999 }; },
     provider: { generate: async (request) => { events.push('provider'); providerRequests.push(request); return { result: { ...result, kind: request.kind }, usage: { inputTokens: 38, outputTokens: 80, costMicros: 37 }, rawId: 'raw-1' }; } },
     parseProviderResponse: (value) => { events.push('parse'); return value as never; },
@@ -118,7 +120,42 @@ describe('runGeneration', () => {
   it('aborts a freeze that committed before its response was lost', async () => {
     const h = harness({ freezeContext: async () => { throw new Error('response lost after commit'); } });
     await expect(runGeneration(h.deps, baseCommand)).rejects.toMatchObject({ status: 500, code: 'internal_error' });
-    expect(h.aborts).toMatchObject([{ jobId: 'job-1', idempotencyKey: 'request-1', failureCode: 'freeze_failed' }]);
+    expect(h.aborts).toMatchObject([{ jobId: 'job-1', attemptToken, idempotencyKey: 'request-1', failureCode: 'freeze_failed' }]);
+  });
+
+  it('a concurrent duplicate freeze loser cannot abort the live winner', async () => {
+    let winnerActive = true;
+    const loserToken = 'd3000000-0000-4000-8000-000000000002';
+    const h = harness({
+      createAttemptToken: () => loserToken,
+      freezeContext: async () => { throw new PersistenceError('duplicate_generation'); },
+      abortGenerationAttempt: async (input) => {
+        h.aborts.push(input);
+        if (input.attemptToken === attemptToken) winnerActive = false;
+        return { outcome: 'stale' };
+      },
+    });
+    await expect(runGeneration(h.deps, baseCommand)).rejects.toMatchObject({ status: 409, code: 'duplicate_generation' });
+    expect(h.aborts).toMatchObject([{ attemptToken: loserToken }]);
+    expect(winnerActive).toBe(true);
+  });
+
+  it('a delayed abort from an old attempt cannot cancel its replacement', async () => {
+    let replacementActive = true;
+    const oldToken = 'd3000000-0000-4000-8000-000000000003';
+    const replacementToken = 'd3000000-0000-4000-8000-000000000004';
+    const h = harness({
+      createAttemptToken: () => oldToken,
+      reserveAndStart: async () => { throw new Error('delayed response loss'); },
+      abortGenerationAttempt: async (input) => {
+        h.aborts.push(input);
+        if (input.attemptToken === replacementToken) replacementActive = false;
+        return { outcome: 'stale' };
+      },
+    });
+    await expect(runGeneration(h.deps, baseCommand)).rejects.toMatchObject({ status: 500, code: 'internal_error' });
+    expect(h.aborts).toMatchObject([{ attemptToken: oldToken }]);
+    expect(replacementActive).toBe(true);
   });
 
   it('aborts a reservation that committed before its response was lost', async () => {
@@ -196,7 +233,7 @@ describe('runGeneration', () => {
     await expect(runGeneration(h.deps, baseCommand)).rejects.toMatchObject({ status: 500, code: 'internal_error' });
   });
 
-  it.each(['duplicate_generation', 'stale_transition', 'stale_version', 'workflow_phase_not_approved', 'mode_kind_mismatch', 'active_provider_setting_required', 'context_budget_too_small'])('maps the explicit database conflict %s to 409', async (code) => {
+  it.each(['duplicate_generation', 'stale_transition', 'stale_version', 'stale_attempt', 'workflow_phase_not_approved', 'mode_kind_mismatch', 'active_provider_setting_required', 'context_budget_too_small'])('maps the explicit database conflict %s to 409', async (code) => {
     const h = harness({ freezeContext: async () => { throw new PersistenceError(code); } });
     await expect(runGeneration(h.deps, baseCommand)).rejects.toMatchObject({ status: 409, code });
   });
@@ -243,7 +280,7 @@ describe('Supabase generation adapter', () => {
       calls.push(`${init?.method ?? 'GET'} ${path}`);
       authorizations.push({ path, value: new Headers(init?.headers).get('authorization') });
       if (path.startsWith('/rest/v1/provider_settings?')) return Response.json([{ id: 'setting-1', model_key: 'fake-model', max_input_tokens: 500, max_output_tokens: 200, max_revision_output_tokens: 80, input_cost_micros_per_million: 1000000, output_cost_micros_per_million: 2000000, fixed_cost_micros: 5 }]);
-      if (path.endsWith('/rpc/freeze_generation_context')) return Response.json({ id: 'job-1', provider_setting_id: 'setting-1', model_key: 'fake-model', max_input_tokens: 500, max_output_tokens: 200, max_revision_output_tokens: 80, input_cost_micros_per_million: 1000000, output_cost_micros_per_million: 2000000, fixed_cost_micros: 5, worst_case_cost_micros: 905, context_version_ids: selection.versionIds, context_snapshot: selection.versionIds.map((versionId, index) => ({ versionId, memoryType: index === 0 ? 'canon' : index === 1 ? 'feedback' : 'continuity', content: 'frozen', tokenCount: 1 })) });
+      if (path.endsWith('/rpc/freeze_generation_context')) return Response.json({ id: 'job-1', attempt_token: attemptToken, provider_setting_id: 'setting-1', model_key: 'fake-model', max_input_tokens: 500, max_output_tokens: 200, max_revision_output_tokens: 80, input_cost_micros_per_million: 1000000, output_cost_micros_per_million: 2000000, fixed_cost_micros: 5, worst_case_cost_micros: 905, context_version_ids: selection.versionIds, context_snapshot: selection.versionIds.map((versionId, index) => ({ versionId, memoryType: index === 0 ? 'canon' : index === 1 ? 'feedback' : 'continuity', content: 'frozen', tokenCount: 1 })) });
       if (path.endsWith('/rpc/reserve_and_start_generation')) return Response.json({ status: 'reserved', budgetStatus: 'normal', remainingMicros: 50 });
       if (path.endsWith('/rpc/finalize_generation_success')) return Response.json({ id: 'version-1', draft_id: 'draft-1' });
       if (path.endsWith('/rpc/abort_generation_attempt')) return Response.json({ outcome: 'aborted', jobStatus: 'queued' });
@@ -251,10 +288,10 @@ describe('Supabase generation adapter', () => {
     };
     const deps = createSupabaseGenerationDependencies({ url: 'http://supabase', anonKey: 'anon', serviceRoleKey: 'service-secret', fetch }, 'token', new FakeNarrativeProvider(result));
     await expect(deps.loadPolicy('owner-1', baseCommand)).resolves.toMatchObject({ modelKey: 'fake-model', maxInputTokens: 500 });
-    await expect(deps.freezeContext({ ownerId: 'owner-1', jobId: 'job-1', draftId: 'draft-1', idempotencyKey: 'key', mode: 'new', contextVersionIds: selection.versionIds, contextSnapshot: selection.versionIds.map((versionId, index) => ({ versionId, memoryType: index === 0 ? 'canon' : index === 1 ? 'feedback' : 'continuity', content: 'frozen', tokenCount: 1 })), providerSettingId: 'setting-1' })).resolves.toMatchObject({ worstCaseCostMicros: 905 });
-    await expect(deps.reserveAndStart({ jobId: 'job-1', draftId: 'draft-1', worstCaseCostMicros: 905 })).resolves.toMatchObject({ remainingMicros: 50 });
-    await expect(deps.finalizeSuccess({ ownerId: 'owner-1', jobId: 'job-1', draftId: 'draft-1', result, usage: { inputTokens: 1, outputTokens: 1, costMicros: 2 }, actualCostMicros: 2, contextVersionIds: selection.versionIds, continuityLevel: 'review', findings: [], providerResponseId: 'raw', visibility: 'private', continuityPolicyVersion: CONTINUITY_POLICY_VERSION })).resolves.toMatchObject({ versionId: 'version-1' });
-    await expect(deps.abortGenerationAttempt({ jobId: 'job-1', idempotencyKey: 'key', failureCode: 'finalization_failed' })).resolves.toMatchObject({ outcome: 'aborted' });
+    await expect(deps.freezeContext({ ownerId: 'owner-1', jobId: 'job-1', draftId: 'draft-1', idempotencyKey: 'key', mode: 'new', contextVersionIds: selection.versionIds, contextSnapshot: selection.versionIds.map((versionId, index) => ({ versionId, memoryType: index === 0 ? 'canon' : index === 1 ? 'feedback' : 'continuity', content: 'frozen', tokenCount: 1 })), providerSettingId: 'setting-1', attemptToken })).resolves.toMatchObject({ worstCaseCostMicros: 905, attemptToken });
+    await expect(deps.reserveAndStart({ jobId: 'job-1', draftId: 'draft-1', attemptToken, worstCaseCostMicros: 905 })).resolves.toMatchObject({ remainingMicros: 50 });
+    await expect(deps.finalizeSuccess({ ownerId: 'owner-1', jobId: 'job-1', draftId: 'draft-1', attemptToken, result, usage: { inputTokens: 1, outputTokens: 1, costMicros: 2 }, actualCostMicros: 2, contextVersionIds: selection.versionIds, continuityLevel: 'review', findings: [], providerResponseId: 'raw', visibility: 'private', continuityPolicyVersion: CONTINUITY_POLICY_VERSION })).resolves.toMatchObject({ versionId: 'version-1' });
+    await expect(deps.abortGenerationAttempt({ jobId: 'job-1', attemptToken, idempotencyKey: 'key', failureCode: 'finalization_failed' })).resolves.toMatchObject({ outcome: 'aborted' });
     expect(calls).toEqual(expect.arrayContaining(['POST /rest/v1/rpc/reserve_and_start_generation', 'POST /rest/v1/rpc/finalize_generation_success']));
     expect(calls.some((call) => call.includes('reconcile_generation_budget') || call.includes('store_generation_result'))).toBe(false);
     expect(authorizations.find(({ path }) => path.startsWith('/rest/v1/provider_settings?'))?.value).toBe('Bearer token');
@@ -263,9 +300,9 @@ describe('Supabase generation adapter', () => {
 
   it('recognizes only exact P0001 storage conflict codes', async () => {
     const exact = createSupabaseGenerationDependencies({ url: 'http://supabase', anonKey: 'anon', serviceRoleKey: 'service-secret', fetch: async () => Response.json({ code: 'P0001', message: 'stale_transition' }, { status: 400 }) }, 'token', new FakeNarrativeProvider(result));
-    await expect(exact.abortGenerationAttempt({ jobId: 'job-1', idempotencyKey: 'key', failureCode: 'finalization_failed' })).rejects.toMatchObject({ code: 'stale_transition' });
+    await expect(exact.abortGenerationAttempt({ jobId: 'job-1', attemptToken, idempotencyKey: 'key', failureCode: 'finalization_failed' })).rejects.toMatchObject({ code: 'stale_transition' });
 
     const misleading = createSupabaseGenerationDependencies({ url: 'http://supabase', anonKey: 'anon', serviceRoleKey: 'service-secret', fetch: async () => Response.json({ code: 'XX000', message: 'proxy mentioned stale_transition' }, { status: 500 }) }, 'token', new FakeNarrativeProvider(result));
-    await expect(misleading.abortGenerationAttempt({ jobId: 'job-1', idempotencyKey: 'key', failureCode: 'finalization_failed' })).rejects.not.toBeInstanceOf(PersistenceError);
+    await expect(misleading.abortGenerationAttempt({ jobId: 'job-1', attemptToken, idempotencyKey: 'key', failureCode: 'finalization_failed' })).rejects.not.toBeInstanceOf(PersistenceError);
   });
 });

@@ -9,7 +9,7 @@
     "build": "tsc --noEmit && vite build",
     "test": "vitest",
     "test:run": "vitest run",
-    "test:db:concurrency": "node supabase/tests/budget_concurrency.test.mjs && node supabase/tests/review_concurrency.test.mjs",
+    "test:db:concurrency": "node supabase/tests/budget_concurrency.test.mjs && node supabase/tests/review_concurrency.test.mjs && node supabase/tests/generation_attempt_concurrency.test.mjs",
     "narrative:canon": "tsx scripts/export-narrative-canon.ts",
     "validate": "tsx scripts/validate-content.ts",
     "e2e": "playwright test",
