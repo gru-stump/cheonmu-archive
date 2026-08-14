@@ -1,0 +1,7 @@
+project_id = "cheonmu-narrative"
+
+[auth]
+# This disables signup in the local auth emulator. Hosted projects must also
+# disable "Enable signups" in the Supabase Dashboard; no hosted credentials
+# or project secrets belong in this repository.
+enable_signup = false
