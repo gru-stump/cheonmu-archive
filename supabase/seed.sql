@@ -42,16 +42,18 @@ on conflict (owner_id, provider_key) do update
 set enabled = excluded.enabled,
     configuration = excluded.configuration;
 
-insert into public.budget_periods (owner_id, currency, period_start, period_end, limit_micros)
+insert into public.budget_periods (owner_id, currency, period_start, period_end, limit_micros, daily_limit_micros)
 values (
   '10000000-0000-0000-0000-000000000001',
   'USD',
   date '2026-08-01',
   date '2026-08-31',
+  100000000,
   100000000
 )
 on conflict (owner_id, currency, period_start, period_end) do update
-set limit_micros = excluded.limit_micros;
+set limit_micros = excluded.limit_micros,
+    daily_limit_micros = excluded.daily_limit_micros;
 
 insert into public.schedules (owner_id, schedule_key, cron_expression, enabled, payload)
 values
