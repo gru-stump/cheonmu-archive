@@ -23,8 +23,8 @@ function runPsql(sql, onStdout) {
 const setup = await runPsql(`
 insert into public.drafts (id, owner_id, kind, title)
 values ('${draftId}', '10000000-0000-0000-0000-000000000001', 'daily_event', 'concurrent review');
-insert into public.draft_versions (id, owner_id, draft_id, version_number, content)
-values ('${versionId}', '10000000-0000-0000-0000-000000000001', '${draftId}', 1, '{"body":"concurrent body"}');
+insert into public.draft_versions (id, owner_id, draft_id, version_number, content, continuity_level, continuity_policy_version)
+values ('${versionId}', '10000000-0000-0000-0000-000000000001', '${draftId}', 1, '{"body":"concurrent body"}', 'review', 'cheonmu-continuity-v1');
 update public.drafts set status = 'reviewing' where id = '${draftId}';
 `);
 if (setup.code !== 0) throw new Error(`review concurrency setup failed\n${setup.stdout}\n${setup.stderr}`);
@@ -35,7 +35,7 @@ const first = runPsql(`
 begin;
 select set_config('request.jwt.claim.role', 'service_role', true);
 set local role service_role;
-select public.review_draft_atomic('${draftId}', '${versionId}', 'reviewing', 'approve_public', null, 'concurrent-first-${draftId}');
+select public.review_draft_atomic('${draftId}', '${versionId}', 'reviewing', 'approve_public', null, 'concurrent-first-${draftId}', 'cheonmu-continuity-v1');
 \\echo FIRST_REVIEWED
 select pg_sleep(2);
 commit;
@@ -52,7 +52,7 @@ const second = runPsql(`
 begin;
 select set_config('request.jwt.claim.role', 'service_role', true);
 set local role service_role;
-select public.review_draft_atomic('${draftId}', '${versionId}', 'reviewing', 'approve_public', null, 'concurrent-second-${draftId}');
+select public.review_draft_atomic('${draftId}', '${versionId}', 'reviewing', 'approve_public', null, 'concurrent-second-${draftId}', 'cheonmu-continuity-v1');
 commit;
 `);
 

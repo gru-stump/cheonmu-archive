@@ -5,10 +5,12 @@ import { parseNarrativeProviderResponse } from './provider';
 
 const request: GenerationRequest = {
   kind: 'short_dialogue',
+  modelKey: 'fake-model',
   seed: 'A quiet return to the medical center.',
   maxInputTokens: 400,
   maxOutputTokens: 200,
   contextVersionIds: ['canon-v1'],
+  contextMemories: [{ versionId: 'canon-v1', memoryType: 'canon', content: 'approved canon', tokenCount: 10 }],
 };
 
 const fixture: GenerationResult = {

@@ -26,10 +26,35 @@ export interface Usage {
 
 export interface GenerationRequest {
   kind: DraftKind;
+  modelKey: string;
   seed?: string;
   maxInputTokens: number;
   maxOutputTokens: number;
   contextVersionIds: string[];
+  contextMemories: Array<{
+    versionId: string;
+    memoryType: 'canon' | 'feedback' | 'continuity' | 'summary';
+    content: string;
+    tokenCount: number;
+    claims?: Array<{
+      id: string;
+      sourceId: string;
+      sourcePriority: number;
+      status: 'confirmed' | 'unresolved' | 'conflicting' | 'request-only';
+      revealStage: number;
+      text: string;
+    }>;
+    continuityFacts?: {
+      relationshipStage?: number;
+      forbiddenReveals?: Array<{ term: string; allowedAtRelationshipStage: number }>;
+      permanentEntities?: string[];
+      permanentSettings?: string[];
+      continuityId?: string;
+      rejectedMotifs?: string[];
+      voiceAndTitleRules?: boolean;
+    };
+  }>;
+  revision?: { selectedText: string; instruction: string };
 }
 
 const resultSchema = z.object({

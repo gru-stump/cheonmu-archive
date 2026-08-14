@@ -49,17 +49,55 @@ values (
 )
 on conflict (owner_id) do update set display_name = excluded.display_name;
 
-insert into public.provider_settings (id, owner_id, provider_key, enabled, configuration)
+insert into public.provider_settings (
+  id, owner_id, provider_key, enabled, configuration, model_key,
+  max_input_tokens, max_output_tokens, max_revision_output_tokens,
+  input_cost_micros_per_million, output_cost_micros_per_million, fixed_cost_micros
+)
 values (
   '12000000-0000-0000-0000-000000000001',
   '10000000-0000-0000-0000-000000000001',
   'fake-local-provider',
-  false,
-  '{"mode":"fixture"}'::jsonb
+  true,
+  '{"mode":"fixture"}'::jsonb,
+  'fake-local-model',
+  4096,
+  1024,
+  256,
+  0,
+  0,
+  100
 )
 on conflict (owner_id, provider_key) do update
 set enabled = excluded.enabled,
-    configuration = excluded.configuration;
+    configuration = excluded.configuration,
+    model_key = excluded.model_key,
+    max_input_tokens = excluded.max_input_tokens,
+    max_output_tokens = excluded.max_output_tokens,
+    max_revision_output_tokens = excluded.max_revision_output_tokens,
+    input_cost_micros_per_million = excluded.input_cost_micros_per_million,
+    output_cost_micros_per_million = excluded.output_cost_micros_per_million,
+    fixed_cost_micros = excluded.fixed_cost_micros;
+
+insert into public.memory_items (
+  id, owner_id, memory_type, content, importance, metadata, status, blocking
+)
+values (
+  '15000000-0000-0000-0000-000000000001',
+  '10000000-0000-0000-0000-000000000001',
+  'canon',
+  'Cheonryeong and Muyeong have an established private bond.',
+  100,
+  '{"tokenCount":14,"continuityFacts":{"relationshipStage":7,"forbiddenReveals":[],"permanentEntities":["Cheonryeong","Muyeong"],"permanentSettings":["Cheonma residence"],"voiceAndTitleRules":true}}'::jsonb,
+  'approved',
+  false
+)
+on conflict (id) do update
+set content = excluded.content,
+    importance = excluded.importance,
+    metadata = excluded.metadata,
+    status = excluded.status,
+    blocking = excluded.blocking;
 
 insert into public.budget_periods (id, owner_id, currency, period_start, period_end, limit_micros, daily_limit_micros)
 values (

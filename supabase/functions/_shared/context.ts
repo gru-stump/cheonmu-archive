@@ -20,6 +20,15 @@ export interface NarrativeMemory {
   blocking?: boolean;
   updatedAt?: string;
   claims?: NarrativeClaim[];
+  continuityFacts?: {
+    relationshipStage?: number;
+    forbiddenReveals?: Array<{ term: string; allowedAtRelationshipStage: number }>;
+    permanentEntities?: string[];
+    permanentSettings?: string[];
+    continuityId?: string;
+    rejectedMotifs?: string[];
+    voiceAndTitleRules?: boolean;
+  };
 }
 
 export interface NarrativeContextInput {

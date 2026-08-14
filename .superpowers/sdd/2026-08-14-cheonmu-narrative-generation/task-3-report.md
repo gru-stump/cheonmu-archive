@@ -34,3 +34,29 @@ Implemented the authenticated `generate-draft` and `review-draft` Edge Functions
 - Context selection requires canonical/approved memory rows to be populated; the served verification inserted an explicit canonical fixture.
 - Publish workers and real provider adapters remain intentionally deferred to Task 4.
 - No reviewer/subagent was used, per the task constraint; self-review found and fixed completed-duplicate ordering and in-flight duplicate handling before final verification.
+
+## Fix Round 1
+
+Addressed every Critical and Important review finding with RED/GREEN coverage:
+
+- Approval now requires `continuity_level = 'review'` and persisted policy `cheonmu-continuity-v1` in both the core and atomic review RPC. Blocked, null/unchecked, pass, and old-policy versions cannot create review actions, continuity memory, or publish jobs. The HTTP endpoint rejects caller policy input and always supplies the server constant.
+- Added migration `202608140005_generation_transaction_hardening.sql`. Success finalization now reconciles trusted usage, inserts the immutable policy-stamped version/findings/context, completes the job, legally advances the draft, and advances a successful major-event phase in one transaction. The old split `store_generation_result` writer is removed.
+- Failure finalization now derives settlement from frozen trusted rates and parsed usage, charges the full reservation when usage is missing/invalid/out of bounds, stores only a stable failure code, legally returns the draft to `queued`, terminates the job as `failed`, and releases the idempotency key atomically.
+- Provider/model caps and rates are active owner settings. Request pricing/token overrides are rejected; the TypeScript and SQL estimators independently verify worst-case and actual costs, ignore provider-reported money for accounting, and enforce actual tokens/cost within the reservation.
+- Context freeze no longer advances major-event workflow state. A 402 clears frozen/idempotency fields and leaves the phase/draft queued for same-job retry; a failed provider attempt leaves an auditable failed job and permits a new queued job to reuse the key.
+- The provider consumes the content, structured claims/continuity facts, and exact version IDs returned by the frozen job snapshot. The continuity gate is rebuilt from that frozen snapshot with source IDs for relationship stage, forbidden reveals, permanent entities/settings, approved continuity, rejected motifs, and voice/title rules.
+- Mode/kind and revision-payload coherence are enforced before selection. REST persistence conflicts require an exact stable `P0001` code; unknown infrastructure/provider/parser details are reduced to stable client errors and retained only in server-side audit logging.
+
+### Fix Round 1 verification
+
+- Focused generation/review/provider/context Vitest: 40 passed.
+- Fresh local database reset plus all pgTAP: 6 files, 163 passed, including atomic rollback, phase-safe 402 retry, conservative failure settlement, immutable frozen-content persistence, and non-approvable-version cases.
+- Budget and review concurrency: both passed; concurrent approvals leave exactly one review action, continuity memory, and publish job.
+- Full Vitest: 28 files, 258 passed, 3 skipped.
+- Narrative TypeScript check and application production build: passed.
+- Real local Edge runtime with fake provider: generation returned HTTP 200 / `review`; private approval returned HTTP 200 / `approved_private`; persisted draft state was `approved_private`.
+- `git diff --check`: passed. No subagent or external reviewer was used.
+
+### Remaining scope
+
+- Real provider adapters, retry scheduling, and publish workers remain intentionally deferred; this task still wires only the deterministic fake provider.
