@@ -1,6 +1,6 @@
 begin;
 
-select plan(22);
+select plan(29);
 
 insert into auth.users (
   instance_id,
@@ -44,8 +44,8 @@ values
     '51000000-0000-0000-0000-000000000001',
     '10000000-0000-0000-0000-000000000001',
     'USD',
-    current_date,
-    current_date + 1,
+    (current_timestamp at time zone 'UTC')::date,
+    (current_timestamp at time zone 'UTC')::date,
     1000,
     100
   ),
@@ -53,8 +53,8 @@ values
     '51000000-0000-0000-0000-000000000002',
     '50000000-0000-0000-0000-000000000001',
     'USD',
-    current_date - 1,
-    current_date + 1,
+    (current_timestamp at time zone 'UTC')::date - 1,
+    (current_timestamp at time zone 'UTC')::date,
     100,
     1000
   );
@@ -71,22 +71,49 @@ values
 insert into public.budget_entries (
   owner_id,
   budget_period_id,
+  generation_job_id,
   amount_micros,
   entry_type,
+  daily_bucket_date,
   description,
   created_at
 )
 values (
   '50000000-0000-0000-0000-000000000001',
   '51000000-0000-0000-0000-000000000002',
+  null,
   60,
   'reservation',
+  (current_timestamp at time zone 'UTC')::date - 1,
   'existing period reservation',
-  current_timestamp - interval '1 day'
+  (date_trunc('day', current_timestamp at time zone 'UTC') - interval '12 hours') at time zone 'UTC'
+),
+(
+  '10000000-0000-0000-0000-000000000001',
+  '51000000-0000-0000-0000-000000000001',
+  '52000000-0000-0000-0000-000000000003',
+  60,
+  'reservation',
+  (current_timestamp at time zone 'UTC')::date - 1,
+  'prior UTC-day reservation',
+  (date_trunc('day', current_timestamp at time zone 'UTC') - interval '12 hours') at time zone 'UTC'
 );
 
 select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000001', true);
 set local role authenticated;
+select set_config(
+  'TimeZone',
+  case
+    when extract(hour from current_timestamp at time zone 'UTC') < 10 then 'Pacific/Pago_Pago'
+    else 'Pacific/Kiritimati'
+  end,
+  true
+);
+select isnt(
+  current_date,
+  (current_timestamp at time zone 'UTC')::date,
+  'the session date differs from the UTC day used for budget accounting'
+);
 
 -- pgTAP runs this script through one connection, so it cannot hold the first
 -- row lock while issuing a second RPC. These two distinct jobs exercise the
@@ -157,7 +184,7 @@ select is(
   'reconciliation preserves provider-neutral usage'
 );
 select lives_ok(
-  $$ select public.reconcile_generation_budget('52000000-0000-0000-0000-000000000001', 99, '{"inputTokens":999}'::jsonb) $$,
+  $$ select public.reconcile_generation_budget('52000000-0000-0000-0000-000000000001', 30, '{"inputTokens":100,"outputTokens":20,"costMicros":30}'::jsonb) $$,
   'repeating reconciliation is idempotent'
 );
 select is(
@@ -170,6 +197,21 @@ select is(
   30::bigint,
   'repeated reconciliation does not double charge'
 );
+select lives_ok(
+  $$ select public.reconcile_generation_budget('52000000-0000-0000-0000-000000000003', 0, '{"inputTokens":0,"outputTokens":0,"costMicros":0}'::jsonb) $$,
+  'a prior UTC-day reservation settles without changing today''s bucket'
+);
+select throws_ok(
+  $$ select public.reserve_generation_budget('52000000-0000-0000-0000-000000000002', 71) $$,
+  'P0001',
+  'budget_limit_exceeded',
+  'a prior-day settlement cannot create extra daily capacity today'
+);
+select is(
+  (select count(*) from public.budget_entries where generation_job_id = '52000000-0000-0000-0000-000000000002'),
+  0::bigint,
+  'the daily-cap rejection after a prior-day settlement creates no entry'
+);
 
 reset role;
 
@@ -180,11 +222,27 @@ select lives_ok(
   $$ select public.reserve_generation_budget('52000000-0000-0000-0000-000000000004', 30) $$,
   'a reservation below the period cap succeeds'
 );
+select lives_ok(
+  $$ select public.reserve_generation_budget('52000000-0000-0000-0000-000000000005', 10) $$,
+  'a second reservation can consume the remaining period capacity'
+);
 select throws_ok(
-  $$ select public.reserve_generation_budget('52000000-0000-0000-0000-000000000005', 20) $$,
+  $$ select public.reserve_generation_budget('52000000-0000-0000-0000-000000000006', 1) $$,
   'P0001',
   'budget_limit_exceeded',
   'existing prior-day reservations count toward the period cap'
+);
+select throws_ok(
+  $$ select public.reconcile_generation_budget('52000000-0000-0000-0000-000000000004', 31, '{"inputTokens":31,"outputTokens":0,"costMicros":31}'::jsonb) $$,
+  'P0001',
+  'actual_micros_exceeds_reservation',
+  'reconciliation cannot exceed the job worst-case reservation'
+);
+select throws_ok(
+  $$ select public.fail_generation_budget('52000000-0000-0000-0000-000000000005', 11) $$,
+  'P0001',
+  'charged_micros_exceeds_reservation',
+  'failure settlement cannot exceed the job worst-case reservation'
 );
 select lives_ok(
   $$ select public.fail_generation_budget('52000000-0000-0000-0000-000000000004', 10) $$,
@@ -196,7 +254,7 @@ select is(
   'failure settlement replaces the reservation with the charged amount'
 );
 select lives_ok(
-  $$ select public.fail_generation_budget('52000000-0000-0000-0000-000000000004', 99) $$,
+  $$ select public.fail_generation_budget('52000000-0000-0000-0000-000000000004', 10) $$,
   'repeating failure settlement is idempotent'
 );
 select is(

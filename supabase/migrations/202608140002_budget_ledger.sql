@@ -12,8 +12,16 @@ alter table public.budget_periods
 alter table public.budget_entries
   add column entry_type text not null default 'reservation',
   add column usage_json jsonb not null default '{}'::jsonb,
+  add column daily_bucket_date date,
   drop constraint budget_entries_amount_micros_check,
   add constraint budget_entries_entry_type_check check (entry_type in ('reservation', 'reconciliation', 'failure'));
+
+update public.budget_entries
+set daily_bucket_date = (created_at at time zone 'UTC')::date
+where daily_bucket_date is null;
+
+alter table public.budget_entries
+  alter column daily_bucket_date set not null;
 
 create index budget_entries_period_created_at_idx
   on public.budget_entries (budget_period_id, created_at);
@@ -39,10 +47,13 @@ declare
   created_entry public.budget_entries;
   daily_total_micros bigint;
   period_total_micros bigint;
+  utc_today date;
 begin
-  if amount_micros < 0 then
+  if amount_micros is null or amount_micros < 0 then
     raise exception 'amount_micros must be non-negative' using errcode = '22023';
   end if;
+
+  utc_today := (current_timestamp at time zone 'UTC')::date;
 
   select job.owner_id
   into job_owner_id
@@ -70,7 +81,7 @@ begin
   from public.budget_periods as period
   where period.owner_id = job_owner_id
     and period.currency = 'USD'
-    and current_date between period.period_start and period.period_end
+    and utc_today between period.period_start and period.period_end
   order by period.period_start desc, period.created_at desc
   limit 1
   for update;
@@ -83,8 +94,7 @@ begin
   into daily_total_micros
   from public.budget_entries as entry
   where entry.budget_period_id = active_period.id
-    and entry.created_at >= current_date
-    and entry.created_at < current_date + interval '1 day';
+    and entry.daily_bucket_date = utc_today;
 
   select coalesce(sum(entry.amount_micros), 0)
   into period_total_micros
@@ -102,6 +112,7 @@ begin
     generation_job_id,
     amount_micros,
     entry_type,
+    daily_bucket_date,
     description
   )
   values (
@@ -110,6 +121,7 @@ begin
     reserve_generation_budget.job_id,
     amount_micros,
     'reservation',
+    utc_today,
     'generation budget reservation'
   )
   returning * into created_entry;
@@ -130,7 +142,7 @@ declare
   existing_settlement public.budget_entries;
   created_entry public.budget_entries;
 begin
-  if actual_micros < 0 then
+  if actual_micros is null or actual_micros < 0 then
     raise exception 'actual_micros must be non-negative' using errcode = '22023';
   end if;
 
@@ -146,16 +158,6 @@ begin
   end if;
 
   select entry.*
-  into existing_settlement
-  from public.budget_entries as entry
-  where entry.generation_job_id = reconcile_generation_budget.job_id
-    and entry.entry_type in ('reconciliation', 'failure');
-
-  if found then
-    return existing_settlement;
-  end if;
-
-  select entry.*
   into reservation_entry
   from public.budget_entries as entry
   where entry.generation_job_id = reconcile_generation_budget.job_id
@@ -165,12 +167,27 @@ begin
     raise exception 'budget reservation not found' using errcode = 'P0002';
   end if;
 
+  if actual_micros > reservation_entry.amount_micros then
+    raise exception 'actual_micros_exceeds_reservation' using errcode = 'P0001';
+  end if;
+
+  select entry.*
+  into existing_settlement
+  from public.budget_entries as entry
+  where entry.generation_job_id = reconcile_generation_budget.job_id
+    and entry.entry_type in ('reconciliation', 'failure');
+
+  if found then
+    return existing_settlement;
+  end if;
+
   insert into public.budget_entries (
     owner_id,
     budget_period_id,
     generation_job_id,
     amount_micros,
     entry_type,
+    daily_bucket_date,
     description,
     usage_json
   )
@@ -180,6 +197,7 @@ begin
     reconcile_generation_budget.job_id,
     actual_micros - reservation_entry.amount_micros,
     'reconciliation',
+    reservation_entry.daily_bucket_date,
     'generation budget reconciliation',
     coalesce(usage_json, '{}'::jsonb)
   )
@@ -201,7 +219,7 @@ declare
   existing_settlement public.budget_entries;
   created_entry public.budget_entries;
 begin
-  if charged_micros < 0 then
+  if charged_micros is null or charged_micros < 0 then
     raise exception 'charged_micros must be non-negative' using errcode = '22023';
   end if;
 
@@ -217,16 +235,6 @@ begin
   end if;
 
   select entry.*
-  into existing_settlement
-  from public.budget_entries as entry
-  where entry.generation_job_id = fail_generation_budget.job_id
-    and entry.entry_type in ('reconciliation', 'failure');
-
-  if found then
-    return existing_settlement;
-  end if;
-
-  select entry.*
   into reservation_entry
   from public.budget_entries as entry
   where entry.generation_job_id = fail_generation_budget.job_id
@@ -236,12 +244,27 @@ begin
     raise exception 'budget reservation not found' using errcode = 'P0002';
   end if;
 
+  if charged_micros > reservation_entry.amount_micros then
+    raise exception 'charged_micros_exceeds_reservation' using errcode = 'P0001';
+  end if;
+
+  select entry.*
+  into existing_settlement
+  from public.budget_entries as entry
+  where entry.generation_job_id = fail_generation_budget.job_id
+    and entry.entry_type in ('reconciliation', 'failure');
+
+  if found then
+    return existing_settlement;
+  end if;
+
   insert into public.budget_entries (
     owner_id,
     budget_period_id,
     generation_job_id,
     amount_micros,
     entry_type,
+    daily_bucket_date,
     description
   )
   values (
@@ -250,6 +273,7 @@ begin
     fail_generation_budget.job_id,
     charged_micros - reservation_entry.amount_micros,
     'failure',
+    reservation_entry.daily_bucket_date,
     'generation budget failure settlement'
   )
   returning * into created_entry;
