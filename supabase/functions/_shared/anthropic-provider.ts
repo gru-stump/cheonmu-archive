@@ -12,7 +12,8 @@ export class AnthropicNarrativeProvider implements NarrativeProvider {
     });
     const record = value && typeof value === 'object' ? value as Record<string, unknown> : null;
     const id = typeof record?.id === 'string' && record.id ? record.id : null;
-    if (record?.type !== 'message' || record?.role !== 'assistant' || record?.model !== request.modelKey || record?.stop_reason !== 'tool_use') throw new ProviderRequestError('malformed_response');
+    const responseModel = typeof record?.model === 'string' && record.model.trim() ? record.model : null;
+    if (record?.type !== 'message' || record?.role !== 'assistant' || !responseModel || record?.stop_reason !== 'tool_use') throw new ProviderRequestError('malformed_response');
     const tool = (Array.isArray(record?.content) ? record.content : []).find((item) => item && typeof item === 'object'
       && (item as { type?: unknown }).type === 'tool_use' && typeof (item as { id?: unknown }).id === 'string'
       && Boolean((item as { id: string }).id) && (item as { name?: unknown }).name === 'narrative_result') as { input?: unknown } | undefined;

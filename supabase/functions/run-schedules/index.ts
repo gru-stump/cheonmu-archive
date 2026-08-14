@@ -1,6 +1,6 @@
 export type BudgetState = 'normal' | 'warning' | 'risk';
 export interface QueuedJob { id?: string; ownerId: string; scheduleKey: string; scheduledFor: string; payload: { kind: 'short_dialogue' | 'daily_event'; source: 'schedule' | 'access' } }
-export interface ScheduleRecord { ownerId: string; scheduleKey: string; cronExpression: string; enabled: boolean; payload: { kind: 'short_dialogue' | 'daily_event' } }
+export interface ScheduleRecord { ownerId: string; scheduleKey: string; scheduleType: 'automatic' | 'manual'; cronExpression: string | null; enabled: boolean; payload: { kind: 'short_dialogue' | 'daily_event' } }
 export interface ScheduleDependencies {
   now(): Date; authenticate(token: string): Promise<{ ownerId: string } | null>; listSchedules(): Promise<ScheduleRecord[]>; budgetState(ownerId: string): Promise<BudgetState>;
   insertQueuedJob(job: Omit<QueuedJob, 'id'>): Promise<QueuedJob>; queueAccessJob(ownerId: string, now: Date): Promise<QueuedJob>;
@@ -9,19 +9,28 @@ export class ScheduleError extends Error { constructor(public readonly code: str
 
 function seoulDate(now: Date): string { return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit' }).format(now); }
 function localParts(now: Date): Record<string, number> { return Object.fromEntries(new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Seoul', weekday: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(now).filter(({ type }) => type !== 'literal').map(({ type, value }) => [type, type === 'weekday' ? ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].indexOf(value) : Number(value)])); }
-function cronField(field: string, value: number): boolean { return field === '*' || field.split(',').some((part) => part === String(value)); }
-function cronParts(expression: string): string[] | null { const parts = expression.trim().split(/\s+/); return parts.length === 5 ? parts : null; }
-function scheduleDue(schedule: ScheduleRecord, now: Date): boolean { const parts = cronParts(schedule.cronExpression); if (!schedule.enabled || !parts) return false; const p = localParts(now); return cronField(parts[0], p.minute) && cronField(parts[1], p.hour) && cronField(parts[4], p.weekday); }
-function weekly(schedule: ScheduleRecord): boolean { const parts = cronParts(schedule.cronExpression); return Boolean(parts && parts[4] !== '*'); }
+interface AutomaticScheduleTime { minute: number; hour: number; weekday: number | null }
+function automaticScheduleTime(schedule: ScheduleRecord): AutomaticScheduleTime | null {
+  if (schedule.scheduleType === 'manual') {
+    if (schedule.cronExpression !== null) throw new ScheduleError('invalid_schedule_configuration');
+    return null;
+  }
+  if (schedule.scheduleType !== 'automatic' || typeof schedule.cronExpression !== 'string') throw new ScheduleError('invalid_schedule_configuration');
+  const match = /^([0-9]|[1-5][0-9]) ([0-9]|1[0-9]|2[0-3]) \* \* (\*|[0-6])$/.exec(schedule.cronExpression);
+  if (!match) throw new ScheduleError('invalid_schedule_configuration');
+  return { minute: Number(match[1]), hour: Number(match[2]), weekday: match[3] === '*' ? null : Number(match[3]) };
+}
+function scheduleDue(schedule: ScheduleRecord, time: AutomaticScheduleTime, now: Date): boolean { const p = localParts(now); return schedule.enabled && time.minute === p.minute && time.hour === p.hour && (time.weekday === null || time.weekday === p.weekday); }
 function scheduledInstant(now: Date): string { return new Date(Math.floor(now.getTime() / 60_000) * 60_000).toISOString(); }
 
 /** Dispatcher only queues work; provider selection and generation are deliberately absent. */
 export async function runSchedules(deps: ScheduleDependencies): Promise<QueuedJob[]> {
   const now = deps.now(); const jobs: QueuedJob[] = [];
   for (const schedule of await deps.listSchedules()) {
-    if (!scheduleDue(schedule, now)) continue;
+    const time = automaticScheduleTime(schedule);
+    if (!time || !scheduleDue(schedule, time, now)) continue;
     const budget = await deps.budgetState(schedule.ownerId);
-    if (budget === 'risk' || (budget === 'warning' && weekly(schedule))) continue;
+    if (budget === 'risk' || (budget === 'warning' && time.weekday !== null)) continue;
     jobs.push(await deps.insertQueuedJob({ ownerId: schedule.ownerId, scheduleKey: `${schedule.ownerId}:${schedule.scheduleKey}:${seoulDate(now)}`, scheduledFor: scheduledInstant(now), payload: { kind: schedule.payload.kind, source: 'schedule' } }));
   }
   return jobs;
@@ -81,8 +90,12 @@ export function createSupabaseScheduleDependencies(config: SupabaseScheduleConfi
     now: () => new Date(),
     authenticate: async () => { const value = await call(userHeaders, '/auth/v1/user') as { id?: unknown }; return typeof value.id === 'string' ? { ownerId: value.id } : null; },
     listSchedules: async () => {
-      const rows = await call(serviceHeaders, '/rest/v1/schedules?select=owner_id,schedule_key,cron_expression,enabled,payload') as unknown[];
-      return rows.map((row) => { const value = row as Record<string, unknown>; return { ownerId: String(value.owner_id), scheduleKey: String(value.schedule_key), cronExpression: String(value.cron_expression), enabled: value.enabled === true, payload: value.payload as ScheduleRecord['payload'] }; });
+      const rows = await call(serviceHeaders, '/rest/v1/schedules?select=owner_id,schedule_key,schedule_type,cron_expression,enabled,payload') as unknown[];
+      return rows.map((row) => {
+        const value = row as Record<string, unknown>;
+        if ((value.schedule_type !== 'automatic' && value.schedule_type !== 'manual') || (typeof value.cron_expression !== 'string' && value.cron_expression !== null)) throw new ScheduleError('invalid_schedule_configuration');
+        return { ownerId: String(value.owner_id), scheduleKey: String(value.schedule_key), scheduleType: value.schedule_type, cronExpression: value.cron_expression, enabled: value.enabled === true, payload: value.payload as ScheduleRecord['payload'] };
+      });
     },
     budgetState: async (ownerId) => String(await rpc('narrative_schedule_budget_state', { p_owner_id: ownerId })) as BudgetState,
     insertQueuedJob: async (job) => queuedJob(await rpc('queue_narrative_schedule_job', { p_owner_id: job.ownerId, p_schedule_key: job.scheduleKey, p_scheduled_for: job.scheduledFor, p_payload: job.payload })),

@@ -8,7 +8,7 @@ function harness(overrides: Partial<ScheduleDependencies> = {}) {
   const deps: ScheduleDependencies = {
     now: () => new Date('2026-08-14T00:00:00Z'),
     authenticate: async (token) => { events.push('authenticate'); return token === 'token' ? { ownerId: 'owner-1' } : null; },
-    listSchedules: async () => [{ ownerId: 'owner-1', scheduleKey: 'daily', cronExpression: '0 9 * * *', enabled: true, payload: { kind: 'daily_event' } }, { ownerId: 'owner-1', scheduleKey: 'weekly', cronExpression: '0 9 * * 1', enabled: true, payload: { kind: 'daily_event' } }, { ownerId: 'owner-1', scheduleKey: 'manual', cronExpression: 'manual', enabled: true, payload: { kind: 'short_dialogue' } }],
+    listSchedules: async () => [{ ownerId: 'owner-1', scheduleKey: 'daily', scheduleType: 'automatic', cronExpression: '0 9 * * *', enabled: true, payload: { kind: 'daily_event' } }, { ownerId: 'owner-1', scheduleKey: 'weekly', scheduleType: 'automatic', cronExpression: '0 9 * * 1', enabled: true, payload: { kind: 'daily_event' } }, { ownerId: 'owner-1', scheduleKey: 'manual', scheduleType: 'manual', cronExpression: null, enabled: true, payload: { kind: 'short_dialogue' } }],
     budgetState: async () => 'normal',
     insertQueuedJob: async (job) => {
       const key = `${job.scheduleKey}:${job.scheduledFor}`;
@@ -45,6 +45,27 @@ describe('runSchedules', () => {
     await runSchedules(h.deps);
     expect(h.inserted.map((job) => job.scheduleKey)).toEqual(['owner-1:daily:2026-08-17', 'owner-1:weekly:2026-08-17']);
     expect(h.inserted.map((job) => job.scheduledFor)).toEqual(['2026-08-17T00:00:00.000Z', '2026-08-17T00:00:00.000Z']);
+  });
+
+  it.each([
+    ['day-of-month', '0 9 1 * *'],
+    ['month', '0 9 * 8 *'],
+    ['range', '0-5 9 * * *'],
+    ['step', '*/5 9 * * *'],
+    ['comma', '0,5 9 * * *'],
+    ['minute range', '60 9 * * *'],
+    ['hour range', '0 24 * * *'],
+    ['weekday range', '0 9 * * 7'],
+  ])('rejects unsupported %s cron syntax instead of skipping or partially executing it', async (_case, cronExpression) => {
+    const h = harness({ listSchedules: async () => [{ ownerId: 'owner-1', scheduleKey: 'invalid', scheduleType: 'automatic', cronExpression, enabled: true, payload: { kind: 'daily_event' } }] });
+    await expect(runSchedules(h.deps)).rejects.toMatchObject({ code: 'invalid_schedule_configuration' });
+    expect(h.inserted).toEqual([]);
+  });
+
+  it('excludes a manual schedule by schedule type without interpreting a fake cron keyword', async () => {
+    const h = harness({ listSchedules: async () => [{ ownerId: 'owner-1', scheduleKey: 'manual', scheduleType: 'manual', cronExpression: null, enabled: true, payload: { kind: 'short_dialogue' } }] });
+    await expect(runSchedules(h.deps)).resolves.toEqual([]);
+    expect(h.inserted).toEqual([]);
   });
 });
 

@@ -63,7 +63,8 @@ export class OpenAiNarrativeProvider implements NarrativeProvider {
     });
     const record = value && typeof value === 'object' ? value as Record<string, unknown> : null;
     const id = typeof record?.id === 'string' && record.id ? record.id : null;
-    if (record?.object !== 'response' || record?.status !== 'completed' || record?.model !== request.modelKey) throw new ProviderRequestError('malformed_response');
+    const responseModel = typeof record?.model === 'string' && record.model.trim() ? record.model : null;
+    if (record?.object !== 'response' || record?.status !== 'completed' || !responseModel) throw new ProviderRequestError('malformed_response');
     const output = Array.isArray(record?.output) ? record.output : [];
     const message = output.find((item) => {
       if (!item || typeof item !== 'object') return false;

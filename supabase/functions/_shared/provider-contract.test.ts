@@ -83,13 +83,23 @@ describe.each([
     ['missing message/tool id', _name === 'openai'
       ? completedEnvelope('openai', { output: [{ type: 'message', role: 'assistant', status: 'completed', content: [{ type: 'output_text', text: schemaResult }] }] })
       : completedEnvelope('anthropic', { content: [{ type: 'tool_use', name: 'narrative_result', input: result }] })],
-    ['wrong response model', completedEnvelope(_name, { model: 'other-owner-model' })],
+    ['missing response model', completedEnvelope(_name, { model: '' })],
     ['wrong output role/status', _name === 'openai'
       ? completedEnvelope('openai', { output: [{ id: 'message-1', type: 'message', role: 'user', status: 'in_progress', content: [{ type: 'output_text', text: schemaResult }] }] })
       : completedEnvelope('anthropic', { stop_reason: 'end_turn' })],
   ])('rejects a completed-looking envelope with %s', async (_case, envelope) => {
     const h = fetchOnce(Response.json(envelope));
     await expect(create({ fetch: h.fetch }).generate(request)).rejects.toMatchObject({ code: 'malformed_response' });
+    expect(h.calls).toHaveLength(1);
+  });
+
+  it('accepts canonicalized response model metadata while sending the exact configured alias', async () => {
+    const configuredAlias = _name === 'openai' ? 'gpt-production-alias' : 'claude-production-alias';
+    const canonicalModel = _name === 'openai' ? 'gpt-canonical-2026-08-01' : 'claude-canonical-20260801';
+    const h = fetchOnce(Response.json(completedEnvelope(_name, { model: canonicalModel })));
+    await expect(create({ fetch: h.fetch, modelKey: configuredAlias }).generate({ ...request, modelKey: configuredAlias })).resolves.toMatchObject({ rawId: _name === 'openai' ? 'resp-1' : 'msg-1' });
+    const body = JSON.parse(String(h.calls[0].init?.body));
+    expect(body.model).toBe(configuredAlias);
     expect(h.calls).toHaveLength(1);
   });
 });

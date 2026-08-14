@@ -6,9 +6,9 @@ select has_function('public', 'narrative_schedule_budget_state', array['uuid'], 
 select has_function('public', 'queue_narrative_access_job', array['uuid', 'timestamp with time zone'], 'atomic access queue RPC exists');
 select has_function('narrative_private', 'invoke_schedule_dispatcher', array[]::text[], 'Vault-backed dispatcher exists');
 select ok(
-  pg_get_functiondef('narrative_private.invoke_schedule_dispatcher()'::regprocedure) like '%vault.decrypted_secrets%'
+  pg_get_functiondef('narrative_private.invoke_schedule_dispatcher()'::regprocedure) like '%schedule_dispatch_material%'
     and pg_get_functiondef('narrative_private.invoke_schedule_dispatcher()'::regprocedure) !~* 'https?://|bearer[[:space:]]+[a-z0-9._-]+|service[_ -]?role[[:space:]]*[:=]',
-  'dispatcher definition reads Vault and embeds no URL or bearer/service credential'
+  'dispatcher uses the tested Vault material boundary and embeds no URL or bearer/service credential'
 );
 
 insert into auth.users (
