@@ -87,7 +87,7 @@ export interface GenerationDependencies {
     providerResponseId: string; providerResponseModel: string; visibility: 'private'; continuityPolicyVersion: typeof CONTINUITY_POLICY_VERSION;
   }): Promise<{ draftId: string; versionId: string; status: 'generated' }>;
   abortGenerationAttempt(input: { jobId: string; attemptToken: string; idempotencyKey: string; failureCode: GenerationFailureCode }): Promise<AbortGenerationResult>;
-  auditFailure?(stage: string, error: unknown): void;
+  auditFailure?(stage: string): void;
 }
 
 export interface SupabaseRestConfig { url: string; anonKey: string; serviceRoleKey: string; fetch?: typeof globalThis.fetch }
@@ -238,6 +238,7 @@ function sameFrozenPolicy(loaded: TrustedGenerationPolicy, frozen: FrozenGenerat
 const stableConflictCodes = new Set([
   'duplicate_generation', 'stale_transition', 'stale_version', 'workflow_phase_not_approved',
   'mode_kind_mismatch', 'active_provider_setting_required', 'context_budget_too_small', 'stale_attempt',
+  'stale_provider_pricing',
 ]);
 
 function mapPersistence(error: unknown, fallbackCode = 'internal_error'): GenerationError {
@@ -251,14 +252,13 @@ async function abortAfterFreeze(
   command: GenerationCommand,
   attemptToken: string,
   failureCode: GenerationFailureCode,
-  error: unknown,
   response: GenerationError,
 ): Promise<GenerationResponse> {
-  try { deps.auditFailure?.(failureCode, error); } catch { /* audit logging cannot suppress cleanup */ }
+  try { deps.auditFailure?.(failureCode); } catch { /* audit logging cannot suppress cleanup */ }
   let outcome: AbortGenerationResult;
   try { outcome = await deps.abortGenerationAttempt({ jobId: command.jobId, attemptToken, idempotencyKey: command.idempotencyKey, failureCode }); }
   catch (cleanupError) {
-    try { deps.auditFailure?.('abort_generation_failed', cleanupError); } catch { /* preserve the cleanup error */ }
+    try { deps.auditFailure?.('abort_generation_failed'); } catch { /* preserve the cleanup error */ }
     throw mapPersistence(cleanupError);
   }
   if (outcome.outcome === 'completed') return outcome.result;
@@ -287,19 +287,19 @@ export async function runGeneration(deps: GenerationDependencies, command: Gener
   let frozenPolicy: FrozenGenerationPolicy;
   try {
     frozenPolicy = await deps.freezeContext({ ownerId, jobId: command.jobId, draftId: command.draftId, idempotencyKey: command.idempotencyKey, mode: command.mode, contextVersionIds: selection.versionIds, contextSnapshot: snapshot, providerSettingId: loadedPolicy.providerSettingId, attemptToken });
-  } catch (error) { return abortAfterFreeze(deps, command, attemptToken, 'freeze_failed', error, mapPersistence(error)); }
+  } catch (error) { return abortAfterFreeze(deps, command, attemptToken, 'freeze_failed', mapPersistence(error)); }
   let continuityContext: ContinuityContext;
   try {
     if (frozenPolicy.attemptToken !== attemptToken || !sameFrozenPolicy(loadedPolicy, frozenPolicy, command)
       || estimateWorstCaseCostMicros(frozenPolicy, command.mode) !== frozenPolicy.worstCaseCostMicros) throw new GenerationError(500, 'invalid_provider_setting');
     const frozenSelection = selectionFromSnapshot(frozenPolicy.contextVersionIds, frozenPolicy.contextSnapshot);
     continuityContext = buildFrozenContinuityContext(frozenSelection);
-  } catch (error) { return abortAfterFreeze(deps, command, attemptToken, 'frozen_validation_failed', error, mapPersistence(error)); }
+  } catch (error) { return abortAfterFreeze(deps, command, attemptToken, 'frozen_validation_failed', mapPersistence(error)); }
 
   let reservation: Awaited<ReturnType<GenerationDependencies['reserveAndStart']>>;
   try { reservation = await deps.reserveAndStart({ jobId: command.jobId, draftId: command.draftId, attemptToken, worstCaseCostMicros: frozenPolicy.worstCaseCostMicros }); }
-  catch (error) { return abortAfterFreeze(deps, command, attemptToken, 'reservation_failed', error, mapPersistence(error)); }
-  if (reservation.status === 'blocked') return abortAfterFreeze(deps, command, attemptToken, 'budget_blocked', new Error('budget blocked'), new GenerationError(402, 'budget_blocked', { budgetStatus: reservation.budgetStatus, remainingMicros: reservation.remainingMicros }));
+  catch (error) { return abortAfterFreeze(deps, command, attemptToken, 'reservation_failed', mapPersistence(error)); }
+  if (reservation.status === 'blocked') return abortAfterFreeze(deps, command, attemptToken, 'budget_blocked', new GenerationError(402, 'budget_blocked', { budgetStatus: reservation.budgetStatus, remainingMicros: reservation.remainingMicros }));
 
   const outputCap = command.mode === 'revise_selection' ? Math.min(frozenPolicy.maxOutputTokens, frozenPolicy.maxRevisionOutputTokens) : frozenPolicy.maxOutputTokens;
   const request: GenerationRequest = {
@@ -314,30 +314,30 @@ export async function runGeneration(deps: GenerationDependencies, command: Gener
     const provider = await deps.resolveProvider(ownerId, loadedPolicy, frozenPolicy);
     raw = await provider.generate(request);
   }
-  catch (error) { return abortAfterFreeze(deps, command, attemptToken, 'provider_generation_failed', error, new GenerationError(502, 'provider_generation_failed')); }
+  catch { return abortAfterFreeze(deps, command, attemptToken, 'provider_generation_failed', new GenerationError(502, 'provider_generation_failed')); }
   let providerResponse: NarrativeProviderResponse;
   try { providerResponse = deps.parseProviderResponse(raw); }
-  catch (error) { return abortAfterFreeze(deps, command, attemptToken, 'provider_response_invalid', error, new GenerationError(502, 'provider_response_invalid')); }
+  catch { return abortAfterFreeze(deps, command, attemptToken, 'provider_response_invalid', new GenerationError(502, 'provider_response_invalid')); }
   let trustedActualCost: number;
   try { trustedActualCost = estimateActualCostMicros(frozenPolicy, providerResponse.usage); }
-  catch (error) { return abortAfterFreeze(deps, command, attemptToken, 'provider_usage_exceeds_reservation', error, new GenerationError(502, 'provider_usage_exceeds_reservation')); }
-  if (providerResponse.result.kind !== command.kind) return abortAfterFreeze(deps, command, attemptToken, 'provider_result_kind_mismatch', new Error('kind mismatch'), new GenerationError(502, 'provider_result_kind_mismatch'));
+  catch { return abortAfterFreeze(deps, command, attemptToken, 'provider_usage_exceeds_reservation', new GenerationError(502, 'provider_usage_exceeds_reservation')); }
+  if (providerResponse.result.kind !== command.kind) return abortAfterFreeze(deps, command, attemptToken, 'provider_result_kind_mismatch', new GenerationError(502, 'provider_result_kind_mismatch'));
   if (providerResponse.usage.inputTokens > frozenPolicy.maxInputTokens
     || providerResponse.usage.outputTokens > outputCap
     || trustedActualCost > frozenPolicy.worstCaseCostMicros) {
-    return abortAfterFreeze(deps, command, attemptToken, 'provider_usage_exceeds_reservation', new Error('usage exceeds reservation'), new GenerationError(502, 'provider_usage_exceeds_reservation'));
+    return abortAfterFreeze(deps, command, attemptToken, 'provider_usage_exceeds_reservation', new GenerationError(502, 'provider_usage_exceeds_reservation'));
   }
 
   let continuity: ContinuityCheck;
   try { continuity = deps.checkContinuity(providerResponse.result, continuityContext); }
-  catch (error) { return abortAfterFreeze(deps, command, attemptToken, 'continuity_check_failed', error, new GenerationError(500, 'continuity_check_failed')); }
+  catch { return abortAfterFreeze(deps, command, attemptToken, 'continuity_check_failed', new GenerationError(500, 'continuity_check_failed')); }
   const actualCostMicros = trustedActualCost;
   try {
     const stored = await deps.finalizeSuccess({ ownerId, jobId: command.jobId, draftId: command.draftId, attemptToken, result: providerResponse.result, usage: providerResponse.usage, actualCostMicros, contextVersionIds: frozenPolicy.contextVersionIds, continuityLevel: continuity.level, findings: continuity.findings, providerResponseId: providerResponse.rawId, providerResponseModel: providerResponse.responseModel, visibility: 'private', continuityPolicyVersion: CONTINUITY_POLICY_VERSION });
     return { ...stored, continuityLevel: continuity.level };
   } catch (error) {
     const mapped = mapPersistence(error, 'finalization_failed');
-    return abortAfterFreeze(deps, command, attemptToken, 'finalization_failed', error, mapped);
+    return abortAfterFreeze(deps, command, attemptToken, 'finalization_failed', mapped);
   }
 }
 
@@ -503,7 +503,7 @@ export function createSupabaseGenerationDependencies(
       return { draftId: version.draft_id ?? input.draftId, versionId: version.id, status: 'generated' };
     },
     abortGenerationAttempt: async (input) => abortResultSchema.parse(await rpc('abort_generation_attempt', { p_job_id: input.jobId, p_attempt_token: input.attemptToken, p_idempotency_key: input.idempotencyKey, p_failure_code: input.failureCode })),
-    auditFailure: (stage, error) => console.error(`generate-draft ${stage}`, error),
+    auditFailure: (stage) => console.error('generate-draft failure', { stage }),
   };
 }
 

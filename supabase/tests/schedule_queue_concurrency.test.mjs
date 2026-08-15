@@ -3,7 +3,9 @@ import { randomUUID } from 'node:crypto';
 
 const container = 'supabase_db_cheonmu-narrative';
 const scheduleKey = `schedule-race-${randomUUID()}`;
+const scheduleId = randomUUID();
 const scheduledFor = '2026-08-14T17:00:00Z';
+const persistedScheduleKey = `10000000-0000-0000-0000-000000000001:${scheduleKey}:2026-08-15`;
 
 function runPsql(sql, onStdout) {
   return new Promise((resolve, reject) => {
@@ -20,9 +22,19 @@ function runPsql(sql, onStdout) {
   });
 }
 
-const queueCall = `select (public.queue_narrative_schedule_job(
-  '10000000-0000-0000-0000-000000000001', '${scheduleKey}', '${scheduledFor}',
-  '{"kind":"daily_event","source":"schedule"}'::jsonb
+const setup = await runPsql(`
+insert into public.schedules (
+  id, owner_id, schedule_key, schedule_type, cron_expression, enabled, payload,
+  seoul_time, minimum_interval_minutes
+) values (
+  '${scheduleId}', '10000000-0000-0000-0000-000000000001', '${scheduleKey}',
+  'automatic', '0 2 * * *', true, '{"kind":"daily_event"}'::jsonb, '02:00', 60
+);
+`);
+if (setup.code !== 0) throw new Error(`schedule race fixture setup failed\n${setup.stdout}\n${setup.stderr}`);
+
+const queueCall = `select (public.queue_due_narrative_schedule_job(
+  '10000000-0000-0000-0000-000000000001', '${scheduleId}', '${scheduledFor}'
 )).id;`;
 
 let releaseSecond;
@@ -66,9 +78,15 @@ if (!firstJobId || firstJobId !== secondJobId) {
 const verification = await runPsql(`
 select concat(count(*), ',', min(id::text), ',', max(id::text))
 from public.generation_jobs
-where schedule_key = '${scheduleKey}' and scheduled_for = '${scheduledFor}';
+where schedule_key = '${persistedScheduleKey}' and scheduled_for = '${scheduledFor}';
 `);
 if (verification.code !== 0 || !verification.stdout.includes(`1,${firstJobId},${firstJobId}`)) {
   throw new Error(`schedule race persisted an invalid result\n${verification.stdout}\n${verification.stderr}`);
 }
-console.log('PASS: direct schedule queue race returns one identical persisted row from both connections.');
+const cleanup = await runPsql(`
+delete from public.generation_jobs
+where schedule_key = '${persistedScheduleKey}' and scheduled_for = '${scheduledFor}';
+delete from public.schedules where id = '${scheduleId}';
+`);
+if (cleanup.code !== 0) throw new Error(`schedule race fixture cleanup failed\n${cleanup.stdout}\n${cleanup.stderr}`);
+console.log('PASS: atomic due-schedule queue race returns one identical persisted row from both connections.');

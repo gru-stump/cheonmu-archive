@@ -1,24 +1,25 @@
 import { describe, expect, it } from 'vitest';
-import { createScheduleHandler, createSupabaseScheduleDependencies, evaluateAccessTrigger, runSchedules, type ScheduleDependencies } from './index.ts';
+import { createScheduleHandler, createSupabaseScheduleDependencies, evaluateAccessTrigger, runSchedules, type QueuedJob, type ScheduleDependencies } from './index.ts';
 import { createCorsPolicy } from '../_shared/cors.ts';
 
 function harness(overrides: Partial<ScheduleDependencies> = {}) {
   const inserted: Array<Record<string, unknown>> = [];
   const events: string[] = [];
   const byIdempotencyKey = new Map<string, Record<string, unknown>>();
+  const store = async (job: Omit<QueuedJob, 'id'>) => {
+    const key = `${job.scheduleKey}:${job.scheduledFor}`;
+    const existing = byIdempotencyKey.get(key); if (existing) return existing as QueuedJob;
+    const created = { id: `job-${inserted.length + 1}`, ...job }; byIdempotencyKey.set(key, created); inserted.push(created); return created;
+  };
   const deps: ScheduleDependencies = {
     now: () => new Date('2026-08-14T00:00:00Z'),
     authenticate: async (token) => { events.push('authenticate'); return token === 'token' ? { ownerId: 'owner-1' } : null; },
     listSchedules: async () => [{ ownerId: 'owner-1', scheduleKey: 'daily', scheduleType: 'automatic', cronExpression: '0 9 * * *', enabled: true, payload: { kind: 'daily_event' } }, { ownerId: 'owner-1', scheduleKey: 'weekly', scheduleType: 'automatic', cronExpression: '0 9 * * 1', enabled: true, payload: { kind: 'daily_event' } }, { ownerId: 'owner-1', scheduleKey: 'manual', scheduleType: 'manual', cronExpression: null, enabled: true, payload: { kind: 'short_dialogue' } }],
     budgetState: async () => 'normal',
-    insertQueuedJob: async (job) => {
-      const key = `${job.scheduleKey}:${job.scheduledFor}`;
-      const existing = byIdempotencyKey.get(key); if (existing) return existing as Awaited<ReturnType<ScheduleDependencies['insertQueuedJob']>>;
-      const created = { id: `job-${inserted.length + 1}`, ...job }; byIdempotencyKey.set(key, created); inserted.push(created); return created;
-    },
+    queueScheduleJob: async (schedule, scheduledFor) => store({ ownerId: schedule.ownerId, scheduleKey: `${schedule.ownerId}:${schedule.scheduleKey}:${new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul' }).format(new Date(scheduledFor))}`, scheduledFor, payload: { kind: schedule.payload.kind, source: 'schedule' } }),
     queueAccessJob: async (ownerId, now) => {
       events.push('queue-access');
-      return deps.insertQueuedJob({ ownerId, scheduleKey: `access:${ownerId}`, scheduledFor: new Date(Math.floor(now.getTime() / 60_000) * 60_000).toISOString(), payload: { kind: 'short_dialogue', source: 'access' } });
+      return store({ ownerId, scheduleKey: `access:${ownerId}`, scheduledFor: new Date(Math.floor(now.getTime() / 60_000) * 60_000).toISOString(), payload: { kind: 'short_dialogue', source: 'access' } });
     },
     ...overrides,
   };
@@ -90,6 +91,20 @@ describe('runSchedules', () => {
     const early = harness({ now: () => new Date('2026-09-07T12:29:00Z'), listSchedules: async () => [special] });
     await runSchedules(early.deps);
     expect(early.inserted).toEqual([]);
+  });
+
+  it('uses the stored last queue time and minimum interval at blocked and exact eligible boundaries', async () => {
+    const schedule = {
+      ownerId: 'owner-1', scheduleKey: 'two-day', scheduleType: 'automatic' as const,
+      cronExpression: '0 9 * * *', enabled: true, payload: { kind: 'daily_event' as const },
+      minimumIntervalMinutes: 2880, lastQueuedAt: '2026-08-14T00:00:00Z',
+    };
+    const blocked = harness({ now: () => new Date('2026-08-15T00:00:00Z'), listSchedules: async () => [schedule] });
+    await expect(runSchedules(blocked.deps)).resolves.toEqual([]);
+    expect(blocked.inserted).toEqual([]);
+
+    const eligible = harness({ now: () => new Date('2026-08-16T00:00:00Z'), listSchedules: async () => [schedule] });
+    await expect(runSchedules(eligible.deps)).resolves.toHaveLength(1);
   });
 
   it('does not consume a quarantined disabled legacy expression', async () => {
@@ -190,6 +205,27 @@ describe('evaluateAccessTrigger', () => {
       { path: '/auth/v1/user', authorization: 'Bearer user-token', body: null },
       { path: '/rest/v1/rpc/queue_narrative_access_job', authorization: 'Bearer service-secret', body: { p_owner_id: 'owner-1', p_now: expect.any(String) } },
     ]);
+  });
+
+  it('dispatches through the atomic due-schedule RPC with the persisted schedule id', async () => {
+    const seen: Array<{ path: string; body: unknown }> = [];
+    const fetch: typeof globalThis.fetch = async (input, init) => {
+      const path = new URL(String(input)).pathname;
+      const body = init?.body ? JSON.parse(String(init.body)) : null;
+      seen.push({ path, body });
+      if (path === '/rest/v1/schedules') return Response.json([{ id: 'schedule-1', owner_id: 'owner-1', schedule_key: 'daily', schedule_type: 'automatic', cron_expression: '0 9 * * *', enabled: true, payload: { kind: 'daily_event' }, special_date: null, seoul_time: '09:00:00', minimum_interval_minutes: 60, last_queued_at: null }]);
+      if (path === '/rest/v1/rpc/narrative_schedule_budget_state') return Response.json('normal');
+      if (path === '/rest/v1/rpc/queue_due_narrative_schedule_job') return Response.json({ id: 'job-1', owner_id: 'owner-1', schedule_key: 'owner-1:daily:2026-08-14', scheduled_for: '2026-08-14T00:00:00+00:00', payload: { kind: 'daily_event', source: 'schedule' } });
+      return Response.json({ code: 'P0001', message: 'unexpected_non_atomic_queue_path' }, { status: 409 });
+    };
+    const deps = createSupabaseScheduleDependencies({ url: 'http://supabase', anonKey: 'anon', serviceRoleKey: 'service-secret', fetch }, '');
+    deps.now = () => new Date('2026-08-14T00:00:00Z');
+
+    await expect(runSchedules(deps)).resolves.toHaveLength(1);
+    expect(seen.find(({ path }) => path === '/rest/v1/rpc/queue_due_narrative_schedule_job')?.body).toEqual({
+      p_owner_id: 'owner-1', p_schedule_id: 'schedule-1', p_scheduled_for: '2026-08-14T00:00:00.000Z',
+    });
+    expect(seen.some(({ path }) => path === '/rest/v1/rpc/queue_narrative_schedule_job')).toBe(false);
   });
 
   it.each(['access_interval_not_elapsed', 'daily_access_limit', 'budget_risk'])('preserves the atomic RPC conflict %s without exposing persistence details', async (code) => {

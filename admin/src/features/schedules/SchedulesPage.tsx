@@ -20,8 +20,10 @@ function ScheduleForm({ api, schedule, onSaved }: { api: NarrativeApi; schedule:
   const [message, setMessage] = useState<string | null>(null);
   const save = async (event: FormEvent) => {
     event.preventDefault(); setMessage(null);
-    try { await api.saveSchedule(draft); setMessage('일정을 저장했습니다.'); await onSaved(); }
-    catch { setMessage('일정을 저장하지 못했습니다. 단가 확인일과 자동화 설정을 확인해 주세요.'); }
+    try { await api.saveSchedule(draft); }
+    catch { setMessage('일정을 저장하지 못했습니다. 단가 확인일과 자동화 설정을 확인해 주세요.'); return; }
+    try { await onSaved(); setMessage('일정을 저장했습니다.'); }
+    catch { setMessage('저장했지만 최신 일정을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.'); }
   };
   return <article className="settings-card">
     <form onSubmit={save}>

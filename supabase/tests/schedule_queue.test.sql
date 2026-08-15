@@ -1,7 +1,8 @@
 begin;
-select plan(19);
+select plan(20);
 
 select has_function('public', 'queue_narrative_schedule_job', array['uuid', 'text', 'timestamp with time zone', 'jsonb'], 'schedule queue RPC exists');
+select has_function('public', 'queue_due_narrative_schedule_job', array['uuid', 'uuid', 'timestamp with time zone'], 'atomic due-schedule queue RPC exists');
 select has_function('public', 'narrative_schedule_budget_state', array['uuid'], 'budget state RPC exists');
 select has_function('public', 'queue_narrative_access_job', array['uuid', 'timestamp with time zone'], 'atomic access queue RPC exists');
 select has_function('narrative_private', 'invoke_schedule_dispatcher', array[]::text[], 'Vault-backed dispatcher exists');
@@ -41,6 +42,13 @@ from unnest(array[
   '81000000-0000-0000-0000-000000000006'::uuid
 ]) with ordinality as fixture(id, ordinality);
 
+insert into public.narrative_admin_settings (owner_id, manual_call_limit)
+values ('81000000-0000-0000-0000-000000000004', 1);
+
+update public.schedules
+set enabled = true, last_queued_at = null
+where id = '14000000-0000-0000-0000-000000000001';
+
 insert into public.generation_jobs (id, owner_id, schedule_key, scheduled_for, status, created_at)
 values
   ('83000000-0000-0000-0000-000000000001', '81000000-0000-0000-0000-000000000002', 'access:81000000-0000-0000-0000-000000000002', '2026-08-14T10:00:00Z', 'queued', '2026-08-14T10:00:00Z'),
@@ -67,16 +75,16 @@ values
 select set_config('request.jwt.claim.role', 'service_role', true);
 set local role service_role;
 select lives_ok(
-  $$ select public.queue_narrative_schedule_job('10000000-0000-0000-0000-000000000001', 'schedule-test', '2026-08-13T15:00:00Z', '{"kind":"daily_event","source":"schedule"}'::jsonb) $$,
-  'service role queues a schedule job'
+  $$ select public.queue_due_narrative_schedule_job('10000000-0000-0000-0000-000000000001', '14000000-0000-0000-0000-000000000001', '2026-08-15T00:00:00Z') $$,
+  'service role queues a due schedule job through the atomic policy boundary'
 );
 select is(
-  (select count(*)::integer from public.generation_jobs where schedule_key = 'schedule-test' and scheduled_for = '2026-08-13T15:00:00Z'),
+  (select count(*)::integer from public.generation_jobs where schedule_key = '10000000-0000-0000-0000-000000000001:daily-local-fixture:2026-08-15' and scheduled_for = '2026-08-15T00:00:00Z'),
   1, 'queue insertion stores one job'
 );
 select is(
-  (select (public.queue_narrative_schedule_job('10000000-0000-0000-0000-000000000001', 'schedule-test', '2026-08-13T15:00:00Z', '{"kind":"daily_event","source":"schedule"}'::jsonb)).id::text),
-  (select id::text from public.generation_jobs where schedule_key = 'schedule-test' and scheduled_for = '2026-08-13T15:00:00Z'),
+  (select (public.queue_due_narrative_schedule_job('10000000-0000-0000-0000-000000000001', '14000000-0000-0000-0000-000000000001', '2026-08-15T00:00:00Z')).id::text),
+  (select id::text from public.generation_jobs where schedule_key = '10000000-0000-0000-0000-000000000001:daily-local-fixture:2026-08-15' and scheduled_for = '2026-08-15T00:00:00Z'),
   'same schedule key and timestamp return the existing queue job'
 );
 

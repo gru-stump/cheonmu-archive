@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { GenerationResult } from '../../../shared/narrative/contracts';
 import type { ContextSelection, NarrativeMemory } from '../_shared/context';
 import { FakeNarrativeProvider } from '../_shared/fake-provider';
@@ -249,6 +249,31 @@ describe('runGeneration', () => {
     await expect(runGeneration(h.deps, baseCommand)).rejects.toMatchObject({ status: 502, code: 'provider_generation_failed', details: undefined });
     expect(h.aborts).toMatchObject([{ failureCode: 'provider_generation_failed' }]);
     expect(h.events.filter((event) => event === 'abort')).toHaveLength(1);
+  });
+
+  it('logs only a stable failure code when a provider error contains secret material', async () => {
+    const sentinel = 'provider-secret-sentinel-must-never-be-logged';
+    const logged: unknown[][] = [];
+    const error = vi.spyOn(console, 'error').mockImplementation((...values) => { logged.push(values); });
+    try {
+      const adapter = createSupabaseGenerationDependencies(
+        { url: 'http://supabase', anonKey: 'anon', serviceRoleKey: 'service-secret', fetch: async () => Response.json({}) },
+        'token',
+        async () => ({ generate: async () => { throw new Error(sentinel); } }),
+      );
+      const h = harness({
+        provider: { generate: async () => { throw new Error(sentinel); } },
+        auditFailure: adapter.auditFailure,
+      });
+      await expect(runGeneration(h.deps, baseCommand)).rejects.toMatchObject({ code: 'provider_generation_failed' });
+      const rendered = logged.flat().map((value) => value instanceof Error
+        ? `${value.name}:${value.message}`
+        : value && typeof value === 'object' ? JSON.stringify(value) : String(value)).join(' ');
+      expect(rendered).toContain('provider_generation_failed');
+      expect(rendered).not.toContain(sentinel);
+    } finally {
+      error.mockRestore();
+    }
   });
 
   it('rejects provider kind mismatch and fails with known usage', async () => {

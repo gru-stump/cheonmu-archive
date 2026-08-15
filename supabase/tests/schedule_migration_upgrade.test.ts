@@ -98,6 +98,18 @@ insert into public.schedules (id, owner_id, schedule_key, cron_expression, enabl
   ('89000000-0000-0000-0000-000000000012', '${ownerId}', 'legacy-unsupported', '*/15 9 * * *', true, '{"kind":"daily_event"}'::jsonb),
   ('89000000-0000-0000-0000-000000000013', '${ownerId}', 'legacy-daily', '0 9 * * *', true, '{"kind":"daily_event"}'::jsonb),
   ('89000000-0000-0000-0000-000000000014', '${ownerId}', 'legacy-weekly', '0 9 * * 1', true, '{"kind":"daily_event"}'::jsonb);
+
+insert into public.owner_profiles (owner_id, display_name)
+values ('${ownerId}', 'Legacy upgrade owner');
+
+insert into public.provider_settings (
+  id, owner_id, provider_key, enabled, configuration, model_key,
+  max_input_tokens, max_output_tokens, max_revision_output_tokens,
+  input_cost_micros_per_million, output_cost_micros_per_million, fixed_cost_micros
+) values (
+  '89000000-0000-0000-0000-000000000020', '${ownerId}', 'openai', true,
+  '{"apiKeyEnv":"LEGACY_TEST_KEY"}'::jsonb, 'legacy-model', 4096, 1024, 256, 1000000, 2000000, 0
+);
 `));
 
   await requireSuccess(
@@ -124,6 +136,14 @@ insert into public.schedules (id, owner_id, schedule_key, cron_expression, enabl
     await scalar("select concat(to_regprocedure('public.save_narrative_settings(boolean,text,jsonb,bigint,bigint,integer,integer,integer,numeric,integer)') is not null, '|', has_function_privilege('authenticated', 'public.save_narrative_settings(boolean,text,jsonb,bigint,bigint,integer,integer,integer,numeric,integer)', 'EXECUTE'), '|', not has_function_privilege('anon', 'public.save_narrative_settings(boolean,text,jsonb,bigint,bigint,integer,integer,integer,numeric,integer)', 'EXECUTE'), '|', has_function_privilege('service_role', 'public.store_narrative_secret(uuid,text,text)', 'EXECUTE'), '|', not has_function_privilege('authenticated', 'public.store_narrative_secret(uuid,text,text)', 'EXECUTE'));"),
     't|t|t|t|t',
     'upgrade must install owner settings commands while keeping Vault writes service-only',
+  );
+  assert.equal(
+    await scalar(`select concat(provider.enabled, '|', provider.pricing_verified_at, '|', admin.automation_enabled)
+      from public.provider_settings as provider
+      join public.narrative_admin_settings as admin on admin.owner_id = provider.owner_id
+      where provider.owner_id = '${ownerId}' and provider.provider_key = 'openai';`),
+    'f|1970-01-01|f',
+    'legacy prices must migrate stale with automation disabled until the owner verifies them',
   );
 
   const rows = JSON.parse(await scalar(`
@@ -165,7 +185,13 @@ where owner_id = '${ownerId}';
     authenticate: async () => null,
     listSchedules: async () => rows,
     budgetState: async () => 'normal',
-    insertQueuedJob: async (job) => {
+    queueScheduleJob: async (schedule, scheduledFor) => {
+      const job: Omit<QueuedJob, 'id'> = {
+        ownerId: schedule.ownerId,
+        scheduleKey: `${schedule.ownerId}:${schedule.scheduleKey}:2026-08-17`,
+        scheduledFor,
+        payload: { kind: schedule.payload.kind, source: 'schedule' },
+      };
       queued.push(job);
       return { id: `upgrade-job-${queued.length}`, ...job };
     },

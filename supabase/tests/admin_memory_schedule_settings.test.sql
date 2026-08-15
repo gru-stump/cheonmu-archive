@@ -1,10 +1,11 @@
 begin;
 
-select plan(40);
+select plan(58);
 
 select has_column('public', 'memory_items', 'supersedes_memory_item_id', 'memory corrections retain an immutable predecessor link');
 select has_column('public', 'schedules', 'special_date', 'special dates are relational schedule state');
 select has_column('public', 'schedules', 'minimum_interval_minutes', 'minimum schedule interval is relational state');
+select has_column('public', 'schedules', 'last_queued_at', 'minimum interval uses a transactionally maintained queue timestamp');
 select has_column('public', 'provider_settings', 'pricing_verified_at', 'provider pricing has a verified date');
 select has_table('public', 'narrative_admin_settings', 'owner automation and budget policy have one settings row');
 select has_function('public', 'get_narrative_memory', array[]::text[], 'memory is read through an owner command');
@@ -12,6 +13,7 @@ select has_function('public', 'set_narrative_memory_enabled', array['uuid', 'boo
 select has_function('public', 'correct_narrative_memory', array['uuid', 'text', 'text'], 'memory correction appends through a narrow command');
 select has_function('public', 'get_narrative_schedules', array[]::text[], 'schedule reads use an owner command');
 select has_function('public', 'save_narrative_schedule', array['uuid', 'text', 'text', 'boolean', 'text', 'integer', 'date', 'integer', 'text'], 'schedule writes use one validated owner command');
+select has_function('public', 'queue_due_narrative_schedule_job', array['uuid', 'uuid', 'timestamp with time zone'], 'due schedule queueing has one atomic policy boundary');
 select has_function('public', 'get_narrative_settings', array[]::text[], 'settings reads have a secret-free owner command');
 select has_function('public', 'save_narrative_settings', array['boolean', 'text', 'jsonb', 'bigint', 'bigint', 'integer', 'integer', 'integer', 'numeric', 'integer'], 'provider and budget policy save atomically');
 select ok(
@@ -52,6 +54,18 @@ select lives_ok(
 select is((select content from public.memory_items where id = 'b1000000-0000-0000-0000-000000000001'), '옛 약속', 'correction never overwrites the old content');
 select is((select count(*) from public.memory_items where supersedes_memory_item_id = 'b1000000-0000-0000-0000-000000000001' and content = '치료실에서 다시 만나기로 한 약속'), 1::bigint, 'correction history points at its immutable predecessor');
 select is(public.get_narrative_memory() -> 'continuity' -> 0 -> 'correctionHistory' -> 0 ->> 'note', '장소 명시', 'memory reads attach each immutable correction note to the replaced content');
+select lives_ok(
+  $$ select public.set_narrative_memory_enabled((select id from public.memory_items where supersedes_memory_item_id = 'b1000000-0000-0000-0000-000000000001'), false) $$,
+  'a corrected memory can be disabled independently'
+);
+select lives_ok(
+  $$ select public.correct_narrative_memory((select id from public.memory_items where supersedes_memory_item_id = 'b1000000-0000-0000-0000-000000000001'), '비활성 상태에서 교정한 약속', '상태 보존 확인') $$,
+  'a disabled memory can append another correction'
+);
+select is(
+  (select status || '|' || coalesce(metadata ->> 'adminPreviousStatus', '') from public.memory_items where content = '비활성 상태에서 교정한 약속'),
+  'inactive|approved', 'correction preserves both disabled state and its restorable previous status'
+);
 
 select lives_ok(
   $$ select public.review_draft_atomic('b2000000-0000-0000-0000-000000000001', 'b3000000-0000-0000-0000-000000000001', 'reviewing', 'reject', '정사와 맞지 않음', 'task-3-reject', 'cheonmu-continuity-v1') $$,
@@ -97,6 +111,120 @@ select lives_ok($$
 $$, 'a fresh-priced special date can be enabled in Seoul time');
 select ok((public.get_narrative_schedules() -> 'schedules' -> 0 ->> 'seoulTime') ~ '^\d{2}:\d{2}$', 'schedule reads return a Seoul local wall-clock time');
 select ok((public.get_narrative_schedules()::text like '%2026-09-07%') and (public.get_narrative_schedules()::text like '%minimumIntervalMinutes%'), 'schedule response includes special date and minimum interval');
+
+select lives_ok($$
+  select public.save_narrative_schedule(null, 'two-day', 'automatic', true, '09:00', null, null, 2880, 'daily_event')
+$$, 'a two-day minimum interval schedule can be configured');
+reset role;
+select set_config('request.jwt.claim.role', 'service_role', true);
+set local role service_role;
+select lives_ok($$
+  select public.queue_due_narrative_schedule_job(
+    '10000000-0000-0000-0000-000000000001',
+    (select id from public.schedules where owner_id = '10000000-0000-0000-0000-000000000001' and schedule_key = 'two-day'),
+    '2026-08-15T00:00:00Z'
+  )
+$$, 'the first due schedule queues through the atomic boundary');
+select throws_ok($$
+  select public.queue_due_narrative_schedule_job(
+    '10000000-0000-0000-0000-000000000001',
+    (select id from public.schedules where owner_id = '10000000-0000-0000-0000-000000000001' and schedule_key = 'two-day'),
+    '2026-08-16T00:00:00Z'
+  )
+$$, 'P0001', 'schedule_interval_not_elapsed', 'a daily cron cannot bypass a two-day minimum interval');
+select lives_ok($$
+  select public.queue_due_narrative_schedule_job(
+    '10000000-0000-0000-0000-000000000001',
+    (select id from public.schedules where owner_id = '10000000-0000-0000-0000-000000000001' and schedule_key = 'two-day'),
+    '2026-08-17T00:00:00Z'
+  )
+$$, 'the exact minimum interval boundary is eligible');
+reset role;
+select set_config('request.jwt.claim.role', 'authenticated', true);
+select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000001', true);
+set local role authenticated;
+select ok(
+  (select (item ->> 'nextRunAt')::timestamptz from jsonb_array_elements(public.get_narrative_schedules() -> 'schedules') as item where item ->> 'scheduleKey' = 'two-day') = '2026-08-19T00:00:00Z'::timestamptz,
+  'next run uses the same two-day interval rule as queueing'
+);
+
+reset role;
+update public.provider_settings set pricing_verified_at = date '2026-08-01'
+where owner_id = '10000000-0000-0000-0000-000000000001' and provider_key = 'openai';
+select set_config('request.jwt.claim.role', 'service_role', true);
+set local role service_role;
+select throws_ok($$
+  select public.queue_due_narrative_schedule_job(
+    '10000000-0000-0000-0000-000000000001',
+    (select id from public.schedules where owner_id = '10000000-0000-0000-0000-000000000001' and schedule_key = 'memorial'),
+    '2026-09-07T12:30:00Z'
+  )
+$$, 'P0001', 'stale_provider_pricing', 'queueing rechecks provider freshness at the advanced Seoul business date');
+reset role;
+update public.provider_settings set pricing_verified_at = date '2026-08-15'
+where owner_id = '10000000-0000-0000-0000-000000000001' and provider_key = 'openai';
+select set_config('request.jwt.claim.role', 'authenticated', true);
+select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000001', true);
+set local role authenticated;
+
+select lives_ok($$
+  select public.save_narrative_settings(true, 'openai', '[]', 4000, 4000, 0, 10, 20, 1380.5, 30)
+$$, 'non-default manual, warning, and risk policy can be saved');
+reset role;
+select set_config('request.jwt.claim.role', 'service_role', true);
+set local role service_role;
+select is(public.narrative_schedule_budget_state('10000000-0000-0000-0000-000000000001'), 'warning', 'the configured 10 percent warning threshold affects scheduling');
+select throws_ok(
+  $$ select public.queue_narrative_access_job('10000000-0000-0000-0000-000000000001', '2026-08-15T06:00:00Z') $$,
+  'P0001', 'daily_access_limit', 'the configured zero manual-count limit affects atomic access queueing'
+);
+reset role;
+insert into public.budget_entries (owner_id, budget_period_id, amount_micros, entry_type, daily_bucket_date, description)
+select '10000000-0000-0000-0000-000000000001', id, 400, 'reservation', date '2026-08-15', 'custom risk threshold fixture'
+from public.budget_periods where owner_id = '10000000-0000-0000-0000-000000000001';
+select set_config('request.jwt.claim.role', 'service_role', true);
+set local role service_role;
+select is(public.narrative_schedule_budget_state('10000000-0000-0000-0000-000000000001'), 'risk', 'the configured 20 percent risk threshold affects scheduling before the hard limit');
+select throws_ok($$
+  select public.queue_due_narrative_schedule_job(
+    '10000000-0000-0000-0000-000000000001',
+    (select id from public.schedules where owner_id = '10000000-0000-0000-0000-000000000001' and schedule_key = 'memorial'),
+    '2026-09-07T12:30:00Z'
+  )
+$$, 'P0001', 'budget_risk', 'the atomic schedule queue blocks at the configured risk threshold');
+reset role;
+select set_config('request.jwt.claim.role', 'authenticated', true);
+select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000001', true);
+set local role authenticated;
+select lives_ok($$
+  select public.save_narrative_settings(true, 'openai', '[]', 200000000, 20000000, 3, 80, 95, 1380.5, 30)
+$$, 'runtime policy can be restored after non-default threshold checks');
+
+reset role;
+insert into public.drafts (id, owner_id, kind, title)
+values ('b2000000-0000-0000-0000-000000000002', '10000000-0000-0000-0000-000000000001', 'short_dialogue', 'stale reserve target');
+insert into public.generation_jobs (
+  id, owner_id, draft_id, schedule_key, scheduled_for, payload, idempotency_key,
+  provider_setting_id, worst_case_cost_micros, attempt_token
+)
+select 'b4000000-0000-0000-0000-000000000002', '10000000-0000-0000-0000-000000000001',
+  'b2000000-0000-0000-0000-000000000002', 'stale-reserve', now(), '{"source":"schedule"}', 'stale-reserve-key',
+  id, 1, 'b5000000-0000-4000-8000-000000000002'
+from public.provider_settings where owner_id = '10000000-0000-0000-0000-000000000001' and enabled;
+update public.provider_settings set pricing_verified_at = public.narrative_business_date(current_timestamp) - 31
+where owner_id = '10000000-0000-0000-0000-000000000001' and enabled;
+select set_config('request.jwt.claim.role', 'service_role', true);
+set local role service_role;
+select throws_ok(
+  $$ select public.reserve_and_start_generation('b4000000-0000-0000-0000-000000000002', 'b5000000-0000-4000-8000-000000000002', 1) $$,
+  'P0001', 'stale_provider_pricing', 'generation reservation atomically rechecks expired pricing before provider work'
+);
+reset role;
+update public.provider_settings set pricing_verified_at = public.narrative_business_date(current_timestamp)
+where owner_id = '10000000-0000-0000-0000-000000000001' and enabled;
+select set_config('request.jwt.claim.role', 'authenticated', true);
+select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000001', true);
+set local role authenticated;
 
 select lives_ok($$ select public.save_narrative_settings(false, null, '[]', 200000000, 20000000, 4, 80, 95, 1380.5, 30) $$, 'automation can be disabled explicitly');
 select is((select count(*) from public.provider_settings where owner_id = auth.uid() and enabled), 0::bigint, 'disabled automation permits no active provider');

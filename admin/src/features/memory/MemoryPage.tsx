@@ -11,9 +11,9 @@ function MemoryList({ api, items, readOnly, onChanged }: { api: NarrativeApi; it
     setMessage(null);
     try {
       await api.setMemoryEnabled({ memoryId: item.id, enabled: !item.enabled });
-      await onChanged();
-      setMessage('기억 사용 상태를 저장했습니다.');
-    } catch { setMessage('기억 사용 상태를 저장하지 못했습니다.'); }
+    } catch { setMessage('기억 사용 상태를 저장하지 못했습니다.'); return; }
+    try { await onChanged(); setMessage('기억 사용 상태를 저장했습니다.'); }
+    catch { setMessage('저장했지만 최신 기억을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.'); }
   };
   const correct = async (event: FormEvent, item: MemoryItem) => {
     event.preventDefault();
@@ -21,9 +21,9 @@ function MemoryList({ api, items, readOnly, onChanged }: { api: NarrativeApi; it
     try {
       await api.correctMemory({ memoryId: item.id, content, note });
       setCorrectingId(null); setContent(''); setNote('');
-      await onChanged();
-      setMessage('교정 이력을 추가했습니다.');
-    } catch { setMessage('교정 이력을 저장하지 못했습니다.'); }
+    } catch { setMessage('교정 이력을 저장하지 못했습니다.'); return; }
+    try { await onChanged(); setMessage('교정 이력을 추가했습니다.'); }
+    catch { setMessage('교정은 저장했지만 최신 기억을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.'); }
   };
 
   return <>

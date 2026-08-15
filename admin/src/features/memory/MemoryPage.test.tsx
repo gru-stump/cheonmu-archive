@@ -52,4 +52,16 @@ describe('MemoryPage', () => {
       memoryId: 'continuity-1', content: '치료실에서 다시 만나기로 한 약속', note: '장소를 명확히 함',
     }));
   });
+
+  it('distinguishes a successful mutation from a failed authoritative refresh', async () => {
+    const client = api();
+    client.getMemory = vi.fn().mockResolvedValueOnce(memory).mockRejectedValueOnce(new Error('refresh failed'));
+    const user = userEvent.setup();
+    render(<MemoryPage api={client} />);
+
+    await user.click(await screen.findByRole('button', { name: '치료실의 약속 비활성화' }));
+
+    expect(await screen.findByRole('status')).toHaveTextContent('저장했지만 최신 기억을 불러오지 못했습니다');
+    expect(screen.queryByText('기억 사용 상태를 저장하지 못했습니다.')).not.toBeInTheDocument();
+  });
 });

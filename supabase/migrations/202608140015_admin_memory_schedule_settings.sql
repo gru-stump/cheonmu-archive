@@ -45,15 +45,11 @@ before update or delete on public.memory_items
 for each row execute function narrative_private.reject_memory_history_mutation();
 
 alter table public.provider_settings
-  add column pricing_verified_at date;
+  add column pricing_verified_at date not null default date '1970-01-01';
 
 update public.provider_settings
-set pricing_verified_at = public.narrative_business_date(current_timestamp)
-where pricing_verified_at is null;
-
-alter table public.provider_settings
-  alter column pricing_verified_at set default public.narrative_business_date(current_timestamp),
-  alter column pricing_verified_at set not null;
+set enabled = false, updated_at = now()
+where enabled;
 
 create table public.narrative_admin_settings (
   owner_id uuid primary key references auth.users(id) on delete cascade,
@@ -68,10 +64,7 @@ create table public.narrative_admin_settings (
 );
 
 insert into public.narrative_admin_settings (owner_id, automation_enabled)
-select owner.owner_id, exists (
-  select 1 from public.provider_settings as setting
-  where setting.owner_id = owner.owner_id and setting.enabled
-)
+select owner.owner_id, false
 from public.owner_profiles as owner
 on conflict (owner_id) do nothing;
 
@@ -89,7 +82,8 @@ alter table public.schedules
   drop constraint schedules_supported_cron_check,
   add column special_date date,
   add column seoul_time time(0) without time zone not null default time '09:00',
-  add column minimum_interval_minutes integer not null default 60 check (minimum_interval_minutes between 1 and 525600);
+  add column minimum_interval_minutes integer not null default 60 check (minimum_interval_minutes between 1 and 525600),
+  add column last_queued_at timestamptz;
 
 update public.schedules
 set seoul_time = make_time(
@@ -99,6 +93,19 @@ set seoul_time = make_time(
 )
 where schedule_type = 'automatic'
   and cron_expression ~ '^([0-9]|[1-5][0-9]) ([0-9]|1[0-9]|2[0-3]) [*] [*] ([*]|[0-6])$';
+
+with queued as (
+  select job.owner_id, split_part(job.schedule_key, ':', 2) as schedule_key,
+    max(job.scheduled_for) as last_queued_at
+  from public.generation_jobs as job
+  where job.status in ('queued', 'running', 'completed', 'failed')
+    and split_part(job.schedule_key, ':', 1) = job.owner_id::text
+  group by job.owner_id, split_part(job.schedule_key, ':', 2)
+)
+update public.schedules as schedule
+set last_queued_at = queued.last_queued_at
+from queued
+where queued.owner_id = schedule.owner_id and queued.schedule_key = schedule.schedule_key;
 
 alter table public.schedules
   add constraint schedules_schedule_type_check check (schedule_type in ('automatic', 'manual', 'special')),
@@ -245,9 +252,7 @@ begin
     locked_memory.owner_id, locked_memory.memory_type, btrim(p_content), locked_memory.importance,
     locked_memory.metadata || jsonb_build_object('tokenCount', greatest(1, ceil(length(btrim(p_content)) / 4.0)::integer)),
     locked_memory.source_draft_version_id,
-    case when locked_memory.status = 'inactive' then
-      case when locked_memory.memory_type in ('continuity', 'summary') then 'approved' else 'active' end
-      else locked_memory.status end,
+    locked_memory.status,
     locked_memory.blocking, locked_memory.id, btrim(p_note)
   ) returning * into created_memory;
   insert into public.audit_events (owner_id, event_type, entity_type, entity_id, payload)
@@ -286,6 +291,8 @@ as $$
       when not schedule.enabled or schedule.schedule_type = 'manual' then null
       when schedule.schedule_type = 'special' then
         case when (schedule.special_date + schedule.seoul_time) at time zone 'Asia/Seoul' > now()
+          and (schedule.last_queued_at is null or (schedule.special_date + schedule.seoul_time) at time zone 'Asia/Seoul'
+            >= schedule.last_queued_at + make_interval(mins => schedule.minimum_interval_minutes))
           then (schedule.special_date + schedule.seoul_time) at time zone 'Asia/Seoul' else null end
       else (
         select min(candidate.local_minute at time zone 'Asia/Seoul')
@@ -298,6 +305,8 @@ as $$
           and extract(hour from candidate.local_minute)::integer = split_part(schedule.cron_expression, ' ', 2)::integer
           and (split_part(schedule.cron_expression, ' ', 5) = '*'
             or extract(dow from candidate.local_minute)::integer = split_part(schedule.cron_expression, ' ', 5)::integer)
+          and (schedule.last_queued_at is null or candidate.local_minute at time zone 'Asia/Seoul'
+            >= schedule.last_queued_at + make_interval(mins => schedule.minimum_interval_minutes))
       ) end
   ) order by schedule.schedule_key), '[]'::jsonb))
   from public.schedules as schedule
@@ -582,6 +591,256 @@ begin
 end;
 $$;
 
+create function narrative_private.schedule_budget_state_at(p_owner_id uuid, p_at timestamptz)
+returns text
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  active_period public.budget_periods;
+  admin_settings public.narrative_admin_settings;
+  active_provider public.provider_settings;
+  daily_used numeric;
+  period_used numeric;
+  usage_percent numeric;
+  warning_percent integer := 80;
+  risk_percent integer := 95;
+  business_date date;
+begin
+  if p_owner_id is null or p_at is null then return 'risk'; end if;
+  business_date := public.narrative_business_date(p_at);
+  select admin.* into admin_settings from public.narrative_admin_settings as admin
+  where admin.owner_id = p_owner_id for share;
+  if admin_settings.owner_id is not null then
+    warning_percent := admin_settings.warning_threshold_percent;
+    risk_percent := admin_settings.risk_threshold_percent;
+    if not admin_settings.automation_enabled then return 'risk'; end if;
+    select provider.* into active_provider from public.provider_settings as provider
+    where provider.owner_id = p_owner_id and provider.enabled for share;
+    if active_provider.id is null
+      or active_provider.pricing_verified_at < business_date - admin_settings.pricing_valid_days then
+      return 'risk';
+    end if;
+  end if;
+  select period.* into active_period
+  from public.budget_periods as period
+  where period.owner_id = p_owner_id and period.currency = 'USD'
+    and business_date between period.period_start and period.period_end
+  order by period.period_start desc, period.period_end asc, period.id limit 1 for share;
+  if active_period.id is null then return 'risk'; end if;
+  select coalesce(sum(entry.amount_micros), 0) into daily_used from public.budget_entries as entry
+  where entry.budget_period_id = active_period.id and entry.daily_bucket_date = business_date;
+  select coalesce(sum(entry.amount_micros), 0) into period_used from public.budget_entries as entry
+  where entry.budget_period_id = active_period.id;
+  usage_percent := greatest(
+    case when active_period.daily_limit_micros = 0 then 100 else daily_used * 100 / active_period.daily_limit_micros::numeric end,
+    case when active_period.limit_micros = 0 then 100 else period_used * 100 / active_period.limit_micros::numeric end
+  );
+  if usage_percent >= risk_percent then return 'risk'; end if;
+  if usage_percent >= warning_percent then return 'warning'; end if;
+  return 'normal';
+end;
+$$;
+
+create or replace function narrative_private.schedule_budget_state(p_owner_id uuid)
+returns text
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  return narrative_private.schedule_budget_state_at(p_owner_id, current_timestamp);
+end;
+$$;
+
+create or replace function public.queue_narrative_access_job(
+  p_owner_id uuid,
+  p_now timestamptz
+)
+returns public.generation_jobs
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  active_job public.generation_jobs;
+  queued_job public.generation_jobs;
+  admin_settings public.narrative_admin_settings;
+  last_success timestamptz;
+  daily_calls integer;
+  manual_limit integer := 3;
+  budget_state text;
+begin
+  if auth.role() is distinct from 'service_role' then
+    raise exception 'schedule access caller is not authorized' using errcode = '42501';
+  end if;
+  if p_owner_id is null or p_now is null then
+    raise exception 'invalid_schedule_access' using errcode = '22023';
+  end if;
+  perform pg_catalog.pg_advisory_xact_lock(
+    pg_catalog.hashtextextended('narrative-access:' || p_owner_id::text, 0)
+  );
+  select admin.* into admin_settings from public.narrative_admin_settings as admin
+  where admin.owner_id = p_owner_id for share;
+  if admin_settings.owner_id is not null then manual_limit := admin_settings.manual_call_limit; end if;
+  select candidate.* into active_job
+  from public.generation_jobs as candidate
+  where candidate.owner_id = p_owner_id
+    and candidate.schedule_key = ('access:' || p_owner_id::text)
+    and candidate.status in ('queued', 'running')
+    and candidate.created_at >= p_now - interval '15 minutes'
+  order by candidate.created_at desc, candidate.id
+  limit 1;
+  if active_job.id is not null then return active_job; end if;
+  select max(version.created_at), count(*) filter (
+    where public.narrative_business_date(version.created_at) = public.narrative_business_date(p_now)
+  )::integer
+  into last_success, daily_calls
+  from public.draft_versions as version
+  join public.generation_jobs as job on job.id = version.generation_job_id
+  where job.owner_id = p_owner_id
+    and job.schedule_key = ('access:' || p_owner_id::text)
+    and job.status = 'completed';
+  if last_success is not null and last_success + interval '1 hour' > p_now then
+    raise exception 'access_interval_not_elapsed' using errcode = 'P0001';
+  end if;
+  if coalesce(daily_calls, 0) >= manual_limit then
+    raise exception 'daily_access_limit' using errcode = 'P0001';
+  end if;
+  budget_state := narrative_private.schedule_budget_state_at(p_owner_id, p_now);
+  if budget_state = 'risk' then raise exception 'budget_risk' using errcode = 'P0001'; end if;
+  queued_job := narrative_private.queue_narrative_schedule_job(
+    p_owner_id,
+    'access:' || p_owner_id::text,
+    date_trunc('minute', p_now),
+    jsonb_build_object('kind', 'short_dialogue', 'source', 'access')
+  );
+  return queued_job;
+end;
+$$;
+
+create function public.queue_due_narrative_schedule_job(
+  p_owner_id uuid,
+  p_schedule_id uuid,
+  p_scheduled_for timestamptz
+)
+returns public.generation_jobs
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  locked_schedule public.schedules;
+  admin_settings public.narrative_admin_settings;
+  active_provider public.provider_settings;
+  existing_job public.generation_jobs;
+  queued_job public.generation_jobs;
+  local_scheduled timestamp without time zone;
+  queue_key text;
+  budget_state text;
+begin
+  if auth.role() is distinct from 'service_role' then
+    raise exception 'schedule queue caller is not authorized' using errcode = '42501';
+  end if;
+  if p_owner_id is null or p_schedule_id is null or p_scheduled_for is null
+    or date_trunc('minute', p_scheduled_for) is distinct from p_scheduled_for then
+    raise exception 'invalid_schedule_job' using errcode = '22023';
+  end if;
+  perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('narrative-schedule:' || p_schedule_id::text, 0));
+  select schedule.* into locked_schedule from public.schedules as schedule
+  where schedule.id = p_schedule_id and schedule.owner_id = p_owner_id for update;
+  if locked_schedule.id is null or not locked_schedule.enabled or locked_schedule.schedule_type = 'manual' then
+    raise exception 'schedule_not_due' using errcode = 'P0001';
+  end if;
+  local_scheduled := p_scheduled_for at time zone 'Asia/Seoul';
+  if locked_schedule.schedule_type = 'special' then
+    if locked_schedule.special_date is distinct from local_scheduled::date
+      or locked_schedule.seoul_time is distinct from local_scheduled::time(0) then
+      raise exception 'schedule_not_due' using errcode = 'P0001';
+    end if;
+  elsif extract(minute from local_scheduled)::integer is distinct from split_part(locked_schedule.cron_expression, ' ', 1)::integer
+    or extract(hour from local_scheduled)::integer is distinct from split_part(locked_schedule.cron_expression, ' ', 2)::integer
+    or (split_part(locked_schedule.cron_expression, ' ', 5) <> '*'
+      and extract(dow from local_scheduled)::integer is distinct from split_part(locked_schedule.cron_expression, ' ', 5)::integer) then
+    raise exception 'schedule_not_due' using errcode = 'P0001';
+  end if;
+  queue_key := p_owner_id::text || ':' || locked_schedule.schedule_key || ':' || public.narrative_business_date(p_scheduled_for)::text;
+  select job.* into existing_job from public.generation_jobs as job
+  where job.owner_id = p_owner_id and job.schedule_key = queue_key and job.scheduled_for = p_scheduled_for;
+  if existing_job.id is not null then return existing_job; end if;
+  select admin.* into admin_settings from public.narrative_admin_settings as admin
+  where admin.owner_id = p_owner_id for share;
+  if admin_settings.owner_id is null or not admin_settings.automation_enabled then
+    raise exception 'automation_disabled' using errcode = 'P0001';
+  end if;
+  select provider.* into active_provider from public.provider_settings as provider
+  where provider.owner_id = p_owner_id and provider.enabled for share;
+  if active_provider.id is null then raise exception 'active_provider_setting_required' using errcode = 'P0001'; end if;
+  if active_provider.pricing_verified_at < public.narrative_business_date(p_scheduled_for) - admin_settings.pricing_valid_days then
+    raise exception 'stale_provider_pricing' using errcode = 'P0001';
+  end if;
+  if locked_schedule.last_queued_at is not null
+    and locked_schedule.last_queued_at + make_interval(mins => locked_schedule.minimum_interval_minutes) > p_scheduled_for then
+    raise exception 'schedule_interval_not_elapsed' using errcode = 'P0001';
+  end if;
+  budget_state := narrative_private.schedule_budget_state_at(p_owner_id, p_scheduled_for);
+  if budget_state = 'risk' then raise exception 'budget_risk' using errcode = 'P0001'; end if;
+  if budget_state = 'warning' and locked_schedule.schedule_type = 'automatic'
+    and split_part(locked_schedule.cron_expression, ' ', 5) <> '*' then
+    raise exception 'budget_warning_long_schedule' using errcode = 'P0001';
+  end if;
+  queued_job := narrative_private.queue_narrative_schedule_job(
+    p_owner_id, queue_key, p_scheduled_for,
+    jsonb_build_object('kind', locked_schedule.payload ->> 'kind', 'source', 'schedule')
+  );
+  update public.schedules set last_queued_at = p_scheduled_for, updated_at = now()
+  where id = locked_schedule.id;
+  return queued_job;
+end;
+$$;
+
+create or replace function public.reserve_and_start_generation(
+  p_job_id uuid,
+  p_attempt_token uuid,
+  p_amount_micros bigint
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  locked_job public.generation_jobs;
+  admin_settings public.narrative_admin_settings;
+  active_provider public.provider_settings;
+  result jsonb;
+begin
+  if auth.role() is distinct from 'service_role' then
+    raise exception 'generation reserve caller is not authorized' using errcode = '42501';
+  end if;
+  if p_attempt_token is null then raise exception 'invalid_attempt_token' using errcode = '22023'; end if;
+  select job.* into locked_job from public.generation_jobs as job where job.id = p_job_id for update;
+  if locked_job.id is null then raise exception 'generation target not found' using errcode = 'P0002'; end if;
+  if locked_job.attempt_token is distinct from p_attempt_token then raise exception 'stale_attempt' using errcode = 'P0001'; end if;
+  select admin.* into admin_settings from public.narrative_admin_settings as admin
+  where admin.owner_id = locked_job.owner_id for share;
+  select provider.* into active_provider from public.provider_settings as provider
+  where provider.id = locked_job.provider_setting_id and provider.owner_id = locked_job.owner_id and provider.enabled for share;
+  if admin_settings.owner_id is null or not admin_settings.automation_enabled or active_provider.id is null then
+    raise exception 'active_provider_setting_required' using errcode = 'P0001';
+  end if;
+  if active_provider.pricing_verified_at < public.narrative_business_date(current_timestamp) - admin_settings.pricing_valid_days then
+    raise exception 'stale_provider_pricing' using errcode = 'P0001';
+  end if;
+  result := public.generation_internal_reserve_start_v1(p_job_id, p_amount_micros);
+  if result ->> 'status' = 'blocked' then
+    update public.generation_jobs set attempt_token = null where id = p_job_id;
+  end if;
+  return result;
+end;
+$$;
+
 create function public.store_narrative_secret(p_owner_id uuid, p_secret_kind text, p_secret_value text)
 returns boolean
 language plpgsql
@@ -636,6 +895,9 @@ revoke all on function public.get_narrative_schedules() from public, anon, authe
 revoke all on function public.save_narrative_schedule(uuid, text, text, boolean, text, integer, date, integer, text) from public, anon, authenticated, service_role;
 revoke all on function public.get_narrative_settings() from public, anon, authenticated, service_role;
 revoke all on function public.save_narrative_settings(boolean, text, jsonb, bigint, bigint, integer, integer, integer, numeric, integer) from public, anon, authenticated, service_role;
+revoke all on function narrative_private.schedule_budget_state_at(uuid, timestamptz) from public, anon, authenticated, service_role;
+revoke all on function public.queue_due_narrative_schedule_job(uuid, uuid, timestamptz) from public, anon, authenticated, service_role;
+revoke execute on function public.queue_narrative_schedule_job(uuid, text, timestamptz, jsonb) from service_role;
 revoke all on function public.store_narrative_secret(uuid, text, text) from public, anon, authenticated, service_role;
 revoke all on function public.read_narrative_secret(uuid, text) from public, anon, authenticated, service_role;
 
@@ -646,5 +908,6 @@ grant execute on function public.get_narrative_schedules() to authenticated;
 grant execute on function public.save_narrative_schedule(uuid, text, text, boolean, text, integer, date, integer, text) to authenticated;
 grant execute on function public.get_narrative_settings() to authenticated;
 grant execute on function public.save_narrative_settings(boolean, text, jsonb, bigint, bigint, integer, integer, integer, numeric, integer) to authenticated;
+grant execute on function public.queue_due_narrative_schedule_job(uuid, uuid, timestamptz) to service_role;
 grant execute on function public.store_narrative_secret(uuid, text, text) to service_role;
 grant execute on function public.read_narrative_secret(uuid, text) to service_role;

@@ -39,4 +39,16 @@ describe('SchedulesPage', () => {
       scheduleId: 'daily-1', seoulTime: '10:15', minimumIntervalMinutes: 60,
     })));
   });
+
+  it('reports saved state separately when the authoritative refresh fails', async () => {
+    const client = api();
+    client.getSchedules = vi.fn().mockResolvedValueOnce(await api().getSchedules()).mockRejectedValueOnce(new Error('refresh failed'));
+    const user = userEvent.setup();
+    render(<SchedulesPage api={client} />);
+
+    await user.click(await screen.findByRole('button', { name: 'daily 일정 저장' }));
+
+    expect(await screen.findByRole('status')).toHaveTextContent('저장했지만 최신 일정을 불러오지 못했습니다');
+    expect(screen.queryByText(/일정을 저장하지 못했습니다/)).not.toBeInTheDocument();
+  });
 });

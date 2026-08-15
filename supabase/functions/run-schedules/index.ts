@@ -4,6 +4,7 @@ import { bearerToken } from '../_shared/auth.ts';
 export type BudgetState = 'normal' | 'warning' | 'risk';
 export interface QueuedJob { id?: string; ownerId: string; scheduleKey: string; scheduledFor: string; payload: { kind: 'short_dialogue' | 'daily_event'; source: 'schedule' | 'access' } }
 export interface ScheduleRecord {
+  id?: string;
   ownerId: string;
   scheduleKey: string;
   scheduleType: 'automatic' | 'manual' | 'special';
@@ -13,10 +14,11 @@ export interface ScheduleRecord {
   specialDate?: string | null;
   seoulTime?: string;
   minimumIntervalMinutes?: number;
+  lastQueuedAt?: string | null;
 }
 export interface ScheduleDependencies {
   now(): Date; authenticate(token: string): Promise<{ ownerId: string } | null>; listSchedules(): Promise<ScheduleRecord[]>; budgetState(ownerId: string): Promise<BudgetState>;
-  insertQueuedJob(job: Omit<QueuedJob, 'id'>): Promise<QueuedJob>; queueAccessJob(ownerId: string, now: Date): Promise<QueuedJob>;
+  queueScheduleJob(schedule: ScheduleRecord, scheduledFor: string): Promise<QueuedJob>; queueAccessJob(ownerId: string, now: Date): Promise<QueuedJob>;
 }
 export class ScheduleError extends Error { constructor(public readonly code: string) { super(code); this.name = 'ScheduleError'; } }
 
@@ -40,9 +42,14 @@ function automaticScheduleTime(schedule: ScheduleRecord): AutomaticScheduleTime 
 }
 function scheduleDue(schedule: ScheduleRecord, time: AutomaticScheduleTime, now: Date): boolean {
   const p = localParts(now);
+  const minimumInterval = schedule.minimumIntervalMinutes ?? 60;
+  if (!Number.isInteger(minimumInterval) || minimumInterval < 1) throw new ScheduleError('invalid_schedule_configuration');
+  const lastQueuedAt = schedule.lastQueuedAt === undefined || schedule.lastQueuedAt === null ? null : new Date(schedule.lastQueuedAt);
+  if (lastQueuedAt && Number.isNaN(lastQueuedAt.getTime())) throw new ScheduleError('invalid_schedule_configuration');
   return schedule.enabled && time.minute === p.minute && time.hour === p.hour
     && (time.weekday === null || time.weekday === p.weekday)
-    && (time.specialDate === null || time.specialDate === seoulDate(now));
+    && (time.specialDate === null || time.specialDate === seoulDate(now))
+    && (!lastQueuedAt || now.getTime() >= lastQueuedAt.getTime() + minimumInterval * 60_000);
 }
 function scheduledInstant(now: Date): string { return new Date(Math.floor(now.getTime() / 60_000) * 60_000).toISOString(); }
 
@@ -55,7 +62,7 @@ export async function runSchedules(deps: ScheduleDependencies): Promise<QueuedJo
     if (!time || !scheduleDue(schedule, time, now)) continue;
     const budget = await deps.budgetState(schedule.ownerId);
     if (budget === 'risk' || (budget === 'warning' && schedule.scheduleType === 'automatic' && time.weekday !== null)) continue;
-    jobs.push(await deps.insertQueuedJob({ ownerId: schedule.ownerId, scheduleKey: `${schedule.ownerId}:${schedule.scheduleKey}:${seoulDate(now)}`, scheduledFor: scheduledInstant(now), payload: { kind: schedule.payload.kind, source: 'schedule' } }));
+    jobs.push(await deps.queueScheduleJob(schedule, scheduledInstant(now)));
   }
   return jobs;
 }
@@ -125,21 +132,26 @@ export function createSupabaseScheduleDependencies(config: SupabaseScheduleConfi
     now: () => new Date(),
     authenticate: async () => { const value = await call(userHeaders, '/auth/v1/user') as { id?: unknown }; return typeof value.id === 'string' ? { ownerId: value.id } : null; },
     listSchedules: async () => {
-      const rows = await call(serviceHeaders, '/rest/v1/schedules?select=owner_id,schedule_key,schedule_type,cron_expression,enabled,payload,special_date,seoul_time,minimum_interval_minutes') as unknown[];
+      const rows = await call(serviceHeaders, '/rest/v1/schedules?select=id,owner_id,schedule_key,schedule_type,cron_expression,enabled,payload,special_date,seoul_time,minimum_interval_minutes,last_queued_at') as unknown[];
       return rows.map((row) => {
         const value = row as Record<string, unknown>;
         if (!['automatic', 'manual', 'special'].includes(String(value.schedule_type)) || (typeof value.cron_expression !== 'string' && value.cron_expression !== null)) throw new ScheduleError('invalid_schedule_configuration');
         return {
+          id: typeof value.id === 'string' ? value.id : undefined,
           ownerId: String(value.owner_id), scheduleKey: String(value.schedule_key), scheduleType: value.schedule_type as ScheduleRecord['scheduleType'],
           cronExpression: value.cron_expression, enabled: value.enabled === true, payload: value.payload as ScheduleRecord['payload'],
           specialDate: typeof value.special_date === 'string' ? value.special_date : null,
           seoulTime: typeof value.seoul_time === 'string' ? value.seoul_time.slice(0, 5) : undefined,
           minimumIntervalMinutes: typeof value.minimum_interval_minutes === 'number' ? value.minimum_interval_minutes : undefined,
+          lastQueuedAt: typeof value.last_queued_at === 'string' ? value.last_queued_at : null,
         };
       });
     },
     budgetState: async (ownerId) => String(await rpc('narrative_schedule_budget_state', { p_owner_id: ownerId })) as BudgetState,
-    insertQueuedJob: async (job) => queuedJob(await rpc('queue_narrative_schedule_job', { p_owner_id: job.ownerId, p_schedule_key: job.scheduleKey, p_scheduled_for: job.scheduledFor, p_payload: job.payload })),
+    queueScheduleJob: async (schedule, scheduledFor) => {
+      if (!schedule.id) throw new ScheduleError('invalid_schedule_configuration');
+      return queuedJob(await rpc('queue_due_narrative_schedule_job', { p_owner_id: schedule.ownerId, p_schedule_id: schedule.id, p_scheduled_for: scheduledFor }));
+    },
     queueAccessJob: async (ownerId, now) => queuedJob(await rpc('queue_narrative_access_job', { p_owner_id: ownerId, p_now: now.toISOString() }), ownerId),
   };
 }

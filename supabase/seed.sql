@@ -52,7 +52,8 @@ on conflict (owner_id) do update set display_name = excluded.display_name;
 insert into public.provider_settings (
   id, owner_id, provider_key, enabled, configuration, model_key,
   max_input_tokens, max_output_tokens, max_revision_output_tokens,
-  input_cost_micros_per_million, output_cost_micros_per_million, fixed_cost_micros
+  input_cost_micros_per_million, output_cost_micros_per_million, fixed_cost_micros,
+  pricing_verified_at
 )
 values (
   '12000000-0000-0000-0000-000000000001',
@@ -66,7 +67,8 @@ values (
   256,
   0,
   0,
-  100
+  100,
+  public.narrative_business_date(current_timestamp)
 )
 on conflict (owner_id, provider_key) do update
 set enabled = excluded.enabled,
@@ -77,7 +79,14 @@ set enabled = excluded.enabled,
     max_revision_output_tokens = excluded.max_revision_output_tokens,
     input_cost_micros_per_million = excluded.input_cost_micros_per_million,
     output_cost_micros_per_million = excluded.output_cost_micros_per_million,
-    fixed_cost_micros = excluded.fixed_cost_micros;
+    fixed_cost_micros = excluded.fixed_cost_micros,
+    pricing_verified_at = excluded.pricing_verified_at;
+
+insert into public.narrative_admin_settings (owner_id, automation_enabled)
+values ('10000000-0000-0000-0000-000000000001', true)
+on conflict (owner_id) do update
+set automation_enabled = excluded.automation_enabled,
+    updated_at = now();
 
 insert into public.memory_items (
   id, owner_id, memory_type, content, importance, metadata, status, blocking
