@@ -75,17 +75,16 @@ export function createNarrativeHandler({ supabaseUrl, supabaseAnonKey, fetch = g
       }
       if (request.method === 'POST' && path.join('/') === 'generate') {
         const command = await body(); if (!command) return json({ error: 'invalid_command' }, 400);
-        if (command.mode === 'revise_selection') {
-          const revision = command.revision as Record<string, unknown> | undefined;
-          if (!command.maximumCostConfirmed || !revision || !Number.isSafeInteger(command.requestedMaxOutputTokens) || !Number.isSafeInteger(command.confirmedMaximumCostMicros)) return json({ error: 'revision_confirmation_required' }, 400);
-          if (command.expectedState === 'generated') await rpc('submit_draft_for_review', { p_draft_id: command.draftId, p_expected_version_id: command.expectedVersionId, p_expected_state: 'generated' });
-          const queued = await rpc('queue_draft_revision', {
-            p_draft_id: command.draftId, p_expected_version_id: command.expectedVersionId,
-            p_selected_text: revision.selectedText, p_instruction: revision.instruction,
-            p_requested_max_output_tokens: command.requestedMaxOutputTokens, p_confirmed_maximum_cost_micros: command.confirmedMaximumCostMicros,
-          });
-          command.jobId = queued.job_id; command.idempotencyKey = queued.idempotency_key; command.draftId = queued.draft_id; command.kind = queued.kind;
-        }
+        if (command.mode !== 'revise_selection') return json({ error: 'unsupported_generation_mode' }, 400);
+        const revision = command.revision as Record<string, unknown> | undefined;
+        if (!command.maximumCostConfirmed || !revision || !Number.isSafeInteger(command.requestedMaxOutputTokens) || !Number.isSafeInteger(command.confirmedMaximumCostMicros)) return json({ error: 'revision_confirmation_required' }, 400);
+        if (command.expectedState === 'generated') await rpc('submit_draft_for_review', { p_draft_id: command.draftId, p_expected_version_id: command.expectedVersionId, p_expected_state: 'generated' });
+        const queued = await rpc('queue_draft_revision', {
+          p_draft_id: command.draftId, p_expected_version_id: command.expectedVersionId,
+          p_selected_text: revision.selectedText, p_instruction: revision.instruction,
+          p_requested_max_output_tokens: command.requestedMaxOutputTokens, p_confirmed_maximum_cost_micros: command.confirmedMaximumCostMicros,
+        });
+        command.jobId = queued.job_id; command.idempotencyKey = queued.idempotency_key; command.draftId = queued.draft_id; command.kind = queued.kind;
         delete command.expectedVersionId; delete command.expectedState; delete command.maximumCostConfirmed; delete command.confirmedMaximumCostMicros;
         return json(await upstream('/functions/v1/generate-draft', { method: 'POST', body: JSON.stringify(command) }));
       }
@@ -96,7 +95,10 @@ export function createNarrativeHandler({ supabaseUrl, supabaseAnonKey, fetch = g
           const version = await rpc('save_manual_draft_version', { p_draft_id: input.draftId, p_expected_version_id: input.expectedVersionId, p_expected_state: 'reviewing', p_content: input.content });
           return json({ version: mapVersion(version) });
         }
-        if (path[2] === 'archive') return json(await rpc('archive_narrative_draft', { p_draft_id: input.draftId, p_expected_version_id: input.expectedVersionId, p_expected_state: input.expectedState }));
+        if (path[2] === 'archive') {
+          if (!['generated', 'reviewing', 'rejected', 'approved_private', 'publish_failed'].includes(String(input.expectedState))) return json({ error: 'invalid_archive_state' }, 400);
+          return json(await rpc('archive_narrative_draft', { p_draft_id: input.draftId, p_expected_version_id: input.expectedVersionId, p_expected_state: input.expectedState }));
+        }
         if (path[2] === 'retry-publish') return json(await rpc('retry_narrative_publish', { p_draft_id: input.draftId, p_expected_version_id: input.expectedVersionId, p_expected_state: input.expectedState }));
         if (path[2] === 'review') {
           if (input.expectedState === 'generated') await rpc('submit_draft_for_review', { p_draft_id: input.draftId, p_expected_version_id: input.expectedVersionId, p_expected_state: 'generated' });

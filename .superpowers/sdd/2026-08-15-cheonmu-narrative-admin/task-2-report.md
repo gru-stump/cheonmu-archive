@@ -63,3 +63,59 @@
 - The migration preserves generic transition/budget RPC restrictions and does not grant authenticated callers service primitives. Manual versions remain insert-only under the existing immutable trigger; archive never deletes; retry requeues the existing exact-version publish job.
 - No paid provider, publication, deployment, or secret-setting call was made. Runtime deployment still requires server-only `SUPABASE_URL` and `SUPABASE_ANON_KEY` plus the existing browser `VITE_SUPABASE_*` values. The publish worker itself remains outside Task 2; retry only restores the already-approved exact-version job to its queue.
 - Styling is intentionally functional and restrained because Task 4 owns final visual polish.
+
+## Fix round 1/5 — review findings
+
+### Corrections and changes
+
+1. **Freshly generated blocked rejection.** The factual note in the task brief that `submit_draft_for_review` rejects blocked versions is inaccurate and is superseded here: migration 013 intentionally permits the latest owner-owned `generated + block` version to make the narrow `generated -> reviewing` transition so that the guarded review function can reject it. It does not loosen approval. The UI keeps every non-reject action hidden, the same-origin handler submits before calling `review-draft`, the new handler/UI characterizations prove that exact request sequence, and the existing `generation_browser_review_remediation.test.sql` proves the real database `generated + block -> submit -> reject` path plus private/public approval denial.
+2. **Reachable stale recovery.** Actual `saveManualVersion` and `generate` 409 tests now leave local text, selected passage, instruction, and token input intact. The alert and reload button render inside the active `aria-modal` dialog. Tests traverse the real focus order with Tab, wrap from the last control to reload, and activate reload with Enter; reload then closes the dialog and restores current server data.
+3. **Exact cost-confirmation binding.** A confirmation now records a signature of latest version ID, exact selected passage, exact instruction, requested maximum tokens, and estimated maximum cost. Selection, instruction, token, pricing/version reload, close/reopen, and successful generation all invalidate the prior signature. The successful request retains the same passage, instruction, token ceiling, explicit boolean confirmation, and confirmed maximum cost.
+4. **Archive state boundary.** Client types/runtime, same-origin runtime, UI, and database now share the safe source-state allowlist: `generated`, `reviewing`, `rejected`, `approved_private`, and `publish_failed`. `queued`, `generating`, `approved`, `publishing`, `published`, and `archived` are hidden/rejected; blocked latest versions remain non-archivable. The RPC still derives the owner and locks/checks the latest expected version/state, then uses the existing state-machine transition. It does not cancel generation/publication or treat archive as unpublish.
+5. **Focused generate contract.** `GenerateInput` and `NarrativeApi.generate` now expose only fully confirmed `revise_selection`; expected version/state, revision payload, requested maximum output, and confirmed maximum cost are required. Client and proxy runtime reject all other public modes with `unsupported_generation_mode` before queue/generation. Internal Edge modes remain unchanged and are not newly browser-callable.
+6. **Dashboard last success.** `lastSuccessAt` is now the maximum creation time of an owner version joined to its owner-matching `generation_job_id` whose job is `completed`. A manual immutable version appended later does not advance it.
+
+Self-review additionally changed archive to call `transition_draft` after the narrow allowlist/latest/owner checks, strengthened the stale tests from programmatic focus to actual Tab wrapping, and retained visible success status after dialog closure.
+
+### Fix-round RED evidence
+
+- `npm --prefix admin run test -- --run src/features/drafts/DraftReviewPage.test.tsx src/api/narrativeApi.test.ts src/server/narrativeHandler.test.ts`
+  - Expected RED: 3 files failed; **12 failed, 15 passed (27)**. The failures were exactly two dialog-internal recovery assertions, one confirmation invalidation, five unsafe archive visibility states, client/proxy generation-mode rejection, and client/proxy archive-state rejection. The generated-block UI and handler characterizations passed immediately because migration 013 and the handler already implement the required narrow submission path; those are proof tests, not a changed behavior.
+- `npx supabase test db supabase/tests/admin_draft_workflow.test.sql`
+  - Expected RED: **4 failed of 30**. Assertions 8/10 showed manual/latest versions incorrectly drove `lastSuccessAt`; assertions 23/30 showed queued and publishing drafts could be archived without cancellation.
+- The pre-existing `supabase/tests/generation_browser_review_remediation.test.sql` already contains and continues to pass the real database assertions that blocked generated content may enter reviewing, cannot be privately/publicly approved, can be rejected with feedback, and ends rejected.
+
+### Fix-round GREEN and full verification
+
+- Focused admin command above: **3 files, 32/32 passed** after the minimal implementation and strengthened behavior cases.
+- `npx supabase test db supabase/tests/admin_draft_workflow.test.sql supabase/tests/generation_browser_review_remediation.test.sql`: **2 files, 56/56 passed**.
+- `npm --prefix admin run test -- --run`: **5 files, 39/39 passed**.
+- `npm --prefix admin run build`: TypeScript and Vite passed; **89 modules transformed**.
+- `npm run test:run -- supabase/functions/generate-draft/index.test.ts`: **54/54 passed**; no provider call was made.
+- `npx tsc --noEmit -p tsconfig.narrative.json`: passed.
+- `npx supabase db reset --local`: migrations 001-014 plus deterministic seed applied successfully.
+- `npx supabase test db`: **13 files, 312/312 passed**; the amended admin workflow suite contributes 31 assertions.
+- `npm run test:db:upgrade`: real migration 010-to-current-head upgrade and seeded-head restoration passed.
+- `npm run test:db:concurrency`: all five budget/review/generation/access/schedule concurrency programs passed.
+- `npm run test:run`: final rerun **30 files, 351 passed, 3 intentional skips**. The first full run had one unrelated timing failure in `GalleryForm.test.tsx`; its exact focused reproduction passed (1 passed, 16 skipped), no Task 2/root editor diff existed, and the fresh full rerun passed.
+- `npm run build`: passed; **395 modules transformed**. `npm run validate`: content validation passed.
+- A diagnostic reset with `--no-seed` caused both selected pgTAP files to stop after their privilege checks because the shared auth fixture user was intentionally absent. Re-running the defined seeded reset produced the 56/56 and 312/312 results above; no product change was made for the invalid fixture setup.
+- Admin bundle scan for `SERVICE_ROLE|OPENAI_API_KEY|ANTHROPIC_API_KEY|GITHUB_TOKEN`: no matches. Browser-source direct Supabase mutation scan: no matches.
+- `git diff --check`: clean. Migrations 001-013 are unchanged from commit `2ceabbf`; protected `progress.md` has no diff.
+
+### Files amended in fix round 1/5
+
+- `admin/src/api/narrativeApi.ts`
+- `admin/src/api/narrativeApi.test.ts`
+- `admin/src/features/drafts/DraftReviewPage.tsx`
+- `admin/src/features/drafts/DraftReviewPage.test.tsx`
+- `admin/src/server/narrativeHandler.ts`
+- `admin/src/server/narrativeHandler.test.ts`
+- `supabase/migrations/202608140014_admin_draft_workflow.sql`
+- `supabase/tests/admin_draft_workflow.test.sql`
+- `.superpowers/sdd/2026-08-15-cheonmu-narrative-admin/task-2-report.md`
+
+### Remaining concerns
+
+- No paid provider, publication, deployment, secret-setting, or external write was invoked. Archive intentionally does not cancel in-flight jobs or unpublish content; those states are rejected instead.
+- The unrelated Gallery upload test showed one timing-sensitive failure only during the first concurrent full-suite run and passed both isolated and on the fresh full rerun. It was not modified because it is outside this task and no reproducible Task 2 coupling was found.

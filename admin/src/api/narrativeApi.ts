@@ -1,5 +1,11 @@
 export type DraftStatus = 'queued' | 'generating' | 'generated' | 'reviewing' | 'rejected' | 'archived' | 'approved_private' | 'approved' | 'publishing' | 'published' | 'publish_failed';
 export type DraftKind = 'short_dialogue' | 'daily_event' | 'major_event_proposal';
+export const archiveSourceStatuses = ['generated', 'reviewing', 'rejected', 'approved_private', 'publish_failed'] as const;
+export type ArchiveSourceStatus = (typeof archiveSourceStatuses)[number];
+
+export function isArchiveSourceStatus(status: DraftStatus): status is ArchiveSourceStatus {
+  return archiveSourceStatuses.includes(status as ArchiveSourceStatus);
+}
 
 export interface ContinuityFinding {
   code: string;
@@ -56,15 +62,14 @@ export interface DashboardData {
 
 export interface GenerateInput {
   draftId: string;
-  expectedVersionId?: string;
-  expectedState?: 'generated' | 'reviewing';
-  mode: 'new' | 'revise_selection' | 'major_event_scene_plan' | 'major_event_draft';
+  expectedVersionId: string;
+  expectedState: 'generated' | 'reviewing';
+  mode: 'revise_selection';
   kind: DraftKind;
-  seed?: string;
-  revision?: { selectedText: string; instruction: string };
-  requestedMaxOutputTokens?: number;
-  maximumCostConfirmed?: boolean;
-  confirmedMaximumCostMicros?: number;
+  revision: { selectedText: string; instruction: string };
+  requestedMaxOutputTokens: number;
+  maximumCostConfirmed: true;
+  confirmedMaximumCostMicros: number;
 }
 
 export interface ReviewInput {
@@ -83,7 +88,7 @@ export interface NarrativeApi {
   saveManualVersion(input: { draftId: string; expectedVersionId: string; expectedState: 'generated' | 'reviewing'; content: DraftVersion['content'] }): Promise<{ version: DraftVersion }>;
   review(input: ReviewInput): Promise<{ draftId: string; versionId: string; status: 'rejected' | 'approved_private' | 'approved' }>;
   retryPublish(input: { draftId: string; expectedVersionId: string; expectedState: 'publish_failed' }): Promise<{ status: 'publishing' }>;
-  archive(input: { draftId: string; expectedVersionId: string; expectedState: DraftStatus }): Promise<{ status: 'archived' }>;
+  archive(input: { draftId: string; expectedVersionId: string; expectedState: ArchiveSourceStatus }): Promise<{ status: 'archived' }>;
 }
 
 export class NarrativeApiError extends Error {
@@ -116,10 +121,14 @@ export function createNarrativeApi({ tokenProvider, fetch = globalThis.fetch }: 
       return result.drafts;
     },
     getDraft: (draftId) => request<DraftDetail>(`drafts/${encodeURIComponent(draftId)}`),
-    generate: (input) => post('generate', input),
+    generate: (input) => input.mode === 'revise_selection'
+      ? post('generate', input)
+      : Promise.reject(new NarrativeApiError(400, 'unsupported_generation_mode')),
     saveManualVersion: (input) => post(`drafts/${encodeURIComponent(input.draftId)}/manual-version`, input),
     review: (input) => post(`drafts/${encodeURIComponent(input.draftId)}/review`, input),
     retryPublish: (input) => post(`drafts/${encodeURIComponent(input.draftId)}/retry-publish`, input),
-    archive: (input) => post(`drafts/${encodeURIComponent(input.draftId)}/archive`, input),
+    archive: (input) => isArchiveSourceStatus(input.expectedState)
+      ? post(`drafts/${encodeURIComponent(input.draftId)}/archive`, input)
+      : Promise.reject(new NarrativeApiError(400, 'invalid_archive_state')),
   };
 }

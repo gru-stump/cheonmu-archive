@@ -217,12 +217,13 @@ returns jsonb language plpgsql security definer set search_path = '' as $$
 declare locked_draft public.drafts; locked_version public.draft_versions;
 begin
   if auth.role() is distinct from 'authenticated' or auth.uid() is null then raise exception 'archive caller is not authorized' using errcode = '42501'; end if;
+  if p_expected_state not in ('generated', 'reviewing', 'rejected', 'approved_private', 'publish_failed') then raise exception 'invalid_archive_state' using errcode = '22023'; end if;
   select draft.* into locked_draft from public.drafts as draft where draft.id = p_draft_id for update;
   if locked_draft.id is null or locked_draft.owner_id is distinct from auth.uid() then raise exception 'archive target not found' using errcode = 'P0002'; end if;
   select version.* into locked_version from public.draft_versions as version where version.id = p_expected_version_id and version.owner_id = locked_draft.owner_id and version.draft_id = locked_draft.id and version.version_number = (select max(latest.version_number) from public.draft_versions as latest where latest.owner_id = locked_draft.owner_id and latest.draft_id = locked_draft.id) for update;
   if locked_version.id is null or locked_draft.status is distinct from p_expected_state or p_expected_state = 'archived' then raise exception 'stale_archive' using errcode = 'P0001'; end if;
   if locked_version.continuity_level = 'block' then raise exception 'blocked_version_reject_only' using errcode = 'P0001'; end if;
-  update public.drafts set status = 'archived', updated_at = now() where id = locked_draft.id;
+  perform public.transition_draft(locked_draft.id, p_expected_state, 'archived');
   insert into public.audit_events (owner_id, event_type, entity_type, entity_id, payload) values (locked_draft.owner_id, 'draft_archived', 'draft', locked_draft.id, jsonb_build_object('previousState', p_expected_state, 'versionId', locked_version.id));
   return jsonb_build_object('status', 'archived');
 end; $$;
@@ -306,7 +307,12 @@ begin
         select narrative_private.next_enabled_schedule(auth.uid(), now())
       ) as candidate
     ),
-    'lastSuccessAt', (select max(version.created_at) from public.draft_versions as version where version.owner_id = auth.uid()),
+    'lastSuccessAt', (
+      select max(version.created_at)
+      from public.draft_versions as version
+      join public.generation_jobs as job on job.id = version.generation_job_id and job.owner_id = version.owner_id
+      where version.owner_id = auth.uid() and job.status = 'completed'
+    ),
     'failures', coalesce((select jsonb_agg(jsonb_build_object('id', failed.id, 'occurredAt', coalesce(failed.failure_at, failed.created_at), 'code', coalesce(failed.failure_code, 'generation_failed')) order by coalesce(failed.failure_at, failed.created_at) desc) from (select job.* from public.generation_jobs as job where job.owner_id = auth.uid() and job.status = 'failed' order by coalesce(job.failure_at, job.created_at) desc limit 10) as failed), '[]'::jsonb)
   ) into result from current_period right join totals on true;
   return coalesce(result, jsonb_build_object('budget', jsonb_build_object('dailySpentMicros',0,'monthlySpentMicros',0,'reservedMicros',0,'dailyRemainingMicros',0,'monthlyRemainingMicros',0),'nextScheduleAt',null,'lastSuccessAt',null,'failures','[]'::jsonb));

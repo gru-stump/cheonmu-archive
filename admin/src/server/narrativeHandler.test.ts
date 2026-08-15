@@ -46,6 +46,28 @@ describe('same-origin narrative server boundary', () => {
     expect(calls[3]?.body).toMatchObject({ expectedVersionId: 'version-2', expectedState: 'reviewing', action: 'approve_private' });
   });
 
+  it('submits a freshly generated blocked version before guarded rejection', async () => {
+    const calls: Array<{ path: string; body: Record<string, unknown> }> = [];
+    const fetch: typeof globalThis.fetch = vi.fn(async (input, init) => {
+      const path = new URL(String(input)).pathname;
+      const body = init?.body ? JSON.parse(String(init.body)) : {};
+      calls.push({ path, body });
+      if (path === '/auth/v1/user') return Response.json({ id: 'owner-1' });
+      if (path === '/rest/v1/owner_profiles') return Response.json([{ owner_id: 'owner-1' }]);
+      if (path.endsWith('/submit_draft_for_review')) return Response.json({ id: 'draft-1', status: 'reviewing' });
+      return Response.json({ draftId: 'draft-1', versionId: 'version-blocked', status: 'rejected' });
+    });
+    const handler = createNarrativeHandler({ supabaseUrl: 'https://db.example.test', supabaseAnonKey: 'anon', fetch });
+    const response = await handler(new Request('https://admin.example.test/api/narrative/drafts/draft-1/review', {
+      method: 'POST', headers: { authorization: 'Bearer owner-token', 'content-type': 'application/json' },
+      body: JSON.stringify({ draftId: 'draft-1', expectedVersionId: 'version-blocked', expectedState: 'generated', action: 'reject', reason: 'continuity block' }),
+    }));
+
+    expect(response.status).toBe(200);
+    expect(calls.map(({ path }) => path)).toEqual(['/auth/v1/user', '/rest/v1/owner_profiles', '/rest/v1/rpc/submit_draft_for_review', '/functions/v1/review-draft']);
+    expect(calls[3]?.body).toMatchObject({ expectedVersionId: 'version-blocked', expectedState: 'reviewing', action: 'reject', reason: 'continuity block' });
+  });
+
   it('queues a confirmed revision and retains all bounded request fields for immutable generation', async () => {
     const calls: Array<{ path: string; body: Record<string, unknown> }> = [];
     const fetch: typeof globalThis.fetch = vi.fn(async (input, init) => {
@@ -70,6 +92,42 @@ describe('same-origin narrative server boundary', () => {
     expect(response.status).toBe(200);
     expect(calls[2]?.body).toMatchObject({ p_expected_version_id: 'version-2', p_selected_text: '선택 구절', p_instruction: '말투 수정', p_requested_max_output_tokens: 128, p_confirmed_maximum_cost_micros: 321 });
     expect(calls[3]?.body).toMatchObject({ jobId: 'job-3', idempotencyKey: 'revision-key', revision: command.revision, requestedMaxOutputTokens: 128 });
+  });
+
+  it('rejects unsupported public generation modes before queueing or invoking generation', async () => {
+    const fetch: typeof globalThis.fetch = vi.fn(async (input) => {
+      const path = new URL(String(input)).pathname;
+      if (path === '/auth/v1/user') return Response.json({ id: 'owner-1' });
+      if (path === '/rest/v1/owner_profiles') return Response.json([{ owner_id: 'owner-1' }]);
+      return Response.json({ draftId: 'unexpected' });
+    });
+    const handler = createNarrativeHandler({ supabaseUrl: 'https://db.example.test', supabaseAnonKey: 'anon', fetch });
+    const response = await handler(new Request('https://admin.example.test/api/narrative/generate', {
+      method: 'POST', headers: { authorization: 'Bearer owner-token', 'content-type': 'application/json' },
+      body: JSON.stringify({ draftId: 'draft-1', mode: 'new', kind: 'short_dialogue', seed: 'seed' }),
+    }));
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({ error: 'unsupported_generation_mode' });
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('rejects unsafe archive source states before invoking the database command', async () => {
+    const fetch: typeof globalThis.fetch = vi.fn(async (input) => {
+      const path = new URL(String(input)).pathname;
+      if (path === '/auth/v1/user') return Response.json({ id: 'owner-1' });
+      if (path === '/rest/v1/owner_profiles') return Response.json([{ owner_id: 'owner-1' }]);
+      return Response.json({ status: 'archived' });
+    });
+    const handler = createNarrativeHandler({ supabaseUrl: 'https://db.example.test', supabaseAnonKey: 'anon', fetch });
+    const response = await handler(new Request('https://admin.example.test/api/narrative/drafts/draft-1/archive', {
+      method: 'POST', headers: { authorization: 'Bearer owner-token', 'content-type': 'application/json' },
+      body: JSON.stringify({ draftId: 'draft-1', expectedVersionId: 'version-2', expectedState: 'published' }),
+    }));
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({ error: 'invalid_archive_state' });
+    expect(fetch).toHaveBeenCalledTimes(2);
   });
 
   it('maps only stable expected-state database conflicts to 409', async () => {
