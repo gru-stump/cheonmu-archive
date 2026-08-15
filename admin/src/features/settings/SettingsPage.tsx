@@ -1,5 +1,8 @@
 import { type FormEvent, useEffect, useState } from 'react';
 import type { NarrativeApi, NarrativeSettings, ProviderSetting } from '../../api/narrativeApi';
+import { AdminNotice } from '../../components/AdminNotice';
+import { AdminPageHeader } from '../../components/AdminPageHeader';
+import { AdminSection } from '../../components/AdminSection';
 
 const providerName = (key: ProviderSetting['providerKey']) => key === 'openai' ? 'OpenAI' : key === 'anthropic' ? 'Anthropic' : '로컬 테스트';
 const microsToUsd = (value: number) => value / 1_000_000;
@@ -67,10 +70,11 @@ export function SettingsPage({ api, readOnly = false }: { api: NarrativeApi; rea
     } catch { setMessage('비밀을 저장하지 못했습니다.'); }
   };
 
-  if (error) return <section aria-labelledby="settings-title"><h1 id="settings-title">설정</h1><p role="alert">설정을 불러오지 못했습니다.</p></section>;
-  if (!settings) return <section aria-labelledby="settings-title"><h1 id="settings-title">설정</h1><p role="status">설정을 불러오는 중입니다.</p></section>;
-  return <section aria-labelledby="settings-title">
-    <h1 id="settings-title">설정</h1>
+  const header = <AdminPageHeader eyebrow="운영 기준" title="설정" description="자동화, 제공자, 예산, 비밀 연결을 분리해 관리합니다." />;
+  if (error) return <section>{header}<AdminNotice tone="danger">설정을 불러오지 못했습니다.</AdminNotice></section>;
+  if (!settings) return <section>{header}<AdminNotice>설정을 불러오는 중입니다.</AdminNotice></section>;
+  return <section>
+    {header}
     <form onSubmit={save} className="settings-form">
       <fieldset><legend>자동화와 제공자</legend>
         <label><input type="checkbox" checked={settings.automationEnabled} onChange={(event) => setSettings({ ...settings, automationEnabled: event.target.checked, providers: event.target.checked ? settings.providers : settings.providers.map((provider) => ({ ...provider, enabled: false })) })} /> 자동화 사용</label>
@@ -97,14 +101,14 @@ export function SettingsPage({ api, readOnly = false }: { api: NarrativeApi; rea
       </fieldset>
       <button type="submit" disabled={readOnly}>설정 저장</button>
     </form>
-    <section aria-labelledby="secret-settings"><h2 id="secret-settings">비밀 연결</h2>
+    <AdminSection title="비밀 연결" description="저장된 값은 다시 표시하지 않고 연결 상태만 확인합니다.">
       {(['openai', 'anthropic', 'github'] as const).map((kind) => { const label = kind === 'github' ? 'GitHub' : providerName(kind); return <form key={kind} onSubmit={(event) => void saveSecret(event, kind)} className="secret-form">
         <p>{label}: {settings.secrets[kind] ? '연결됨' : '미연결'}</p>
         <label htmlFor={`${kind}-secret`}>{label} 비밀 키</label>
         <input id={`${kind}-secret`} type="password" autoComplete="new-password" value={secretInputs[kind]} onChange={(event) => setSecretInputs({ ...secretInputs, [kind]: event.target.value })} required />
         <button type="submit" disabled={readOnly}>{label} 비밀 저장</button>
       </form>; })}
-    </section>
-    {message && <p role="status">{message}</p>}
+    </AdminSection>
+    {message && <AdminNotice tone={message.includes('못했습니다') ? 'danger' : 'success'}>{message}</AdminNotice>}
   </section>;
 }

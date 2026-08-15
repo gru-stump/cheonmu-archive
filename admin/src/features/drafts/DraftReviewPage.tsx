@@ -1,6 +1,10 @@
 import { type FormEvent, type ReactNode, useEffect, useRef, useState } from 'react';
 import type { DraftDetail, DraftVersion, NarrativeApi, ReviewInput } from '../../api/narrativeApi';
 import { isArchiveSourceStatus, NarrativeApiError } from '../../api/narrativeApi';
+import { AdminNotice } from '../../components/AdminNotice';
+import { AdminPageHeader } from '../../components/AdminPageHeader';
+import { AdminSection } from '../../components/AdminSection';
+import { AdminStatusBadge } from '../../components/AdminStatusBadge';
 
 type DialogKind = 'manual' | 'revision' | 'reject' | null;
 const seoulDate = (value: string) => new Intl.DateTimeFormat('ko-KR', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Seoul' }).format(new Date(value));
@@ -54,11 +58,12 @@ export function DraftReviewPage({ api, draftId, readOnly = false }: { api: Narra
   const openDialog = (kind: Exclude<DialogKind, null>, event: React.MouseEvent<HTMLButtonElement>) => { triggerRef.current = event.currentTarget; setDialog(kind); setMessage(null); setStale(false); setConfirmedRevisionSignature(null); };
   const handleConflict = (error: unknown) => { if (error instanceof NarrativeApiError && error.status === 409) { setStale(true); setMessage('새 버전이 있습니다. 로컬 수정 내용은 유지됩니다. 새로 불러오세요.'); return true; } return false; };
 
-  if (loadError) return <section><h1>초안 검토</h1><p role="alert">초안을 불러오지 못했습니다.</p></section>;
-  if (!detail) return <section><h1>초안 검토</h1><p role="status">초안을 불러오는 중입니다.</p></section>;
+  if (loadError) return <section><AdminPageHeader eyebrow="초안함" title="초안 검토" description="본문과 연속성 근거를 함께 검토합니다." /><AdminNotice tone="danger">초안을 불러오지 못했습니다.</AdminNotice></section>;
+  if (!detail) return <section><AdminPageHeader eyebrow="초안함" title="초안 검토" description="본문과 연속성 근거를 함께 검토합니다." /><AdminNotice>초안을 불러오는 중입니다.</AdminNotice></section>;
   const version = detail.latestVersion;
   const blocked = version.continuityLevel === 'block';
   const reviewable = detail.status === 'generated' || detail.status === 'reviewing';
+  const mobileActionDisclosure = typeof window !== 'undefined' && window.matchMedia?.('(max-width: 600px)').matches;
   const estimatedRevisionCost = estimateRevisionCost(detail, maxTokens);
   const revisionSignature = JSON.stringify({
     versionId: detail.latestVersionId,
@@ -109,23 +114,31 @@ export function DraftReviewPage({ api, draftId, readOnly = false }: { api: Narra
     : message ? <p role="status">{message}</p> : null;
 
   return (
-    <article aria-labelledby="draft-title">
-      <header><p>{detail.kind} · {detail.status}</p><h1 id="draft-title">{detail.title}</h1>{blocked && <p className="blocked-notice">차단된 버전</p>}</header>
-      {!dialog && message && <p role={stale ? 'alert' : 'status'}>{message}</p>}
+    <article className="draft-review">
+      <AdminPageHeader eyebrow={detail.kind} title={detail.title} description="최종 본문과 검사 근거를 확인한 뒤 편입 범위를 결정합니다." action={<AdminStatusBadge tone={blocked ? 'danger' : detail.status === 'approved_private' ? 'plum' : 'green'}>{detail.status}</AdminStatusBadge>} />
+      {blocked && <AdminNotice tone="danger"><strong>차단된 버전</strong> · 이 버전은 사유를 남겨 거절만 할 수 있습니다.</AdminNotice>}
+      {!dialog && message && <AdminNotice tone={stale ? 'danger' : 'success'}>{message}</AdminNotice>}
       {!dialog && stale && <button type="button" onClick={() => void load()}>새로 불러오기</button>}
-      <section aria-labelledby="final-text"><h2 id="final-text">최종 본문</h2><pre className="draft-body">{version.content.body}</pre></section>
-      <section aria-labelledby="findings"><h2 id="findings">자동 검사</h2>{version.continuityFindings.length ? <ul>{version.continuityFindings.map((finding) => <li key={`${finding.code}-${finding.message}`}><strong>{finding.message}</strong><span>{finding.code} · {finding.level}</span>{finding.sourceIds.length > 0 && <span>출처: {finding.sourceIds.join(', ')}</span>}</li>)}</ul> : <p>검사 결과 없음</p>}</section>
-      <section aria-labelledby="context"><h2 id="context">사용한 문맥 버전</h2><ul>{version.contextVersionIds.map((id) => <li key={id}>{id}</li>)}</ul></section>
-      <section aria-labelledby="canon-candidates"><h2 id="canon-candidates">정사 변경 후보</h2>{version.content.canonChangeCandidates.length ? <ul>{version.content.canonChangeCandidates.map((candidate) => <li key={candidate}>{candidate}</li>)}</ul> : <p>후보 없음</p>}</section>
-      <section aria-labelledby="history"><h2 id="history">버전 이력</h2><ol>{detail.versions.map((item: DraftVersion) => <li key={item.id}><strong>버전 {item.versionNumber}</strong> <time dateTime={item.createdAt}>{seoulDate(item.createdAt)}</time><p>{item.content.body}</p></li>)}</ol></section>
+      <div className="draft-review__layout">
+        <section className="draft-reader" aria-labelledby="final-text"><h2 id="final-text">최종 본문</h2><pre className="draft-body">{version.content.body}</pre><span data-testid="reader-end" aria-hidden="true" /></section>
+        <aside className="draft-review__rail" aria-label="검토 근거">
+          <AdminSection title="자동 검사">{version.continuityFindings.length ? <ul className="finding-list">{version.continuityFindings.map((finding) => <li key={`${finding.code}-${finding.message}`}><strong>{finding.message}</strong><span>{finding.code} · {finding.level}</span>{finding.sourceIds.length > 0 && <span>출처: {finding.sourceIds.join(', ')}</span>}</li>)}</ul> : <p className="empty-copy">검사 결과 없음</p>}</AdminSection>
+          <AdminSection title="사용한 문맥 버전"><ul className="source-list">{version.contextVersionIds.map((id) => <li key={id}>{id}</li>)}</ul></AdminSection>
+          <AdminSection title="정사 변경 후보">{version.content.canonChangeCandidates.length ? <ul>{version.content.canonChangeCandidates.map((candidate) => <li key={candidate}>{candidate}</li>)}</ul> : <p className="empty-copy">후보 없음</p>}</AdminSection>
+        </aside>
+      </div>
+      <details className="version-history"><summary>버전 이력 · {detail.versions.length}개</summary><ol>{detail.versions.map((item: DraftVersion) => <li key={item.id}><strong>버전 {item.versionNumber}</strong> <time dateTime={item.createdAt}>{seoulDate(item.createdAt)}</time><p>{item.content.body}</p></li>)}</ol></details>
       <div className="review-actions" aria-label="초안 작업">
-        {!blocked && reviewable && <button type="button" disabled={readOnly} onClick={(event) => openDialog('manual', event)}>직접 수정</button>}
-        {!blocked && reviewable && <button type="button" disabled={readOnly} onClick={(event) => openDialog('revision', event)}>부분 AI 수정</button>}
-        {!blocked && reviewable && <button type="button" disabled={readOnly} onClick={() => void review('approve_private')}>비공개 정사 승인</button>}
-        {!blocked && reviewable && <button type="button" disabled={readOnly} onClick={() => void review('approve_public')}>승인하고 게시</button>}
-        {(reviewable || blocked) && <button type="button" disabled={readOnly} onClick={(event) => openDialog('reject', event)}>거절</button>}
-        {!blocked && isArchiveSourceStatus(detail.status) && <button type="button" disabled={readOnly} onClick={() => void archive()}>보관</button>}
-        {!blocked && detail.status === 'publish_failed' && <button type="button" disabled={readOnly} onClick={() => void retryPublish()}>게시 재시도</button>}
+        {!blocked && reviewable && <button className="button button--primary review-actions__primary" type="button" disabled={readOnly} onClick={() => void review('approve_public')}>승인하고 게시</button>}
+        {blocked && <button className="button button--danger-outline review-actions__primary" type="button" disabled={readOnly} onClick={(event) => openDialog('reject', event)}>거절</button>}
+        {!blocked && <details className="review-actions__more" open={!mobileActionDisclosure}><summary>작업</summary><div className="review-actions__secondary">
+          {!blocked && reviewable && <button type="button" disabled={readOnly} onClick={(event) => openDialog('manual', event)}>직접 수정</button>}
+          {!blocked && reviewable && <button type="button" disabled={readOnly} onClick={(event) => openDialog('revision', event)}>부분 AI 수정</button>}
+          {!blocked && reviewable && <button className="button button--ink" type="button" disabled={readOnly} onClick={() => void review('approve_private')}>비공개 정사 승인</button>}
+          {!blocked && isArchiveSourceStatus(detail.status) && <button className="button button--quiet" type="button" disabled={readOnly} onClick={() => void archive()}>보관</button>}
+          {!blocked && detail.status === 'publish_failed' && <button type="button" disabled={readOnly} onClick={() => void retryPublish()}>게시 재시도</button>}
+          {reviewable && <button className="button button--danger-text" type="button" disabled={readOnly} onClick={(event) => openDialog('reject', event)}>거절</button>}
+        </div></details>}
       </div>
       {dialog === 'manual' && <Modal title="직접 수정" onClose={() => closeDialog()}>{conflictRecovery}<form onSubmit={saveManual}><label htmlFor="manual-body">최종 본문</label><textarea id="manual-body" rows={12} value={manualText} onChange={(event) => setManualText(event.target.value)} required /><button type="submit">새 버전 저장</button></form></Modal>}
       {dialog === 'revision' && <Modal title="부분 AI 수정" onClose={() => closeDialog()}>{conflictRecovery}<form onSubmit={revise}><label htmlFor="selected-text">선택한 구절</label><textarea id="selected-text" value={selectedText} onChange={(event) => { setSelectedText(event.target.value); setConfirmedRevisionSignature(null); }} required /><label htmlFor="revision-instruction">수정 지시</label><textarea id="revision-instruction" value={instruction} onChange={(event) => { setInstruction(event.target.value); setConfirmedRevisionSignature(null); }} required /><label htmlFor="max-tokens">최대 출력 토큰</label><input id="max-tokens" type="number" min="1" max={detail.revisionPricing?.maximumRevisionOutputTokens ?? 4096} value={maxTokens} onChange={(event) => { setMaxTokens(Number(event.target.value)); setConfirmedRevisionSignature(null); }} required /><p>예상 최대 비용: {estimatedRevisionCost.toLocaleString('en-US')} μUSD</p><label><input type="checkbox" checked={costConfirmed} onChange={(event) => setConfirmedRevisionSignature(event.target.checked ? revisionSignature : null)} /> 최대 비용을 확인했습니다</label><button type="submit">새 버전 생성</button></form></Modal>}

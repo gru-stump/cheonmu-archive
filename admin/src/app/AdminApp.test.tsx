@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { NarrativeApi } from '../api/narrativeApi';
 import type { AuthClient } from '../auth/AuthGate';
+import { AdminApp } from './AdminApp';
 import { LocalPreviewApp, localPreviewAuth } from '../preview/LocalPreviewApp';
 import { localPreviewApi } from '../preview/localPreviewApi';
 
@@ -17,6 +18,18 @@ function signedOutClient(): AuthClient {
       signOut: vi.fn(),
     },
     ownerProfiles: { findByOwnerId: vi.fn() },
+  };
+}
+
+function ownerClient(): AuthClient {
+  return {
+    auth: {
+      getSession: vi.fn().mockResolvedValue({ data: { session: { user: { id: 'owner-1', email: 'owner@example.test' } } }, error: null }),
+      onAuthStateChange: vi.fn().mockReturnValue({ data: { subscription: { unsubscribe: vi.fn() } } }),
+      signInWithOtp: vi.fn(),
+      signOut: vi.fn().mockResolvedValue({ error: null }),
+    },
+    ownerProfiles: { findByOwnerId: vi.fn().mockResolvedValue({ data: { owner_id: 'owner-1' }, error: null }) },
   };
 }
 
@@ -84,5 +97,12 @@ describe('AdminApp local preview composition', () => {
     }
     expect(screen.getByText('로컬 둘러보기 · 저장되지 않음')).toBeInTheDocument();
     expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('places sign-out inside the authenticated shell utility', async () => {
+    render(<AdminApp client={ownerClient()} api={previewApi()} />);
+    const signOut = await screen.findByRole('button', { name: '로그아웃' });
+    expect(signOut.closest('.admin-shell__utility')).not.toBeNull();
+    expect(signOut.closest('.admin-shell')).not.toBeNull();
   });
 });

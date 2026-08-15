@@ -1,4 +1,4 @@
-import { type FormEvent, type ReactNode, useEffect, useState } from 'react';
+import { createContext, type FormEvent, type ReactNode, useContext, useEffect, useState } from 'react';
 
 export interface AuthSession {
   user: { id: string; email?: string | null };
@@ -25,6 +25,15 @@ type GateState =
   | { kind: 'signed-out' }
   | { kind: 'not-owner' }
   | { kind: 'owner' };
+
+interface AdminSessionUtility {
+  email?: string | null;
+  signOut(): Promise<void>;
+}
+
+const AdminSessionContext = createContext<AdminSessionUtility | null>(null);
+
+export const useAdminSession = () => useContext(AdminSessionContext);
 
 export function AuthGate({ client, children }: { client: AuthClient; children: ReactNode }) {
   const [state, setState] = useState<GateState>({ kind: 'checking-session' });
@@ -73,15 +82,17 @@ export function AuthGate({ client, children }: { client: AuthClient; children: R
     setMessage(null);
   };
 
-  if (state.kind === 'owner') return <><p><button type="button" onClick={signOut}>로그아웃</button></p>{children}</>;
+  if (state.kind === 'owner') {
+    return <AdminSessionContext.Provider value={{ email: undefined, signOut }}>{children}</AdminSessionContext.Provider>;
+  }
   if (state.kind === 'checking-session' || state.kind === 'checking-owner') {
-    return <main aria-live="polite"><p>{state.kind === 'checking-owner' ? '권한을 확인하고 있습니다.' : '세션을 확인하고 있습니다.'}</p></main>;
+    return <main className="auth-screen" aria-live="polite"><p>{state.kind === 'checking-owner' ? '권한을 확인하고 있습니다.' : '세션을 확인하고 있습니다.'}</p></main>;
   }
   if (state.kind === 'not-owner') {
-    return <main><h1>관리자 권한이 없습니다.</h1><p>등록된 소유자 계정으로 로그인해 주세요.</p><button type="button" onClick={signOut}>로그아웃</button></main>;
+    return <main className="auth-screen"><h1>관리자 권한이 없습니다.</h1><p>등록된 소유자 계정으로 로그인해 주세요.</p><button type="button" onClick={signOut}>로그아웃</button></main>;
   }
   return (
-    <main>
+    <main className="auth-screen">
       <h1>천무 서사 관리</h1>
       <p>등록된 소유자 이메일로 로그인 링크를 받으세요.</p>
       <form onSubmit={sendMagicLink}>

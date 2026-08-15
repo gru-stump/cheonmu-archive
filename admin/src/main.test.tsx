@@ -45,4 +45,22 @@ describe('admin entry local preview gate', () => {
     expect(app.props.previewAuth).toBeUndefined();
     expect(app.props.previewApi).toBeUndefined();
   });
+
+  it('loads deterministic fixtures only in development with the explicit E2E flag', async () => {
+    vi.stubEnv('DEV', true);
+    vi.stubEnv('VITE_ENABLE_E2E_FIXTURE', 'true');
+
+    const app = await renderedApp();
+
+    expect(app.type.name).toBe('E2EFixtureApp');
+  });
+
+  it('does not load deterministic fixtures in production', async () => {
+    vi.stubEnv('DEV', false);
+    vi.stubEnv('VITE_ENABLE_E2E_FIXTURE', 'true');
+
+    const app = await renderedApp();
+
+    expect(app.type.name).toBe('AdminApp');
+  });
 });

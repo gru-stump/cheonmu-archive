@@ -1,5 +1,6 @@
 import { BrowserRouter, NavLink, Route, Routes, useParams } from 'react-router-dom';
-import { AuthGate, type AuthClient } from '../auth/AuthGate';
+import type { ReactNode } from 'react';
+import { AuthGate, type AuthClient, useAdminSession } from '../auth/AuthGate';
 import { authClient, narrativeApi } from '../lib/supabase';
 import type { NarrativeApi } from '../api/narrativeApi';
 import { TodayPage } from '../features/today/TodayPage';
@@ -23,20 +24,37 @@ function DraftRoute({ api, readOnly }: { api: NarrativeApi; readOnly: boolean })
   return draftId ? <DraftReviewPage api={api} draftId={draftId} readOnly={readOnly} /> : <p role="alert">초안 ID가 없습니다.</p>;
 }
 
-export function PrivateAdminRoutes({ api, readOnly = false }: { api: NarrativeApi; readOnly?: boolean }) {
+export function AdminShell({ children, utility, notice }: { children: ReactNode; utility?: ReactNode; notice?: ReactNode }) {
+  const session = useAdminSession();
   return (
     <div className="admin-shell">
-      <header className="admin-header"><p>천무 서사 관리</p><nav aria-label="관리자 메뉴">{routes.map((route) => <NavLink key={route.path} to={route.path} end={route.path === '/'}>{route.label}</NavLink>)}</nav></header>
-      <main><Routes>
+      <aside className="admin-shell__rail">
+        <p className="admin-shell__brand"><strong>천무</strong><span>서사 편집실</span></p>
+        <nav className="admin-shell__nav" aria-label="관리자 메뉴">{routes.map((route) => <NavLink key={route.path} to={route.path} end={route.path === '/'}>{route.label}</NavLink>)}</nav>
+        <div className="admin-shell__utility">
+          {utility}
+          {session && <button type="button" className="admin-shell__signout" onClick={() => void session.signOut()}>로그아웃</button>}
+        </div>
+      </aside>
+      <main className="admin-shell__main">
+        {notice}
+        {children}
+      </main>
+    </div>
+  );
+}
+
+export function PrivateAdminRoutes({ api, readOnly = false, utility, notice }: { api: NarrativeApi; readOnly?: boolean; utility?: ReactNode; notice?: ReactNode }) {
+  return <AdminShell utility={utility} notice={notice}>
+    <Routes>
         <Route path="/" element={<TodayPage api={api} />} />
         <Route path="/drafts" element={<DraftListPage api={api} />} />
         <Route path="/drafts/:draftId" element={<DraftRoute api={api} readOnly={readOnly} />} />
         <Route path="/memory" element={<MemoryPage api={api} readOnly={readOnly} />} />
         <Route path="/schedules" element={<SchedulesPage api={api} readOnly={readOnly} />} />
         <Route path="/settings" element={<SettingsPage api={api} readOnly={readOnly} />} />
-      </Routes></main>
-    </div>
-  );
+    </Routes>
+  </AdminShell>;
 }
 
 export function AdminApp({ client = authClient, api = narrativeApi }: { client?: AuthClient; api?: NarrativeApi }) {

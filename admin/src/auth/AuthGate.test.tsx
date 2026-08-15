@@ -1,7 +1,12 @@
 import { act, cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { AuthGate, type AuthClient, type AuthSession } from './AuthGate';
+import { AuthGate, type AuthClient, type AuthSession, useAdminSession } from './AuthGate';
+
+function OwnerContent() {
+  const session = useAdminSession();
+  return <><p>비공개 초안</p><button type="button" onClick={() => void session?.signOut()}>로그아웃</button></>;
+}
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -78,7 +83,7 @@ describe('AuthGate', () => {
   it('lets an authenticated owner end their restored session', async () => {
     const client = createClient({ session: { user: { id: 'owner-1', email: 'owner@example.com' } }, owner: { owner_id: 'owner-1' } });
 
-    render(<AuthGate client={client}><p>비공개 초안</p></AuthGate>);
+    render(<AuthGate client={client}><OwnerContent /></AuthGate>);
 
     expect(await screen.findByText('비공개 초안')).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: '로그아웃' }));

@@ -1,0 +1,9 @@
+:root {
+  --admin-paper: #f6f1e7; --admin-surface: #fffdf8; --admin-muted-surface: #eee6d8;
+  --admin-ink: #24201d; --admin-muted: #6c6258; --admin-rule: #cbbda9;
+  --admin-red: #702d2b; --admin-dark-red: #511d20; --admin-red-wash: #f3e5e0;
+  --admin-green: #526b59; --admin-green-wash: #e7eee7; --admin-plum: #715360; --admin-plum-wash: #f0e8eb;
+  --admin-focus: #1d5f70;
+  --admin-ui: Pretendard, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans KR', sans-serif;
+  --admin-prose: 'Noto Serif KR', AppleMyungjo, Batang, Georgia, serif;
+}
