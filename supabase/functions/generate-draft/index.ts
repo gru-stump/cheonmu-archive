@@ -4,6 +4,7 @@ import { selectNarrativeContext, type ContextSelection, type NarrativeMemory } f
 import { checkContinuity, type ContinuityCheck, type ContinuityContext } from '../_shared/continuity.ts';
 import { createServerNarrativeProvider, parseNarrativeProviderResponse, type NarrativeProvider, type NarrativeProviderResponse } from '../_shared/provider.ts';
 import { corsGate, corsPolicyFromEnvironment, createCorsPolicy, withCorsHeaders, type CorsPolicy } from '../_shared/cors.ts';
+import { bearerToken } from '../_shared/auth.ts';
 
 export const CONTINUITY_POLICY_VERSION = 'cheonmu-continuity-v1';
 export type { GenerationMode };
@@ -346,13 +347,13 @@ export function createGenerateDraftHandler(deps: GenerationDependencies, cors: C
     const respond = (response: Response) => withCorsHeaders(request, response, cors);
     if (request.method !== 'POST') return respond(Response.json({ error: 'method_not_allowed' }, { status: 405 }));
     try {
-      const authorization = request.headers.get('authorization');
-      if (!authorization?.startsWith('Bearer ')) throw new GenerationError(401, 'authentication_required');
+      const token = bearerToken(request);
+      if (!token) throw new GenerationError(401, 'authentication_required');
       let json: unknown;
       try { json = await request.json(); } catch { throw new GenerationError(400, 'invalid_command'); }
       const parsed = bodySchema.safeParse(json);
       if (!parsed.success) throw new GenerationError(400, 'invalid_command');
-      return respond(Response.json(await runGeneration(deps, { ...parsed.data, authToken: authorization.slice(7) })));
+      return respond(Response.json(await runGeneration(deps, { ...parsed.data, authToken: token })));
     } catch (error) { return respond(jsonError(error)); }
   };
 }
@@ -493,7 +494,7 @@ if (typeof Deno !== 'undefined' && (import.meta as ImportMeta & { main?: boolean
   };
   const cors = corsPolicyFromEnvironment(Deno.env.get('NARRATIVE_ADMIN_ORIGINS'));
   Deno.serve((request) => {
-    const token = request.headers.get('authorization')?.replace(/^Bearer\s+/i, '') ?? '';
+    const token = bearerToken(request) ?? '';
     return createGenerateDraftHandler(createSupabaseGenerationDependencies({ url, anonKey, serviceRoleKey }, token, resolveProvider), cors)(request);
   });
 }

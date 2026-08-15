@@ -1,4 +1,5 @@
 import { corsGate, corsPolicyFromEnvironment, createCorsPolicy, withCorsHeaders, type CorsPolicy } from '../_shared/cors.ts';
+import { bearerToken } from '../_shared/auth.ts';
 
 export type BudgetState = 'normal' | 'warning' | 'risk';
 export interface QueuedJob { id?: string; ownerId: string; scheduleKey: string; scheduledFor: string; payload: { kind: 'short_dialogue' | 'daily_event'; source: 'schedule' | 'access' } }
@@ -62,7 +63,8 @@ export function createScheduleHandler(deps: ScheduleDependencies, dispatchToken?
       }
     }
     if (body.action !== 'access') return respond(Response.json({ error: 'invalid_command' }, { status: 400 }));
-    const token = request.headers.get('authorization')?.replace(/^Bearer\s+/i, '') ?? '';
+    const token = bearerToken(request);
+    if (!token) return respond(Response.json({ error: 'authentication_required' }, { status: 401 }));
     try { return respond(Response.json(await evaluateAccessTrigger(deps, token), { status: 202 })); }
     catch (error) {
       const code = error instanceof ScheduleError ? error.code : 'internal_error';
@@ -123,7 +125,7 @@ if (typeof Deno !== 'undefined' && (import.meta as ImportMeta & { main?: boolean
   if (!url || !anonKey || !serviceRoleKey || !dispatchToken) throw new Error('schedule runtime settings are required');
   const cors = corsPolicyFromEnvironment(Deno.env.get('NARRATIVE_ADMIN_ORIGINS'));
   Deno.serve((request) => {
-    const token = request.headers.get('authorization')?.replace(/^Bearer\s+/i, '') ?? '';
+    const token = bearerToken(request) ?? '';
     return createScheduleHandler(createSupabaseScheduleDependencies({ url, anonKey, serviceRoleKey }, token), dispatchToken, cors)(request);
   });
 }

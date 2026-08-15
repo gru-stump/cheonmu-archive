@@ -107,8 +107,13 @@ insert into public.schedules (id, owner_id, schedule_key, cron_expression, enabl
   headApplied = true;
   assert.equal(
     await scalar('select max(version) from supabase_migrations.schema_migrations;'),
-    '202608140012',
-    'upgrade fixture must apply migration 011 and the additive final-fix migration through current history',
+    '202608140013',
+    'upgrade fixture must apply migrations 011 through the browser/review remediation at current head',
+  );
+  assert.equal(
+    await scalar("select concat(to_regprocedure('public.submit_draft_for_review(uuid,uuid,text)') is not null, '|', has_function_privilege('authenticated', 'public.submit_draft_for_review(uuid,uuid,text)', 'EXECUTE'), '|', not has_function_privilege('anon', 'public.submit_draft_for_review(uuid,uuid,text)', 'EXECUTE'));"),
+    't|t|t',
+    'upgrade must install the narrow authenticated review submission boundary without anonymous access',
   );
 
   const rows = JSON.parse(await scalar(`

@@ -53,13 +53,27 @@ describe('applyReview', () => {
 });
 
 describe('review-draft HTTP boundary', () => {
+  it.each([undefined, 'Basic token', 'Bearer ', 'Bearer token extra'])('rejects malformed bearer authorization %s before calling dependencies', async (authorization) => {
+    const h = harness();
+    const { authToken: _authToken, ...command } = base;
+    const headers = new Headers({ origin: 'https://admin.example.test', 'content-type': 'application/json' });
+    if (authorization !== undefined) headers.set('authorization', authorization);
+    const response = await createReviewDraftHandler(h.deps, createCorsPolicy(['https://admin.example.test']))(new Request('http://local/review', {
+      method: 'POST', headers, body: JSON.stringify({ ...command, action: 'approve_private' }),
+    }));
+    expect(response.status).toBe(401);
+    expect(response.headers.get('access-control-allow-origin')).toBe('https://admin.example.test');
+    expect(h.events).toEqual([]);
+  });
+
   it('handles allowlisted browser preflight and adds exact-origin CORS headers to errors', async () => {
     const h = harness();
     const cors = createCorsPolicy(['https://admin.example.test']);
     const handler = createReviewDraftHandler(h.deps, cors);
-    const preflight = await handler(new Request('http://local/review', { method: 'OPTIONS', headers: { origin: 'https://admin.example.test', 'access-control-request-method': 'POST', 'access-control-request-headers': 'authorization, content-type' } }));
+    const preflight = await handler(new Request('http://local/review', { method: 'OPTIONS', headers: { origin: 'https://admin.example.test', 'access-control-request-method': 'POST', 'access-control-request-headers': 'authorization, apikey, x-client-info, content-type' } }));
     expect(preflight.status).toBe(204);
     expect(preflight.headers.get('access-control-allow-origin')).toBe('https://admin.example.test');
+    expect(preflight.headers.get('access-control-allow-headers')).toBe('authorization, apikey, x-client-info, content-type');
     expect(preflight.headers.get('access-control-allow-credentials')).toBeNull();
     const error = await handler(new Request('http://local/review', { method: 'GET', headers: { origin: 'https://admin.example.test' } }));
     expect(error.status).toBe(405);

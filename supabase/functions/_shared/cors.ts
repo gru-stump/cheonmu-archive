@@ -2,7 +2,9 @@ export interface CorsPolicy {
   readonly allowedOrigins: ReadonlySet<string>;
 }
 
-const allowedRequestHeaders = 'authorization, content-type';
+const standardSupabaseRequestHeaders = ['authorization', 'apikey', 'x-client-info', 'content-type'] as const;
+const allowedRequestHeaders = standardSupabaseRequestHeaders.join(', ');
+const allowedRequestHeaderSet = new Set<string>(standardSupabaseRequestHeaders);
 
 function normalizedOrigin(value: string): string {
   const candidate = value.trim();
@@ -47,7 +49,7 @@ export function corsGate(request: Request, policy: CorsPolicy): Response | null 
   const requestedMethod = request.headers.get('access-control-request-method')?.toUpperCase();
   const requestedHeaders = (request.headers.get('access-control-request-headers') ?? '')
     .split(',').map((header) => header.trim().toLowerCase()).filter(Boolean);
-  if (requestedMethod !== 'POST' || requestedHeaders.some((header) => header !== 'authorization' && header !== 'content-type')) {
+  if (requestedMethod !== 'POST' || requestedHeaders.some((header) => !allowedRequestHeaderSet.has(header))) {
     return Response.json({ error: 'cors_preflight_rejected' }, { status: 403, headers: { vary: 'Origin' } });
   }
   return new Response(null, {

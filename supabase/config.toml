@@ -6,6 +6,15 @@ project_id = "cheonmu-narrative"
 # or project secrets belong in this repository.
 enable_signup = false
 
+[functions.generate-draft]
+# Runtime JWT verification would intercept authentication failures before the
+# exact-origin handler can apply its fail-closed browser policy.
+verify_jwt = false
+
+[functions.review-draft]
+# The function validates the bearer token against Supabase Auth itself.
+verify_jwt = false
+
 [functions.run-schedules]
 # Cron authenticates with the dispatch secret; browser access is authenticated
 # explicitly by the handler before it evaluates or queues anything.

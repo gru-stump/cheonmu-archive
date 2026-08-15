@@ -6,6 +6,7 @@
   },
   "include": [
     "scripts/export-narrative-canon.ts",
+    "supabase/functions/_shared/auth.ts",
     "supabase/functions/_shared/context.ts",
     "supabase/functions/_shared/provider.ts",
     "supabase/functions/_shared/openai-provider.ts",
