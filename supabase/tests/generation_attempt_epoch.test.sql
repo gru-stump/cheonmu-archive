@@ -73,7 +73,7 @@ select throws_ok(
   $$ select public.finalize_generation_success(
     'd2000000-0000-0000-0000-000000000001', 'd3000000-0000-4000-8000-000000000001', 100,
     '{"inputTokens":1,"outputTokens":1,"costMicros":0}', '{"kind":"daily_event","body":"stale"}',
-    'review', '[]', 'stale-response', 'cheonmu-continuity-v1'
+    'review', '[]', 'stale-response', 'stale-canonical-model', 'cheonmu-continuity-v1'
   ) $$,
   'P0001', 'stale_attempt', 'an old token cannot finalize the replacement'
 );

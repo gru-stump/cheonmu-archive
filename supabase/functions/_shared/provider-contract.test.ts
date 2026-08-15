@@ -29,7 +29,7 @@ describe.each([
   it('sends one strict structured request and parses usage when present', async () => {
     const upstream = Response.json(completedEnvelope(_name));
     const h = fetchOnce(upstream);
-    await expect(create({ fetch: h.fetch }).generate(request)).resolves.toEqual({ result, usage: { inputTokens: 12, outputTokens: 34 }, rawId: _name === 'openai' ? 'resp-1' : 'msg-1' });
+    await expect(create({ fetch: h.fetch }).generate(request)).resolves.toEqual({ result, usage: { inputTokens: 12, outputTokens: 34 }, rawId: _name === 'openai' ? 'resp-1' : 'msg-1', responseModel: 'server-model' });
     expect(h.calls).toHaveLength(1);
     expect(h.calls[0].input).toBe(_name === 'openai' ? 'https://api.openai.com/v1/responses' : 'https://api.anthropic.com/v1/messages');
     const body = JSON.parse(String(h.calls[0].init?.body));
@@ -97,7 +97,7 @@ describe.each([
     const configuredAlias = _name === 'openai' ? 'gpt-production-alias' : 'claude-production-alias';
     const canonicalModel = _name === 'openai' ? 'gpt-canonical-2026-08-01' : 'claude-canonical-20260801';
     const h = fetchOnce(Response.json(completedEnvelope(_name, { model: canonicalModel })));
-    await expect(create({ fetch: h.fetch, modelKey: configuredAlias }).generate({ ...request, modelKey: configuredAlias })).resolves.toMatchObject({ rawId: _name === 'openai' ? 'resp-1' : 'msg-1' });
+    await expect(create({ fetch: h.fetch, modelKey: configuredAlias }).generate({ ...request, modelKey: configuredAlias })).resolves.toMatchObject({ rawId: _name === 'openai' ? 'resp-1' : 'msg-1', responseModel: canonicalModel });
     const body = JSON.parse(String(h.calls[0].init?.body));
     expect(body.model).toBe(configuredAlias);
     expect(h.calls).toHaveLength(1);
@@ -151,7 +151,7 @@ describe('server provider factory', () => {
   });
 
   it('allows fake-local only when an explicit fixture provider is supplied', async () => {
-    const fixture = { generate: async () => ({ result, usage: { inputTokens: 1, outputTokens: 1 }, rawId: 'fixture' }) };
+    const fixture = { generate: async () => ({ result, usage: { inputTokens: 1, outputTokens: 1 }, rawId: 'fixture', responseModel: 'fake-local-model' }) };
     expect(() => createServerNarrativeProvider([{ provider_key: 'fake-local-provider', enabled: true, model_key: 'fake-local-model', configuration: { mode: 'fixture' } }], () => undefined, { timeoutMs: 50 })).toThrow('unsupported_provider_setting');
     await expect(createServerNarrativeProvider([{ provider_key: 'fake-local-provider', enabled: true, model_key: 'fake-local-model', configuration: { mode: 'fixture' } }], () => undefined, { timeoutMs: 50, fakeLocalProvider: fixture } as never).generate({ ...request, modelKey: 'fake-local-model' })).resolves.toMatchObject({ rawId: 'fixture' });
   });

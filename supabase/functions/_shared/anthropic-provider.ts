@@ -18,7 +18,7 @@ export class AnthropicNarrativeProvider implements NarrativeProvider {
       && (item as { type?: unknown }).type === 'tool_use' && typeof (item as { id?: unknown }).id === 'string'
       && Boolean((item as { id: string }).id) && (item as { name?: unknown }).name === 'narrative_result') as { input?: unknown } | undefined;
     if (!id || !tool || !('input' in tool)) throw new ProviderRequestError('malformed_response');
-    try { return { result: parseGenerationResult(tool.input), usage: usageFromUpstream(value), rawId: id }; }
+    try { return { result: parseGenerationResult(tool.input), usage: usageFromUpstream(value), rawId: id, responseModel }; }
     catch { throw new ProviderRequestError('malformed_response'); }
   }
 }

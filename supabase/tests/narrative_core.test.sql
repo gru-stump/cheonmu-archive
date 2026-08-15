@@ -62,15 +62,17 @@ select throws_ok(
   null,
   'authenticated cannot update draft status directly'
 );
-select is(
-  (select status from public.transition_draft('30000000-0000-0000-0000-000000000002', 'generated', 'reviewing')),
-  'reviewing',
-  'owner can make a legal transition through the RPC'
+select throws_ok(
+  $$ select public.transition_draft('30000000-0000-0000-0000-000000000002', 'generated', 'reviewing') $$,
+  '42501',
+  'permission denied for function transition_draft',
+  'owner cannot bypass guarded review through the generic transition RPC'
 );
 select throws_ok(
   $$ select public.transition_draft('30000000-0000-0000-0000-000000000003', 'generated', 'reviewing') $$,
-  'P0002',
-  'draft not found or transition expectation did not match'
+  '42501',
+  'permission denied for function transition_draft',
+  'generic transition denial does not reveal another owner draft'
 );
 
 reset role;

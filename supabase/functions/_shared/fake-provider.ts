@@ -5,6 +5,7 @@ export interface FakeProviderFixture {
   result: GenerationResult;
   usage?: Usage;
   rawId?: string;
+  responseModel?: string;
 }
 
 function clone<T>(value: T): T {
@@ -26,11 +27,13 @@ export class FakeNarrativeProvider implements NarrativeProvider {
       result: supplied.result,
       usage: supplied.usage ?? { inputTokens: 14, outputTokens: 9 },
       rawId: supplied.rawId ?? 'fake-fixture',
+      responseModel: supplied.responseModel ?? 'fake-fixture-model',
     });
     this.fixture = {
       result: clone(parsed.result),
       usage: clone(parsed.usage),
       ...(supplied.rawId === undefined ? {} : { rawId: parsed.rawId }),
+      ...(supplied.responseModel === undefined ? {} : { responseModel: parsed.responseModel }),
     };
   }
 
@@ -39,6 +42,7 @@ export class FakeNarrativeProvider implements NarrativeProvider {
       result: clone(this.fixture.result),
       usage: clone(this.fixture.usage ?? { inputTokens: 14, outputTokens: 9 }),
       rawId: this.fixture.rawId ?? `fake-${request.kind}-${request.contextVersionIds.join(',') || 'no-context'}`,
+      responseModel: this.fixture.responseModel ?? request.modelKey,
     });
   }
 }

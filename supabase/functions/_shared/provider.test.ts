@@ -40,6 +40,7 @@ describe('FakeNarrativeProvider', () => {
       result: fixture,
       usage: { inputTokens: 14, outputTokens: 9 },
       rawId: 'fake-short_dialogue-canon-v1',
+      responseModel: 'fake-model',
     });
   });
 
@@ -56,20 +57,24 @@ describe('FakeNarrativeProvider', () => {
       result: fixture,
       usage: { inputTokens: 1, outputTokens: 1, costMicros: 0 },
       rawId: 'provider-1',
+      responseModel: 'canonical-provider-model',
     })).toEqual({
       result: fixture,
       usage: { inputTokens: 1, outputTokens: 1, costMicros: 0 },
       rawId: 'provider-1',
+      responseModel: 'canonical-provider-model',
     });
     expect(() => parseNarrativeProviderResponse({
       result: fixture,
       usage: { inputTokens: -1, outputTokens: 1 },
       rawId: 'provider-1',
+      responseModel: 'canonical-provider-model',
     })).toThrow();
     expect(() => parseNarrativeProviderResponse({
       result: fixture,
       usage: { inputTokens: 1, outputTokens: 1, costMicros: Number.POSITIVE_INFINITY },
       rawId: ' ',
+      responseModel: ' ',
     })).toThrow();
   });
 

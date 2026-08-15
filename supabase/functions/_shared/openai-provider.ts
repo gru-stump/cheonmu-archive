@@ -74,7 +74,7 @@ export class OpenAiNarrativeProvider implements NarrativeProvider {
     }) as { content: unknown[] } | undefined;
     const text = message?.content.find((item) => item && typeof item === 'object' && (item as { type?: unknown }).type === 'output_text' && typeof (item as { text?: unknown }).text === 'string') as { text: string } | undefined;
     if (!id || !text) throw new ProviderRequestError('malformed_response');
-    try { return { result: parseGenerationResult(JSON.parse(text.text)), usage: usageFromUpstream(value), rawId: id }; }
+    try { return { result: parseGenerationResult(JSON.parse(text.text)), usage: usageFromUpstream(value), rawId: id, responseModel }; }
     catch { throw new ProviderRequestError('malformed_response'); }
   }
 }

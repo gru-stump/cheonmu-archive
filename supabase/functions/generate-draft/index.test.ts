@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { GenerationResult } from '../../../shared/narrative/contracts';
 import type { ContextSelection, NarrativeMemory } from '../_shared/context';
 import { FakeNarrativeProvider } from '../_shared/fake-provider';
+import { createCorsPolicy } from '../_shared/cors.ts';
 import type { NarrativeProvider } from '../_shared/provider';
 import {
   CONTINUITY_POLICY_VERSION,
@@ -38,7 +39,7 @@ function harness(overrides: Partial<GenerationDependencies> & { provider?: Narra
   const providerRequests: unknown[] = [];
   const finalized: unknown[] = [];
   const aborts: unknown[] = [];
-  const provider = overrides.provider ?? { generate: async (request) => { events.push('provider'); providerRequests.push(request); return { result: { ...result, kind: request.kind }, usage: { inputTokens: 38, outputTokens: 80, costMicros: 37 }, rawId: 'raw-1' }; } };
+  const provider = overrides.provider ?? { generate: async (request) => { events.push('provider'); providerRequests.push(request); return { result: { ...result, kind: request.kind }, usage: { inputTokens: 38, outputTokens: 80, costMicros: 37 }, rawId: 'raw-1', responseModel: 'canonical-fake-model' }; } };
   const { provider: _providerOverride, ...dependencyOverrides } = overrides;
   const deps = {
     createAttemptToken: () => attemptToken,
@@ -91,7 +92,7 @@ describe('runGeneration', () => {
     expect(h.providerRequests).toMatchObject([{ modelKey: 'fake-model', maxInputTokens: 500, maxOutputTokens: 200, contextVersionIds: selection.versionIds,
       contextMemories: [{ versionId: 'canon-v1', content: canon.content, claims: canon.claims }, { versionId: 'feedback-v3', content: feedback.content }, { versionId: 'continuity-v2', content: continuity.content }],
     }]);
-    expect(h.finalized).toMatchObject([{ continuityPolicyVersion: CONTINUITY_POLICY_VERSION, actualCostMicros: 203, contextVersionIds: selection.versionIds }]);
+    expect(h.finalized).toMatchObject([{ continuityPolicyVersion: CONTINUITY_POLICY_VERSION, actualCostMicros: 203, contextVersionIds: selection.versionIds, providerResponseModel: 'canonical-fake-model' }]);
     expect(h.aborts).toEqual([]);
   });
 
@@ -265,6 +266,26 @@ describe('runGeneration', () => {
 });
 
 describe('generate-draft HTTP boundary', () => {
+  it('handles allowlisted browser preflight and adds exact-origin CORS headers to errors', async () => {
+    const h = harness();
+    const cors = createCorsPolicy(['https://admin.example.test']);
+    const handler = createGenerateDraftHandler(h.deps, cors);
+    const preflight = await handler(new Request('http://local/generate', {
+      method: 'OPTIONS',
+      headers: { origin: 'https://admin.example.test', 'access-control-request-method': 'POST', 'access-control-request-headers': 'authorization, content-type' },
+    }));
+    expect(preflight.status).toBe(204);
+    expect(preflight.headers.get('access-control-allow-origin')).toBe('https://admin.example.test');
+    expect(preflight.headers.get('access-control-allow-credentials')).toBeNull();
+    const error = await handler(new Request('http://local/generate', { method: 'GET', headers: { origin: 'https://admin.example.test' } }));
+    expect(error.status).toBe(405);
+    expect(error.headers.get('access-control-allow-origin')).toBe('https://admin.example.test');
+    const denied = await handler(new Request('http://local/generate', { method: 'OPTIONS', headers: { origin: 'https://evil.example.test' } }));
+    expect(denied.status).toBe(403);
+    expect(denied.headers.get('access-control-allow-origin')).toBeNull();
+    expect(h.events).toEqual([]);
+  });
+
   it('rejects caller pricing/token overrides before authentication', async () => {
     const h = harness();
     const response = await createGenerateDraftHandler(h.deps)(new Request('http://local/generate', { method: 'POST', headers: { authorization: 'Bearer token', 'content-type': 'application/json' }, body: JSON.stringify({ ...baseCommand, worstCaseCostMicros: 1, maxInputTokens: 9, maxOutputTokens: 9 }) }));
@@ -283,6 +304,30 @@ describe('generate-draft HTTP boundary', () => {
 });
 
 describe('Supabase generation adapter', () => {
+  it('maps an expired or invalid bearer response to 401', async () => {
+    const deps = createSupabaseGenerationDependencies({
+      url: 'http://supabase', anonKey: 'anon', serviceRoleKey: 'service-secret',
+      fetch: async () => Response.json({ message: 'invalid JWT' }, { status: 401 }),
+    }, 'expired-token', async () => new FakeNarrativeProvider(result));
+    await expect(deps.authenticate('expired-token')).rejects.toMatchObject({ status: 401, code: 'authentication_required' });
+  });
+
+  it('selects approval-tagged continuity for the next generation without admitting unapproved continuity', async () => {
+    const fetch: typeof globalThis.fetch = async (input) => {
+      const path = new URL(String(input)).pathname;
+      if (path.endsWith('/memory_items')) return Response.json([
+        { id: 'canon-v1', memory_type: 'canon', content: '관계 단계', status: 'approved', blocking: false, metadata: { tokenCount: 5, continuityFacts: { relationshipStage: 7 } } },
+        { id: 'approved-v2', memory_type: 'continuity', content: '치료실에서 맺은 약속', status: 'approved', blocking: false, metadata: { tokenCount: 6, tags: ['치료실', '밤'], continuityFacts: { continuityId: 'approved-v2' } } },
+        { id: 'unapproved-v3', memory_type: 'continuity', content: '검토되지 않은 사건', status: 'active', blocking: false, metadata: { tokenCount: 6, tags: ['치료실'], continuityFacts: { continuityId: 'unapproved-v3' } } },
+      ]);
+      return Response.json([]);
+    };
+    const deps = createSupabaseGenerationDependencies({ url: 'http://supabase', anonKey: 'anon', serviceRoleKey: 'service-secret', fetch }, 'token', async () => new FakeNarrativeProvider(result));
+    const selected = await deps.selectContext('owner-1', { ...baseCommand, tags: ['치료실'] }, 500);
+    expect(selected.versionIds).toEqual(['canon-v1', 'approved-v2']);
+    expect(selected.continuity.map((memory) => memory.versionId)).toEqual(['approved-v2']);
+  });
+
   it('authorizes both draft and job with the user client before service mutations', async () => {
     const seen: string[] = [];
     const fetch: typeof globalThis.fetch = async (input, init) => {
@@ -300,10 +345,12 @@ describe('Supabase generation adapter', () => {
   it('loads trusted settings and uses atomic start/success RPCs', async () => {
     const calls: string[] = [];
     const authorizations: Array<{ path: string; value: string | null }> = [];
+    const requestBodies: Array<{ path: string; value: unknown }> = [];
     const fetch: typeof globalThis.fetch = async (input, init) => {
       const path = new URL(String(input)).pathname + new URL(String(input)).search;
       calls.push(`${init?.method ?? 'GET'} ${path}`);
       authorizations.push({ path, value: new Headers(init?.headers).get('authorization') });
+      requestBodies.push({ path, value: init?.body ? JSON.parse(String(init.body)) : null });
       if (path.startsWith('/rest/v1/provider_settings?')) return Response.json([{ id: 'setting-1', owner_id: 'owner-1', provider_key: 'fake-local-provider', enabled: true, configuration: { mode: 'fixture' }, model_key: 'fake-model', max_input_tokens: 500, max_output_tokens: 200, max_revision_output_tokens: 80, input_cost_micros_per_million: 1000000, output_cost_micros_per_million: 2000000, fixed_cost_micros: 5 }]);
       if (path.endsWith('/rpc/freeze_generation_context')) return Response.json({ id: 'job-1', attempt_token: attemptToken, provider_setting_id: 'setting-1', model_key: 'fake-model', max_input_tokens: 500, max_output_tokens: 200, max_revision_output_tokens: 80, input_cost_micros_per_million: 1000000, output_cost_micros_per_million: 2000000, fixed_cost_micros: 5, worst_case_cost_micros: 905, context_version_ids: selection.versionIds, context_snapshot: selection.versionIds.map((versionId, index) => ({ versionId, memoryType: index === 0 ? 'canon' : index === 1 ? 'feedback' : 'continuity', content: 'frozen', tokenCount: 1 })) });
       if (path.endsWith('/rpc/reserve_and_start_generation')) return Response.json({ status: 'reserved', budgetStatus: 'normal', remainingMicros: 50 });
@@ -315,9 +362,10 @@ describe('Supabase generation adapter', () => {
     await expect(deps.loadPolicy('owner-1', baseCommand)).resolves.toMatchObject({ modelKey: 'fake-model', maxInputTokens: 500 });
     await expect(deps.freezeContext({ ownerId: 'owner-1', jobId: 'job-1', draftId: 'draft-1', idempotencyKey: 'key', mode: 'new', contextVersionIds: selection.versionIds, contextSnapshot: selection.versionIds.map((versionId, index) => ({ versionId, memoryType: index === 0 ? 'canon' : index === 1 ? 'feedback' : 'continuity', content: 'frozen', tokenCount: 1 })), providerSettingId: 'setting-1', attemptToken })).resolves.toMatchObject({ worstCaseCostMicros: 905, attemptToken });
     await expect(deps.reserveAndStart({ jobId: 'job-1', draftId: 'draft-1', attemptToken, worstCaseCostMicros: 905 })).resolves.toMatchObject({ remainingMicros: 50 });
-    await expect(deps.finalizeSuccess({ ownerId: 'owner-1', jobId: 'job-1', draftId: 'draft-1', attemptToken, result, usage: { inputTokens: 1, outputTokens: 1, costMicros: 2 }, actualCostMicros: 2, contextVersionIds: selection.versionIds, continuityLevel: 'review', findings: [], providerResponseId: 'raw', visibility: 'private', continuityPolicyVersion: CONTINUITY_POLICY_VERSION })).resolves.toMatchObject({ versionId: 'version-1' });
+    await expect(deps.finalizeSuccess({ ownerId: 'owner-1', jobId: 'job-1', draftId: 'draft-1', attemptToken, result, usage: { inputTokens: 1, outputTokens: 1, costMicros: 2 }, actualCostMicros: 2, contextVersionIds: selection.versionIds, continuityLevel: 'review', findings: [], providerResponseId: 'raw', providerResponseModel: 'canonical-fake-model', visibility: 'private', continuityPolicyVersion: CONTINUITY_POLICY_VERSION })).resolves.toMatchObject({ versionId: 'version-1' });
     await expect(deps.abortGenerationAttempt({ jobId: 'job-1', attemptToken, idempotencyKey: 'key', failureCode: 'finalization_failed' })).resolves.toMatchObject({ outcome: 'aborted' });
     expect(calls).toEqual(expect.arrayContaining(['POST /rest/v1/rpc/reserve_and_start_generation', 'POST /rest/v1/rpc/finalize_generation_success']));
+    expect(requestBodies.find(({ path }) => path.endsWith('/rpc/finalize_generation_success'))?.value).toMatchObject({ p_provider_response_model: 'canonical-fake-model' });
     expect(calls.some((call) => call.includes('reconcile_generation_budget') || call.includes('store_generation_result'))).toBe(false);
     expect(authorizations.find(({ path }) => path.startsWith('/rest/v1/provider_settings?'))?.value).toBe('Bearer service-secret');
     expect(authorizations.filter(({ path }) => path.startsWith('/rest/v1/rpc/')).map(({ value }) => value)).toEqual(['Bearer service-secret', 'Bearer service-secret', 'Bearer service-secret', 'Bearer service-secret']);

@@ -1,6 +1,6 @@
 begin;
 
-select plan(39);
+select plan(40);
 
 update public.provider_settings
 set enabled = true,
@@ -109,7 +109,7 @@ select throws_ok(
   $$ select public.finalize_generation_success(
     'a2000000-0000-0000-0000-000000000001', 'a5000000-0000-4000-8000-000000000002', 1, '{"inputTokens":14,"outputTokens":10,"costMicros":1}',
     '{"kind":"major_event_proposal","title":"scene plan","body":"private result"}',
-    'review', '[]', 'fake-response-major', 'cheonmu-continuity-v1'
+    'review', '[]', 'fake-response-major', 'fake-canonical-2026-08-14', 'cheonmu-continuity-v1'
   ) $$,
   'P0001', 'actual_micros_mismatch', 'finalization rejects caller-controlled actual pricing'
 );
@@ -121,7 +121,7 @@ select lives_ok(
     'a2000000-0000-0000-0000-000000000001', 'a5000000-0000-4000-8000-000000000002', 100, '{"inputTokens":14,"outputTokens":10,"costMicros":1}',
     '{"kind":"major_event_proposal","title":"scene plan","body":"private result"}',
     'review', '[{"code":"manual_semantic_review","level":"review","message":"review","sourceIds":["15000000-0000-0000-0000-000000000001"]}]',
-    'fake-response-major', 'cheonmu-continuity-v1'
+    'fake-response-major', 'fake-canonical-2026-08-14', 'cheonmu-continuity-v1'
   ) $$,
   'success finalization commits all generated state atomically'
 );
@@ -129,6 +129,7 @@ select is((select phase from public.major_event_workflows where id = 'a3000000-0
 select is((select status from public.generation_jobs where id = 'a2000000-0000-0000-0000-000000000001'), 'completed', 'success finalization completes the job');
 select is((select status from public.drafts where id = 'a1000000-0000-0000-0000-000000000001'), 'generated', 'success finalization legally advances the draft');
 select is((select count(*) from public.draft_versions where generation_job_id = 'a2000000-0000-0000-0000-000000000001' and continuity_policy_version = 'cheonmu-continuity-v1' and context_snapshot -> 0 ->> 'content' = 'frozen canon'), 1::bigint, 'success creates one policy-stamped immutable version with frozen context');
+select is((select provider_response_model from public.draft_versions where generation_job_id = 'a2000000-0000-0000-0000-000000000001'), 'fake-canonical-2026-08-14', 'success persists canonical response-model metadata independently of the configured alias');
 select is((select count(*) from public.budget_entries where generation_job_id = 'a2000000-0000-0000-0000-000000000001' and entry_type = 'reconciliation'), 1::bigint, 'success creates one reconciliation in the transaction');
 select is((select public.abort_generation_attempt('a2000000-0000-0000-0000-000000000001', 'a5000000-0000-4000-8000-000000000002', 'major-retry-key', 'finalization_failed') ->> 'outcome'), 'completed', 'abort detects an already committed finalization');
 select is((select phase from public.major_event_workflows where id = 'a3000000-0000-0000-0000-000000000001'), 'scene_plan', 'abort never reverts a completed major-event phase');

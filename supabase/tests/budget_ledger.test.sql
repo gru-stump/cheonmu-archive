@@ -102,22 +102,13 @@ values (
   (date_trunc('day', current_timestamp at time zone 'Asia/Seoul') - interval '12 hours') at time zone 'Asia/Seoul'
 );
 
-select set_config('request.jwt.claim.role', 'authenticated', true);
-select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000001', true);
-set local role authenticated;
-select set_config(
-  'TimeZone',
-  case
-    when extract(hour from current_timestamp at time zone 'Asia/Seoul') < 10 then 'Pacific/Pago_Pago'
-    else 'Pacific/Kiritimati'
-  end,
-  true
+select is(
+  public.narrative_business_date('2026-08-14 15:00:00+00'::timestamptz),
+  date '2026-08-15',
+  'budget accounting uses the deterministic Seoul business day'
 );
-select isnt(
-  current_date,
-  (current_timestamp at time zone 'Asia/Seoul')::date,
-  'the session date differs from the Seoul day used for budget accounting'
-);
+select set_config('request.jwt.claim.role', 'service_role', true);
+set local role service_role;
 
 -- pgTAP runs this script through one connection, so these calls cover the
 -- deterministic cap behavior. budget_concurrency.test.mjs supplements this
@@ -152,24 +143,9 @@ select is(
   'the rejected competing reservation creates no entry'
 );
 
-select throws_ok(
-  $$ select public.reserve_generation_budget('52000000-0000-0000-0000-000000000004', 50) $$,
-  'P0002',
-  'generation job not found',
-  'reservation cannot operate on another owner job'
-);
-select throws_ok(
-  $$ select public.reconcile_generation_budget('52000000-0000-0000-0000-000000000005', 20, '{"inputTokens":1,"outputTokens":1}'::jsonb) $$,
-  'P0002',
-  'generation job not found',
-  'reconciliation cannot operate on another owner job'
-);
-select throws_ok(
-  $$ select public.fail_generation_budget('52000000-0000-0000-0000-000000000006', 20) $$,
-  'P0002',
-  'generation job not found',
-  'failure settlement cannot operate on another owner job'
-);
+select ok(not has_function_privilege('authenticated', 'public.reserve_generation_budget(uuid,bigint)', 'EXECUTE'), 'authenticated cannot reserve or pre-settle a job');
+select ok(not has_function_privilege('authenticated', 'public.reconcile_generation_budget(uuid,bigint,jsonb)', 'EXECUTE'), 'authenticated cannot reconcile or pre-settle a job');
+select ok(not has_function_privilege('authenticated', 'public.fail_generation_budget(uuid,bigint)', 'EXECUTE'), 'authenticated cannot fail or pre-settle a job');
 
 select lives_ok(
   $$ select public.reconcile_generation_budget('52000000-0000-0000-0000-000000000001', 30, '{"inputTokens":100,"outputTokens":20,"costMicros":30}'::jsonb) $$,
@@ -217,9 +193,8 @@ select is(
 
 reset role;
 
-select set_config('request.jwt.claim.role', 'authenticated', true);
-select set_config('request.jwt.claim.sub', '50000000-0000-0000-0000-000000000001', true);
-set local role authenticated;
+select set_config('request.jwt.claim.role', 'service_role', true);
+set local role service_role;
 
 select lives_ok(
   $$ select public.reserve_generation_budget('52000000-0000-0000-0000-000000000004', 30) $$,

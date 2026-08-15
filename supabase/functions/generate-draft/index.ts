@@ -3,6 +3,7 @@ import { draftKinds, generationModes, type DraftKind, type DraftStatus, type Gen
 import { selectNarrativeContext, type ContextSelection, type NarrativeMemory } from '../_shared/context.ts';
 import { checkContinuity, type ContinuityCheck, type ContinuityContext } from '../_shared/continuity.ts';
 import { createServerNarrativeProvider, parseNarrativeProviderResponse, type NarrativeProvider, type NarrativeProviderResponse } from '../_shared/provider.ts';
+import { corsGate, corsPolicyFromEnvironment, createCorsPolicy, withCorsHeaders, type CorsPolicy } from '../_shared/cors.ts';
 
 export const CONTINUITY_POLICY_VERSION = 'cheonmu-continuity-v1';
 export type { GenerationMode };
@@ -80,7 +81,7 @@ export interface GenerationDependencies {
   finalizeSuccess(input: {
     ownerId: string; jobId: string; draftId: string; attemptToken: string; result: GenerationResult; usage: Usage; actualCostMicros: number;
     contextVersionIds: string[]; continuityLevel: ContinuityCheck['level']; findings: ContinuityCheck['findings'];
-    providerResponseId: string; visibility: 'private'; continuityPolicyVersion: typeof CONTINUITY_POLICY_VERSION;
+    providerResponseId: string; providerResponseModel: string; visibility: 'private'; continuityPolicyVersion: typeof CONTINUITY_POLICY_VERSION;
   }): Promise<{ draftId: string; versionId: string; status: 'generated' }>;
   abortGenerationAttempt(input: { jobId: string; attemptToken: string; idempotencyKey: string; failureCode: GenerationFailureCode }): Promise<AbortGenerationResult>;
   auditFailure?(stage: string, error: unknown): void;
@@ -323,7 +324,7 @@ export async function runGeneration(deps: GenerationDependencies, command: Gener
   catch (error) { return abortAfterFreeze(deps, command, attemptToken, 'continuity_check_failed', error, new GenerationError(500, 'continuity_check_failed')); }
   const actualCostMicros = trustedActualCost;
   try {
-    const stored = await deps.finalizeSuccess({ ownerId, jobId: command.jobId, draftId: command.draftId, attemptToken, result: providerResponse.result, usage: providerResponse.usage, actualCostMicros, contextVersionIds: frozenPolicy.contextVersionIds, continuityLevel: continuity.level, findings: continuity.findings, providerResponseId: providerResponse.rawId, visibility: 'private', continuityPolicyVersion: CONTINUITY_POLICY_VERSION });
+    const stored = await deps.finalizeSuccess({ ownerId, jobId: command.jobId, draftId: command.draftId, attemptToken, result: providerResponse.result, usage: providerResponse.usage, actualCostMicros, contextVersionIds: frozenPolicy.contextVersionIds, continuityLevel: continuity.level, findings: continuity.findings, providerResponseId: providerResponse.rawId, providerResponseModel: providerResponse.responseModel, visibility: 'private', continuityPolicyVersion: CONTINUITY_POLICY_VERSION });
     return { ...stored, continuityLevel: continuity.level };
   } catch (error) {
     const mapped = mapPersistence(error, 'finalization_failed');
@@ -336,9 +337,14 @@ function jsonError(error: unknown): Response {
   return Response.json({ error: known.code, ...(known.details ? { details: known.details } : {}) }, { status: known.status });
 }
 
-export function createGenerateDraftHandler(deps: GenerationDependencies): (request: Request) => Promise<Response> {
+const noCorsPolicy = createCorsPolicy([]);
+
+export function createGenerateDraftHandler(deps: GenerationDependencies, cors: CorsPolicy = noCorsPolicy): (request: Request) => Promise<Response> {
   return async (request) => {
-    if (request.method !== 'POST') return Response.json({ error: 'method_not_allowed' }, { status: 405 });
+    const gated = corsGate(request, cors);
+    if (gated) return gated;
+    const respond = (response: Response) => withCorsHeaders(request, response, cors);
+    if (request.method !== 'POST') return respond(Response.json({ error: 'method_not_allowed' }, { status: 405 }));
     try {
       const authorization = request.headers.get('authorization');
       if (!authorization?.startsWith('Bearer ')) throw new GenerationError(401, 'authentication_required');
@@ -346,8 +352,8 @@ export function createGenerateDraftHandler(deps: GenerationDependencies): (reque
       try { json = await request.json(); } catch { throw new GenerationError(400, 'invalid_command'); }
       const parsed = bodySchema.safeParse(json);
       if (!parsed.success) throw new GenerationError(400, 'invalid_command');
-      return Response.json(await runGeneration(deps, { ...parsed.data, authToken: authorization.slice(7) }));
-    } catch (error) { return jsonError(error); }
+      return respond(Response.json(await runGeneration(deps, { ...parsed.data, authToken: authorization.slice(7) })));
+    } catch (error) { return respond(jsonError(error)); }
   };
 }
 
@@ -398,6 +404,7 @@ export function createSupabaseGenerationDependencies(
     const response = await request(`${config.url}${path}`, { ...init, headers: { ...headers, ...init.headers } });
     const value = response.status === 204 ? null : await response.json();
     if (!response.ok) {
+      if (path === '/auth/v1/user' && (response.status === 401 || response.status === 403)) throw new GenerationError(401, 'authentication_required');
       const databaseCode = value && typeof value === 'object' && 'code' in value ? String(value.code) : '';
       const message = value && typeof value === 'object' ? String(('message' in value && value.message) || ('msg' in value && value.msg) || `supabase_${response.status}`) : `supabase_${response.status}`;
       if (databaseCode === 'P0001' && stableConflictCodes.has(message)) throw new PersistenceError(message);
@@ -460,7 +467,7 @@ export function createSupabaseGenerationDependencies(
     reserveAndStart: async (input) => reservationResultSchema.parse(await rpc('reserve_and_start_generation', { p_job_id: input.jobId, p_attempt_token: input.attemptToken, p_amount_micros: input.worstCaseCostMicros })),
     resolveProvider, parseProviderResponse: parseNarrativeProviderResponse, checkContinuity,
     finalizeSuccess: async (input) => {
-      const version = row<{ id: string; draft_id?: string }>(await rpc('finalize_generation_success', { p_job_id: input.jobId, p_attempt_token: input.attemptToken, p_actual_micros: input.actualCostMicros, p_usage_json: input.usage, p_content: input.result, p_continuity_level: input.continuityLevel, p_continuity_findings: input.findings, p_provider_response_id: input.providerResponseId, p_policy_version: input.continuityPolicyVersion }));
+      const version = row<{ id: string; draft_id?: string }>(await rpc('finalize_generation_success', { p_job_id: input.jobId, p_attempt_token: input.attemptToken, p_actual_micros: input.actualCostMicros, p_usage_json: input.usage, p_content: input.result, p_continuity_level: input.continuityLevel, p_continuity_findings: input.findings, p_provider_response_id: input.providerResponseId, p_provider_response_model: input.providerResponseModel, p_policy_version: input.continuityPolicyVersion }));
       if (!version?.id) throw new Error('success_finalization_missing_version');
       return { draftId: version.draft_id ?? input.draftId, versionId: version.id, status: 'generated' };
     },
@@ -476,7 +483,7 @@ if (typeof Deno !== 'undefined' && (import.meta as ImportMeta & { main?: boolean
   const url = Deno.env.get('SUPABASE_URL'); const anonKey = Deno.env.get('SUPABASE_ANON_KEY'); const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
   if (!url || !anonKey || !serviceRoleKey) throw new Error('SUPABASE_URL, SUPABASE_ANON_KEY, and SUPABASE_SERVICE_ROLE_KEY are required');
   const fakeLocalProvider: NarrativeProvider | undefined = Deno.env.get('NARRATIVE_FAKE_LOCAL_FIXTURE') === 'true' ? {
-    generate: async (providerRequest) => ({ result: { ...defaultFakeResult, kind: providerRequest.kind }, usage: { inputTokens: 14, outputTokens: 9 }, rawId: `fake-${providerRequest.kind}` }),
+    generate: async (providerRequest) => ({ result: { ...defaultFakeResult, kind: providerRequest.kind }, usage: { inputTokens: 14, outputTokens: 9 }, rawId: `fake-${providerRequest.kind}`, responseModel: providerRequest.modelKey }),
   } : undefined;
   const resolveProvider: GenerationDependencies['resolveProvider'] = (loadedPolicy) => {
     const configuration = loadedPolicy.providerKey === 'fake-local-provider'
@@ -484,8 +491,9 @@ if (typeof Deno !== 'undefined' && (import.meta as ImportMeta & { main?: boolean
       : { apiKeyEnv: loadedPolicy.secretRef };
     return createServerNarrativeProvider([{ provider_key: loadedPolicy.providerKey, enabled: true, model_key: loadedPolicy.modelKey, configuration }], (name) => Deno.env.get(name), { timeoutMs: 30_000, ...(fakeLocalProvider ? { fakeLocalProvider } : {}) });
   };
+  const cors = corsPolicyFromEnvironment(Deno.env.get('NARRATIVE_ADMIN_ORIGINS'));
   Deno.serve((request) => {
     const token = request.headers.get('authorization')?.replace(/^Bearer\s+/i, '') ?? '';
-    return createGenerateDraftHandler(createSupabaseGenerationDependencies({ url, anonKey, serviceRoleKey }, token, resolveProvider))(request);
+    return createGenerateDraftHandler(createSupabaseGenerationDependencies({ url, anonKey, serviceRoleKey }, token, resolveProvider), cors)(request);
   });
 }

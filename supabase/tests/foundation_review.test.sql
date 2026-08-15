@@ -189,23 +189,22 @@ select ok(
         'transition_draft', 'reserve_generation_budget',
         'reconcile_generation_budget', 'fail_generation_budget'
       )
-      and grantee in ('PUBLIC', 'anon')
+      and grantee in ('PUBLIC', 'anon', 'authenticated')
       and privilege_type = 'EXECUTE'
   ),
-  'PUBLIC and anon cannot execute narrative mutation RPCs'
+  'PUBLIC, anon, and authenticated cannot execute trusted narrative mutation RPCs'
 );
 
 select ok(
-  (
-    select bool_and(has_function_privilege('authenticated', function_signature, 'EXECUTE'))
-    from unnest(array[
-      'public.transition_draft(uuid,text,text)',
-      'public.reserve_generation_budget(uuid,bigint)',
-      'public.reconcile_generation_budget(uuid,bigint,jsonb)',
-      'public.fail_generation_budget(uuid,bigint)'
-    ]) as function_signature
+  not exists (
+    select 1
+    from pg_proc as procedure
+    join pg_namespace as namespace on namespace.oid = procedure.pronamespace
+    where namespace.nspname = 'public'
+      and procedure.proname in ('transition_draft', 'reserve_generation_budget', 'reconcile_generation_budget', 'fail_generation_budget')
+      and has_function_privilege('authenticated', procedure.oid, 'EXECUTE')
   ),
-  'authenticated can execute the intended narrative RPCs'
+  'authenticated cannot execute any overload of the trusted narrative mutation RPCs'
 );
 
 select ok(
@@ -276,23 +275,17 @@ select throws_ok(
   null,
   'authenticated cannot insert drafts directly'
 );
-select is(
-  (
-    select status
-    from public.transition_draft(
-      '61000000-0000-0000-0000-000000000001',
-      'queued',
-      'generating'
-    )
-  ),
-  'generating',
-  'authenticated can transition its own draft through the RPC'
+select throws_ok(
+  $$ select public.transition_draft('61000000-0000-0000-0000-000000000001', 'queued', 'generating') $$,
+  '42501',
+  'permission denied for function transition_draft',
+  'authenticated cannot transition its own draft through the generic RPC'
 );
 select throws_ok(
   $$ select public.transition_draft('61000000-0000-0000-0000-000000000002', 'queued', 'generating') $$,
-  'P0002',
-  'draft not found or transition expectation did not match',
-  'authenticated cannot transition another owner draft'
+  '42501',
+  'permission denied for function transition_draft',
+  'authenticated cannot probe another owner through the generic RPC'
 );
 
 reset role;
@@ -405,14 +398,14 @@ set local role authenticated;
 select throws_ok(
   $$ select public.transition_draft('61000000-0000-0000-0000-000000000004', 'queued', 'generating') $$,
   '42501',
-  'draft transition caller is not authorized',
-  'transition rejects an authenticated database role without an authenticated JWT role claim'
+  'permission denied for function transition_draft',
+  'authenticated cannot call the generic transition RPC'
 );
 select throws_ok(
   $$ select public.reserve_generation_budget('63000000-0000-0000-0000-000000000001', 100) $$,
   '42501',
-  'generation budget caller is not authorized',
-  'budget RPCs reject an authenticated database role without an authenticated JWT role claim'
+  'permission denied for function reserve_generation_budget',
+  'authenticated cannot call trusted budget plumbing'
 );
 reset role;
 
@@ -575,9 +568,8 @@ values (
   'near-bigint-limit reservation'
 );
 
-select set_config('request.jwt.claim.role', 'authenticated', true);
-select set_config('request.jwt.claim.sub', '60000000-0000-0000-0000-000000000002', true);
-set local role authenticated;
+select set_config('request.jwt.claim.role', 'service_role', true);
+set local role service_role;
 select throws_ok(
   $$ select public.reserve_generation_budget('63000000-0000-0000-0000-000000000002', 8) $$,
   'P0001',

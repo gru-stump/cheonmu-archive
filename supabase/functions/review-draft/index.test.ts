@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { CONTINUITY_POLICY_VERSION, PersistenceError, applyReview, createReviewDraftHandler, createSupabaseReviewDependencies, type ReviewDependencies, type ReviewTransaction } from './index';
+import { createCorsPolicy } from '../_shared/cors.ts';
 
 function harness(level: 'review' | 'block' | null = 'review', storedPolicy: string | null = CONTINUITY_POLICY_VERSION) {
   const transactions: ReviewTransaction[] = [];
@@ -52,6 +53,35 @@ describe('applyReview', () => {
 });
 
 describe('review-draft HTTP boundary', () => {
+  it('handles allowlisted browser preflight and adds exact-origin CORS headers to errors', async () => {
+    const h = harness();
+    const cors = createCorsPolicy(['https://admin.example.test']);
+    const handler = createReviewDraftHandler(h.deps, cors);
+    const preflight = await handler(new Request('http://local/review', { method: 'OPTIONS', headers: { origin: 'https://admin.example.test', 'access-control-request-method': 'POST', 'access-control-request-headers': 'authorization, content-type' } }));
+    expect(preflight.status).toBe(204);
+    expect(preflight.headers.get('access-control-allow-origin')).toBe('https://admin.example.test');
+    expect(preflight.headers.get('access-control-allow-credentials')).toBeNull();
+    const error = await handler(new Request('http://local/review', { method: 'GET', headers: { origin: 'https://admin.example.test' } }));
+    expect(error.status).toBe(405);
+    expect(error.headers.get('access-control-allow-origin')).toBe('https://admin.example.test');
+    const denied = await handler(new Request('http://local/review', { method: 'OPTIONS', headers: { origin: 'https://evil.example.test' } }));
+    expect(denied.status).toBe(403);
+    expect(denied.headers.get('access-control-allow-origin')).toBeNull();
+    expect(h.events).toEqual([]);
+  });
+
+  it('maps an expired or invalid bearer response to 401 with CORS headers', async () => {
+    const cors = createCorsPolicy(['https://admin.example.test']);
+    const deps = createSupabaseReviewDependencies({ url: 'http://supabase', anonKey: 'anon', fetch: async () => Response.json({ message: 'invalid JWT' }, { status: 401 }) }, 'expired-token');
+    const response = await createReviewDraftHandler(deps, cors)(new Request('http://local/review', {
+      method: 'POST', headers: { origin: 'https://admin.example.test', authorization: 'Bearer expired-token', 'content-type': 'application/json' },
+      body: JSON.stringify({ draftId: base.draftId, expectedVersionId: base.expectedVersionId, expectedState: base.expectedState, idempotencyKey: base.idempotencyKey, action: 'approve_private' }),
+    }));
+    expect(response.status).toBe(401);
+    expect(response.headers.get('access-control-allow-origin')).toBe('https://admin.example.test');
+    await expect(response.json()).resolves.toEqual({ error: 'authentication_required' });
+  });
+
   it('rejects a caller-supplied policy version before authentication', async () => {
     const h = harness();
     const response = await createReviewDraftHandler(h.deps)(new Request('http://local/review', {

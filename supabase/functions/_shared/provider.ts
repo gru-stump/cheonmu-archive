@@ -7,6 +7,7 @@ export interface NarrativeProviderResponse {
   result: GenerationResult;
   usage: Usage;
   rawId: string;
+  responseModel: string;
 }
 
 export interface NarrativeProvider {
@@ -23,10 +24,12 @@ const providerResponseSchema = z.object({
     costMicros: safeUsageValue.optional(),
   }),
   rawId: z.string().trim().min(1),
-}).transform(({ result, usage, rawId }): NarrativeProviderResponse => ({
+  responseModel: z.string().trim().min(1),
+}).transform(({ result, usage, rawId, responseModel }): NarrativeProviderResponse => ({
   result: parseGenerationResult(result),
   usage,
   rawId,
+  responseModel,
 }));
 
 /** Validates every provider response at the adapter boundary. */

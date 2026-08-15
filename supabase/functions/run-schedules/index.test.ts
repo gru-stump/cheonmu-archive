@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createScheduleHandler, createSupabaseScheduleDependencies, evaluateAccessTrigger, runSchedules, type ScheduleDependencies } from './index.ts';
+import { createCorsPolicy } from '../_shared/cors.ts';
 
 function harness(overrides: Partial<ScheduleDependencies> = {}) {
   const inserted: Array<Record<string, unknown>> = [];
@@ -25,6 +26,18 @@ function harness(overrides: Partial<ScheduleDependencies> = {}) {
 }
 
 describe('runSchedules', () => {
+  it.each([0, 1, 4, 5, 59])('can dispatch every accepted minute value, including minute %i', async (minute) => {
+    const now = new Date(`2026-08-14T00:${String(minute).padStart(2, '0')}:00Z`);
+    const h = harness({
+      now: () => now,
+      listSchedules: async () => [{ ownerId: 'owner-1', scheduleKey: `minute-${minute}`, scheduleType: 'automatic', cronExpression: `${minute} 9 * * *`, enabled: true, payload: { kind: 'daily_event' } }],
+    });
+    await runSchedules(h.deps);
+    await runSchedules(h.deps);
+    expect(h.inserted).toHaveLength(1);
+    expect(h.inserted[0].scheduledFor).toBe(`2026-08-14T00:${String(minute).padStart(2, '0')}:00.000Z`);
+  });
+
   it('uses the Seoul calendar date and only queues one daily job across duplicate invocations', async () => {
     const h = harness();
     await runSchedules(h.deps); await runSchedules(h.deps);
@@ -79,6 +92,45 @@ describe('runSchedules', () => {
 });
 
 describe('evaluateAccessTrigger', () => {
+  it('handles allowlisted browser preflight and adds exact-origin CORS headers to errors', async () => {
+    const h = harness();
+    const cors = createCorsPolicy(['https://admin.example.test']);
+    const handler = createScheduleHandler(h.deps, undefined, cors);
+    const preflight = await handler(new Request('http://local/run-schedules', { method: 'OPTIONS', headers: { origin: 'https://admin.example.test', 'access-control-request-method': 'POST', 'access-control-request-headers': 'authorization, content-type' } }));
+    expect(preflight.status).toBe(204);
+    expect(preflight.headers.get('access-control-allow-origin')).toBe('https://admin.example.test');
+    expect(preflight.headers.get('access-control-allow-credentials')).toBeNull();
+    const error = await handler(new Request('http://local/run-schedules', { method: 'GET', headers: { origin: 'https://admin.example.test' } }));
+    expect(error.status).toBe(405);
+    expect(error.headers.get('access-control-allow-origin')).toBe('https://admin.example.test');
+    const denied = await handler(new Request('http://local/run-schedules', { method: 'OPTIONS', headers: { origin: 'https://evil.example.test' } }));
+    expect(denied.status).toBe(403);
+    expect(denied.headers.get('access-control-allow-origin')).toBeNull();
+    expect(h.events).toEqual([]);
+  });
+
+  it('adds CORS headers to an internal dispatch error response', async () => {
+    const cors = createCorsPolicy(['https://admin.example.test']);
+    const h = harness({ listSchedules: async () => { throw new Error('private database detail'); } });
+    const response = await createScheduleHandler(h.deps, 'dispatch-secret', cors)(new Request('http://local/run-schedules', {
+      method: 'POST', headers: { origin: 'https://admin.example.test', 'x-schedule-dispatch-token': 'dispatch-secret', 'content-type': 'application/json' }, body: JSON.stringify({ action: 'dispatch' }),
+    }));
+    expect(response.status).toBe(500);
+    expect(response.headers.get('access-control-allow-origin')).toBe('https://admin.example.test');
+    await expect(response.json()).resolves.toEqual({ error: 'internal_error' });
+  });
+
+  it('maps an expired or invalid bearer response to 401 with CORS headers', async () => {
+    const cors = createCorsPolicy(['https://admin.example.test']);
+    const deps = createSupabaseScheduleDependencies({ url: 'http://supabase', anonKey: 'anon', serviceRoleKey: 'service-secret', fetch: async () => Response.json({ message: 'invalid JWT' }, { status: 401 }) }, 'expired-token');
+    const response = await createScheduleHandler(deps, undefined, cors)(new Request('http://local/run-schedules', {
+      method: 'POST', headers: { origin: 'https://admin.example.test', authorization: 'Bearer expired-token', 'content-type': 'application/json' }, body: JSON.stringify({ action: 'access' }),
+    }));
+    expect(response.status).toBe(401);
+    expect(response.headers.get('access-control-allow-origin')).toBe('https://admin.example.test');
+    await expect(response.json()).resolves.toEqual({ error: 'authentication_required' });
+  });
+
   it('authenticates once, then delegates repeated access loads to one atomic queue operation', async () => {
     const h = harness();
     await expect(evaluateAccessTrigger(h.deps, 'token')).resolves.toMatchObject({ scheduleKey: 'access:owner-1', payload: { kind: 'short_dialogue', source: 'access' } });

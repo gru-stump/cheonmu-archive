@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { DraftStatus } from '../../../shared/narrative/contracts.ts';
+import { corsGate, corsPolicyFromEnvironment, createCorsPolicy, withCorsHeaders, type CorsPolicy } from '../_shared/cors.ts';
 
 export const CONTINUITY_POLICY_VERSION = 'cheonmu-continuity-v1';
 export type ReviewAction = 'reject' | 'approve_private' | 'approve_public';
@@ -58,16 +59,21 @@ function jsonError(error: unknown): Response {
   return Response.json({ error: known.code }, { status: known.status });
 }
 
-export function createReviewDraftHandler(deps: ReviewDependencies): (request: Request) => Promise<Response> {
+const noCorsPolicy = createCorsPolicy([]);
+
+export function createReviewDraftHandler(deps: ReviewDependencies, cors: CorsPolicy = noCorsPolicy): (request: Request) => Promise<Response> {
   return async (request) => {
-    if (request.method !== 'POST') return Response.json({ error: 'method_not_allowed' }, { status: 405 });
+    const gated = corsGate(request, cors);
+    if (gated) return gated;
+    const respond = (response: Response) => withCorsHeaders(request, response, cors);
+    if (request.method !== 'POST') return respond(Response.json({ error: 'method_not_allowed' }, { status: 405 }));
     try {
       const authorization = request.headers.get('authorization');
       if (!authorization?.startsWith('Bearer ')) throw new ReviewError(401, 'authentication_required');
       let json: unknown; try { json = await request.json(); } catch { throw new ReviewError(400, 'invalid_command'); }
       const parsed = bodySchema.safeParse(json); if (!parsed.success) throw new ReviewError(400, 'invalid_command');
-      return Response.json(await applyReview(deps, { ...parsed.data, authToken: authorization.slice(7) }));
-    } catch (error) { return jsonError(error); }
+      return respond(Response.json(await applyReview(deps, { ...parsed.data, authToken: authorization.slice(7) })));
+    } catch (error) { return respond(jsonError(error)); }
   };
 }
 
@@ -81,6 +87,7 @@ export function createSupabaseReviewDependencies(config: SupabaseReviewConfig, a
     const response = await request(`${config.url}${path}`, { ...init, headers: { ...headers, ...init.headers } });
     const value = response.status === 204 ? null : await response.json();
     if (!response.ok) {
+      if (path === '/auth/v1/user' && (response.status === 401 || response.status === 403)) throw new ReviewError(401, 'authentication_required');
       const databaseCode = value && typeof value === 'object' && 'code' in value ? String(value.code) : '';
       const message = value && typeof value === 'object' ? String(('message' in value && value.message) || ('msg' in value && value.msg) || `supabase_${response.status}`) : `supabase_${response.status}`;
       if (databaseCode === 'P0001' && stableCodes.has(message)) throw new PersistenceError(message);
@@ -113,5 +120,6 @@ interface DenoRuntime { env: { get(name: string): string | undefined }; serve(ha
 declare const Deno: DenoRuntime;
 if (typeof Deno !== 'undefined' && (import.meta as ImportMeta & { main?: boolean }).main) {
   const url = Deno.env.get('SUPABASE_URL'); const anonKey = Deno.env.get('SUPABASE_ANON_KEY'); if (!url || !anonKey) throw new Error('SUPABASE_URL and SUPABASE_ANON_KEY are required');
-  Deno.serve((request) => { const token = request.headers.get('authorization')?.replace(/^Bearer\s+/i, '') ?? ''; return createReviewDraftHandler(createSupabaseReviewDependencies({ url, anonKey }, token))(request); });
+  const cors = corsPolicyFromEnvironment(Deno.env.get('NARRATIVE_ADMIN_ORIGINS'));
+  Deno.serve((request) => { const token = request.headers.get('authorization')?.replace(/^Bearer\s+/i, '') ?? ''; return createReviewDraftHandler(createSupabaseReviewDependencies({ url, anonKey }, token), cors)(request); });
 }

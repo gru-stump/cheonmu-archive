@@ -1,3 +1,5 @@
+import { corsGate, corsPolicyFromEnvironment, createCorsPolicy, withCorsHeaders, type CorsPolicy } from '../_shared/cors.ts';
+
 export type BudgetState = 'normal' | 'warning' | 'risk';
 export interface QueuedJob { id?: string; ownerId: string; scheduleKey: string; scheduledFor: string; payload: { kind: 'short_dialogue' | 'daily_event'; source: 'schedule' | 'access' } }
 export interface ScheduleRecord { ownerId: string; scheduleKey: string; scheduleType: 'automatic' | 'manual'; cronExpression: string | null; enabled: boolean; payload: { kind: 'short_dialogue' | 'daily_event' } }
@@ -42,21 +44,30 @@ export async function evaluateAccessTrigger(deps: ScheduleDependencies, authToke
   return deps.queueAccessJob(owner.ownerId, deps.now());
 }
 
-export function createScheduleHandler(deps: ScheduleDependencies, dispatchToken?: string): (request: Request) => Promise<Response> {
+const noCorsPolicy = createCorsPolicy([]);
+
+export function createScheduleHandler(deps: ScheduleDependencies, dispatchToken?: string, cors: CorsPolicy = noCorsPolicy): (request: Request) => Promise<Response> {
   return async (request) => {
-    if (request.method !== 'POST') return Response.json({ error: 'method_not_allowed' }, { status: 405 });
-    let body: { action?: unknown }; try { body = await request.json(); } catch { return Response.json({ error: 'invalid_command' }, { status: 400 }); }
+    const gated = corsGate(request, cors);
+    if (gated) return gated;
+    const respond = (response: Response) => withCorsHeaders(request, response, cors);
+    if (request.method !== 'POST') return respond(Response.json({ error: 'method_not_allowed' }, { status: 405 }));
+    let body: { action?: unknown }; try { body = await request.json(); } catch { return respond(Response.json({ error: 'invalid_command' }, { status: 400 })); }
     if (body.action === 'dispatch') {
-      if (!dispatchToken || request.headers.get('x-schedule-dispatch-token') !== dispatchToken) return Response.json({ error: 'dispatch_not_authorized' }, { status: 401 });
-      const jobs = await runSchedules(deps); return Response.json({ jobs }, { status: 202 });
+      if (!dispatchToken || request.headers.get('x-schedule-dispatch-token') !== dispatchToken) return respond(Response.json({ error: 'dispatch_not_authorized' }, { status: 401 }));
+      try {
+        const jobs = await runSchedules(deps); return respond(Response.json({ jobs }, { status: 202 }));
+      } catch {
+        return respond(Response.json({ error: 'internal_error' }, { status: 500 }));
+      }
     }
-    if (body.action !== 'access') return Response.json({ error: 'invalid_command' }, { status: 400 });
+    if (body.action !== 'access') return respond(Response.json({ error: 'invalid_command' }, { status: 400 }));
     const token = request.headers.get('authorization')?.replace(/^Bearer\s+/i, '') ?? '';
-    try { return Response.json(await evaluateAccessTrigger(deps, token), { status: 202 }); }
+    try { return respond(Response.json(await evaluateAccessTrigger(deps, token), { status: 202 })); }
     catch (error) {
       const code = error instanceof ScheduleError ? error.code : 'internal_error';
       const status = code === 'authentication_required' ? 401 : ['access_interval_not_elapsed', 'daily_access_limit', 'budget_risk'].includes(code) ? 409 : 500;
-      return Response.json({ error: code }, { status });
+      return respond(Response.json({ error: code }, { status }));
     }
   };
 }
@@ -70,6 +81,7 @@ export function createSupabaseScheduleDependencies(config: SupabaseScheduleConfi
     const response = await request(`${config.url}${path}`, { ...init, headers: { ...headers, ...init.headers } });
     const value = response.status === 204 ? null : await response.json();
     if (!response.ok) {
+      if (path === '/auth/v1/user' && (response.status === 401 || response.status === 403)) throw new ScheduleError('authentication_required');
       const databaseCode = value && typeof value === 'object' && 'code' in value ? String((value as { code: unknown }).code) : '';
       const message = value && typeof value === 'object' && 'message' in value ? String((value as { message: unknown }).message) : '';
       if (databaseCode === 'P0001' && ['access_interval_not_elapsed', 'daily_access_limit', 'budget_risk'].includes(message)) throw new ScheduleError(message);
@@ -109,8 +121,9 @@ declare const Deno: DenoRuntime;
 if (typeof Deno !== 'undefined' && (import.meta as ImportMeta & { main?: boolean }).main) {
   const url = Deno.env.get('SUPABASE_URL'); const anonKey = Deno.env.get('SUPABASE_ANON_KEY'); const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'); const dispatchToken = Deno.env.get('NARRATIVE_SCHEDULE_DISPATCH_TOKEN');
   if (!url || !anonKey || !serviceRoleKey || !dispatchToken) throw new Error('schedule runtime settings are required');
+  const cors = corsPolicyFromEnvironment(Deno.env.get('NARRATIVE_ADMIN_ORIGINS'));
   Deno.serve((request) => {
     const token = request.headers.get('authorization')?.replace(/^Bearer\s+/i, '') ?? '';
-    return createScheduleHandler(createSupabaseScheduleDependencies({ url, anonKey, serviceRoleKey }, token), dispatchToken)(request);
+    return createScheduleHandler(createSupabaseScheduleDependencies({ url, anonKey, serviceRoleKey }, token), dispatchToken, cors)(request);
   });
 }

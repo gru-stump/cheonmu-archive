@@ -107,8 +107,8 @@ insert into public.schedules (id, owner_id, schedule_key, cron_expression, enabl
   headApplied = true;
   assert.equal(
     await scalar('select max(version) from supabase_migrations.schema_migrations;'),
-    '202608140011',
-    'upgrade fixture must apply migration 011 through migration history',
+    '202608140012',
+    'upgrade fixture must apply migration 011 and the additive final-fix migration through current history',
   );
 
   const rows = JSON.parse(await scalar(`
@@ -203,4 +203,4 @@ where owner_id = '${ownerId}' and schedule_key = 'legacy-unsupported';
 }
 
 if (primaryError) throw primaryError;
-console.log('PASS: migration 010 schedules upgrade safely through 011 and only supported enabled automatic rows queue.');
+console.log('PASS: migration 010 schedules upgrade safely through 011/current head and only supported enabled automatic rows queue.');
