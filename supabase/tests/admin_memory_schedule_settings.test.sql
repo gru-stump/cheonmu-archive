@@ -1,6 +1,6 @@
 begin;
 
-select plan(58);
+select plan(60);
 
 select has_column('public', 'memory_items', 'supersedes_memory_item_id', 'memory corrections retain an immutable predecessor link');
 select has_column('public', 'schedules', 'special_date', 'special dates are relational schedule state');
@@ -31,8 +31,13 @@ insert into public.draft_versions (id, owner_id, draft_id, version_number, conte
 values ('b3000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001', 'b2000000-0000-0000-0000-000000000001', 1, '{"body":"발생하지 않은 사건"}', 'block', 'cheonmu-continuity-v1');
 update public.drafts set status = 'reviewing' where id = 'b2000000-0000-0000-0000-000000000001';
 
+update public.budget_periods
+set period_start = (current_timestamp at time zone 'Asia/Seoul')::date - 2,
+    period_end = (current_timestamp at time zone 'Asia/Seoul')::date + 400
+where owner_id = '10000000-0000-0000-0000-000000000001';
+
 insert into public.budget_entries (owner_id, budget_period_id, amount_micros, entry_type, daily_bucket_date, description)
-select '10000000-0000-0000-0000-000000000001', id, 500, 'reservation', date '2026-08-15', 'settings floor fixture'
+select '10000000-0000-0000-0000-000000000001', id, 500, 'reservation', (current_timestamp at time zone 'Asia/Seoul')::date, 'settings floor fixture'
 from public.budget_periods where owner_id = '10000000-0000-0000-0000-000000000001';
 
 select set_config('request.jwt.claim.role', 'authenticated', true);
@@ -75,14 +80,17 @@ select is((select count(*) from public.memory_items where source_draft_version_i
 select is((select count(*) from public.memory_items where source_draft_version_id = 'b3000000-0000-0000-0000-000000000001' and memory_type <> 'feedback'), 0::bigint, 'rejected drafts create no continuity, recent, or unresolved memory');
 
 select throws_ok(
-  $$ select public.save_narrative_schedule(null, null, 'special', false, '09:00', null, date '2026-09-07', 60, 'short_dialogue') $$,
+  $$ select public.save_narrative_schedule(null, null, 'special', false, '09:00', null, (current_timestamp at time zone 'Asia/Seoul')::date + 1, 60, 'short_dialogue') $$,
   '22023', 'invalid_schedule_command', 'required schedule values are rejected by the command boundary'
 );
 
 select lives_ok($$
   select public.save_narrative_settings(
     true, 'openai',
-    '[{"providerKey":"openai","modelKey":"gpt-test","maxInputTokens":4096,"maxOutputTokens":1024,"maxRevisionOutputTokens":256,"inputPriceMicrosPerMillion":1250000,"outputPriceMicrosPerMillion":5000000,"pricingVerifiedAt":"2026-08-15"},{"providerKey":"anthropic","modelKey":"claude-test","maxInputTokens":4096,"maxOutputTokens":1024,"maxRevisionOutputTokens":256,"inputPriceMicrosPerMillion":2000000,"outputPriceMicrosPerMillion":6000000,"pricingVerifiedAt":"2026-08-15"}]',
+    jsonb_build_array(
+      jsonb_build_object('providerKey', 'openai', 'modelKey', 'gpt-test', 'maxInputTokens', 4096, 'maxOutputTokens', 1024, 'maxRevisionOutputTokens', 256, 'inputPriceMicrosPerMillion', 1250000, 'outputPriceMicrosPerMillion', 5000000, 'pricingVerifiedAt', (current_timestamp at time zone 'Asia/Seoul')::date),
+      jsonb_build_object('providerKey', 'anthropic', 'modelKey', 'claude-test', 'maxInputTokens', 4096, 'maxOutputTokens', 1024, 'maxRevisionOutputTokens', 256, 'inputPriceMicrosPerMillion', 2000000, 'outputPriceMicrosPerMillion', 6000000, 'pricingVerifiedAt', (current_timestamp at time zone 'Asia/Seoul')::date)
+    ),
     200000000, 20000000, 3, 80, 95, 1380.5, 30
   )
 $$, 'one provider can be activated with fresh pricing');
@@ -92,7 +100,10 @@ select is((select provider_key from public.provider_settings where owner_id = au
 select throws_ok($$
   select public.save_narrative_settings(
     true, 'anthropic',
-    '[{"providerKey":"openai","modelKey":"gpt-test","maxInputTokens":4096,"maxOutputTokens":1024,"maxRevisionOutputTokens":256,"inputPriceMicrosPerMillion":1250000,"outputPriceMicrosPerMillion":5000000,"pricingVerifiedAt":"2026-08-15"},{"providerKey":"anthropic","modelKey":"claude-test","maxInputTokens":4096,"maxOutputTokens":1024,"maxRevisionOutputTokens":256,"inputPriceMicrosPerMillion":2000000,"outputPriceMicrosPerMillion":6000000,"pricingVerifiedAt":"2026-01-01"}]',
+    jsonb_build_array(
+      jsonb_build_object('providerKey', 'openai', 'modelKey', 'gpt-test', 'maxInputTokens', 4096, 'maxOutputTokens', 1024, 'maxRevisionOutputTokens', 256, 'inputPriceMicrosPerMillion', 1250000, 'outputPriceMicrosPerMillion', 5000000, 'pricingVerifiedAt', (current_timestamp at time zone 'Asia/Seoul')::date),
+      jsonb_build_object('providerKey', 'anthropic', 'modelKey', 'claude-test', 'maxInputTokens', 4096, 'maxOutputTokens', 1024, 'maxRevisionOutputTokens', 256, 'inputPriceMicrosPerMillion', 2000000, 'outputPriceMicrosPerMillion', 6000000, 'pricingVerifiedAt', (current_timestamp at time zone 'Asia/Seoul')::date - 31)
+    ),
     200000000, 20000000, 3, 80, 95, 1380.5, 30
   )
 $$, 'P0001', 'stale_provider_pricing', 'stale pricing blocks enabling automation');
@@ -101,16 +112,16 @@ select is((select provider_key from public.provider_settings where owner_id = au
 select throws_ok($$
   select public.save_narrative_settings(
     true, 'openai',
-    '[{"providerKey":"openai","modelKey":"gpt-test","maxInputTokens":4096,"maxOutputTokens":1024,"maxRevisionOutputTokens":256,"inputPriceMicrosPerMillion":1250000,"outputPriceMicrosPerMillion":5000000,"pricingVerifiedAt":"2026-08-15"}]',
+    jsonb_build_array(jsonb_build_object('providerKey', 'openai', 'modelKey', 'gpt-test', 'maxInputTokens', 4096, 'maxOutputTokens', 1024, 'maxRevisionOutputTokens', 256, 'inputPriceMicrosPerMillion', 1250000, 'outputPriceMicrosPerMillion', 5000000, 'pricingVerifiedAt', (current_timestamp at time zone 'Asia/Seoul')::date)),
     100, 100, 3, 80, 95, 1380.5, 30
   )
 $$, 'P0001', 'budget_limit_below_committed', 'budget cannot be lowered below spent plus reserved');
 
 select lives_ok($$
-  select public.save_narrative_schedule(null, 'memorial', 'special', true, '21:30', null, date '2026-09-07', 1440, 'short_dialogue')
+  select public.save_narrative_schedule(null, 'memorial', 'special', true, '21:30', null, (current_timestamp at time zone 'Asia/Seoul')::date + 31, 1440, 'short_dialogue')
 $$, 'a fresh-priced special date can be enabled in Seoul time');
 select ok((public.get_narrative_schedules() -> 'schedules' -> 0 ->> 'seoulTime') ~ '^\d{2}:\d{2}$', 'schedule reads return a Seoul local wall-clock time');
-select ok((public.get_narrative_schedules()::text like '%2026-09-07%') and (public.get_narrative_schedules()::text like '%minimumIntervalMinutes%'), 'schedule response includes special date and minimum interval');
+select ok((public.get_narrative_schedules()::text like '%' || ((current_timestamp at time zone 'Asia/Seoul')::date + 31)::text || '%') and (public.get_narrative_schedules()::text like '%minimumIntervalMinutes%'), 'schedule response includes special date and minimum interval');
 
 select lives_ok($$
   select public.save_narrative_schedule(null, 'two-day', 'automatic', true, '09:00', null, null, 2880, 'daily_event')
@@ -122,21 +133,21 @@ select lives_ok($$
   select public.queue_due_narrative_schedule_job(
     '10000000-0000-0000-0000-000000000001',
     (select id from public.schedules where owner_id = '10000000-0000-0000-0000-000000000001' and schedule_key = 'two-day'),
-    '2026-08-15T00:00:00Z'
+    (((current_timestamp at time zone 'Asia/Seoul')::date - 2 + time '09:00') at time zone 'Asia/Seoul')
   )
 $$, 'the first due schedule queues through the atomic boundary');
 select throws_ok($$
   select public.queue_due_narrative_schedule_job(
     '10000000-0000-0000-0000-000000000001',
     (select id from public.schedules where owner_id = '10000000-0000-0000-0000-000000000001' and schedule_key = 'two-day'),
-    '2026-08-16T00:00:00Z'
+    (((current_timestamp at time zone 'Asia/Seoul')::date - 1 + time '09:00') at time zone 'Asia/Seoul')
   )
 $$, 'P0001', 'schedule_interval_not_elapsed', 'a daily cron cannot bypass a two-day minimum interval');
 select lives_ok($$
   select public.queue_due_narrative_schedule_job(
     '10000000-0000-0000-0000-000000000001',
     (select id from public.schedules where owner_id = '10000000-0000-0000-0000-000000000001' and schedule_key = 'two-day'),
-    '2026-08-17T00:00:00Z'
+    (((current_timestamp at time zone 'Asia/Seoul')::date + time '09:00') at time zone 'Asia/Seoul')
   )
 $$, 'the exact minimum interval boundary is eligible');
 reset role;
@@ -144,12 +155,29 @@ select set_config('request.jwt.claim.role', 'authenticated', true);
 select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000001', true);
 set local role authenticated;
 select ok(
-  (select (item ->> 'nextRunAt')::timestamptz from jsonb_array_elements(public.get_narrative_schedules() -> 'schedules') as item where item ->> 'scheduleKey' = 'two-day') = '2026-08-19T00:00:00Z'::timestamptz,
+  (select (item ->> 'nextRunAt')::timestamptz from jsonb_array_elements(public.get_narrative_schedules() -> 'schedules') as item where item ->> 'scheduleKey' = 'two-day')
+    = (((current_timestamp at time zone 'Asia/Seoul')::date + 2 + time '09:00') at time zone 'Asia/Seoul'),
   'next run uses the same two-day interval rule as queueing'
 );
 
+select lives_ok($$
+  select public.save_narrative_schedule(null, 'thirty-day', 'automatic', true, '09:00', null, null, 43200, 'daily_event')
+$$, 'a representative interval longer than eight days can be configured');
 reset role;
-update public.provider_settings set pricing_verified_at = date '2026-08-01'
+update public.schedules
+set last_queued_at = (((current_timestamp at time zone 'Asia/Seoul')::date - 1 + time '09:00') at time zone 'Asia/Seoul')
+where owner_id = '10000000-0000-0000-0000-000000000001' and schedule_key = 'thirty-day';
+select set_config('request.jwt.claim.role', 'authenticated', true);
+select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000001', true);
+set local role authenticated;
+select is(
+  (select (item ->> 'nextRunAt')::timestamptz from jsonb_array_elements(public.get_narrative_schedules() -> 'schedules') as item where item ->> 'scheduleKey' = 'thirty-day'),
+  (((current_timestamp at time zone 'Asia/Seoul')::date + 29 + time '09:00') at time zone 'Asia/Seoul'),
+  'next run searches from the interval eligibility boundary even when it is more than eight days away'
+);
+
+reset role;
+update public.provider_settings set pricing_verified_at = (current_timestamp at time zone 'Asia/Seoul')::date
 where owner_id = '10000000-0000-0000-0000-000000000001' and provider_key = 'openai';
 select set_config('request.jwt.claim.role', 'service_role', true);
 set local role service_role;
@@ -157,11 +185,11 @@ select throws_ok($$
   select public.queue_due_narrative_schedule_job(
     '10000000-0000-0000-0000-000000000001',
     (select id from public.schedules where owner_id = '10000000-0000-0000-0000-000000000001' and schedule_key = 'memorial'),
-    '2026-09-07T12:30:00Z'
+    (((current_timestamp at time zone 'Asia/Seoul')::date + 31 + time '21:30') at time zone 'Asia/Seoul')
   )
 $$, 'P0001', 'stale_provider_pricing', 'queueing rechecks provider freshness at the advanced Seoul business date');
 reset role;
-update public.provider_settings set pricing_verified_at = date '2026-08-15'
+update public.provider_settings set pricing_verified_at = (current_timestamp at time zone 'Asia/Seoul')::date + 31
 where owner_id = '10000000-0000-0000-0000-000000000001' and provider_key = 'openai';
 select set_config('request.jwt.claim.role', 'authenticated', true);
 select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000001', true);
@@ -175,12 +203,12 @@ select set_config('request.jwt.claim.role', 'service_role', true);
 set local role service_role;
 select is(public.narrative_schedule_budget_state('10000000-0000-0000-0000-000000000001'), 'warning', 'the configured 10 percent warning threshold affects scheduling');
 select throws_ok(
-  $$ select public.queue_narrative_access_job('10000000-0000-0000-0000-000000000001', '2026-08-15T06:00:00Z') $$,
+  $$ select public.queue_narrative_access_job('10000000-0000-0000-0000-000000000001', (((current_timestamp at time zone 'Asia/Seoul')::date + time '15:00') at time zone 'Asia/Seoul')) $$,
   'P0001', 'daily_access_limit', 'the configured zero manual-count limit affects atomic access queueing'
 );
 reset role;
 insert into public.budget_entries (owner_id, budget_period_id, amount_micros, entry_type, daily_bucket_date, description)
-select '10000000-0000-0000-0000-000000000001', id, 400, 'reservation', date '2026-08-15', 'custom risk threshold fixture'
+select '10000000-0000-0000-0000-000000000001', id, 400, 'reservation', (current_timestamp at time zone 'Asia/Seoul')::date, 'custom risk threshold fixture'
 from public.budget_periods where owner_id = '10000000-0000-0000-0000-000000000001';
 select set_config('request.jwt.claim.role', 'service_role', true);
 set local role service_role;
@@ -189,7 +217,7 @@ select throws_ok($$
   select public.queue_due_narrative_schedule_job(
     '10000000-0000-0000-0000-000000000001',
     (select id from public.schedules where owner_id = '10000000-0000-0000-0000-000000000001' and schedule_key = 'memorial'),
-    '2026-09-07T12:30:00Z'
+    (((current_timestamp at time zone 'Asia/Seoul')::date + 31 + time '21:30') at time zone 'Asia/Seoul')
   )
 $$, 'P0001', 'budget_risk', 'the atomic schedule queue blocks at the configured risk threshold');
 reset role;

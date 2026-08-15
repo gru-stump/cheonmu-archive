@@ -297,11 +297,16 @@ as $$
       else (
         select min(candidate.local_minute at time zone 'Asia/Seoul')
         from generate_series(
-          date_trunc('minute', now() at time zone 'Asia/Seoul') + interval '1 minute',
-          date_trunc('minute', now() at time zone 'Asia/Seoul') + interval '8 days',
+          date_trunc('minute', greatest(now(), coalesce(
+            schedule.last_queued_at + make_interval(mins => schedule.minimum_interval_minutes), now()
+          )) at time zone 'Asia/Seoul'),
+          date_trunc('minute', greatest(now(), coalesce(
+            schedule.last_queued_at + make_interval(mins => schedule.minimum_interval_minutes), now()
+          )) at time zone 'Asia/Seoul') + interval '8 days',
           interval '1 minute'
         ) as candidate(local_minute)
-        where extract(minute from candidate.local_minute)::integer = split_part(schedule.cron_expression, ' ', 1)::integer
+        where candidate.local_minute at time zone 'Asia/Seoul' > now()
+          and extract(minute from candidate.local_minute)::integer = split_part(schedule.cron_expression, ' ', 1)::integer
           and extract(hour from candidate.local_minute)::integer = split_part(schedule.cron_expression, ' ', 2)::integer
           and (split_part(schedule.cron_expression, ' ', 5) = '*'
             or extract(dow from candidate.local_minute)::integer = split_part(schedule.cron_expression, ' ', 5)::integer)
