@@ -189,6 +189,65 @@ describe('applyPublication', () => {
     await expect(first).resolves.toMatchObject({ status: 'published' });
     expect(createCount).toBe(1);
   });
+
+  it('recovers a committed claim whose response was lost, then resumes without admitting a concurrent publisher', async () => {
+    // Moving the claim outside recovery or omitting a same-key recovery transition leaves the global queue wedged.
+    let state: 'approved' | 'publishing' | 'failed' | 'published' = 'approved';
+    let activeAttempt = '';
+    let loseClaimResponse = true;
+    let createCount = 0;
+    let releaseCreate!: () => void;
+    const createBlocked = new Promise<void>((resolve) => { releaseCreate = resolve; });
+    const attempts = [
+      '60000000-0000-4000-8000-000000000011',
+      '60000000-0000-4000-8000-000000000012',
+      '60000000-0000-4000-8000-000000000013',
+    ];
+    const failed: unknown[] = [];
+    const h = harness({
+      createAttemptToken: () => attempts.shift()!,
+      claimPublication: async (input) => {
+        if (state === 'publishing') throw new PublicationError(409, 'publication_in_progress');
+        if (state !== 'approved' && state !== 'failed') throw new PublicationError(409, 'publication_already_finalized');
+        state = 'publishing';
+        activeAttempt = input.attemptToken;
+        if (loseClaimResponse) {
+          loseClaimResponse = false;
+          throw new PublicationError(500, 'internal_error');
+        }
+        return { ...structuredClone(claimed), attemptToken: input.attemptToken };
+      },
+      failPublication: async (input) => {
+        failed.push(input);
+        if (state !== 'publishing' || input.attemptToken !== activeAttempt) throw new PublicationError(409, 'publication_attempt_mismatch');
+        state = 'failed';
+        return { status: 'publish_failed' };
+      },
+      createPublisher: () => ({ createFile: async () => {
+        createCount += 1;
+        await createBlocked;
+        return { outcome: 'created', commitSha };
+      } }),
+      completePublication: async (input) => {
+        if (input.attemptToken !== activeAttempt) throw new PublicationError(409, 'publication_attempt_mismatch');
+        state = 'published';
+        return { publishJobId, versionId, status: 'published', commitSha: input.commitSha, path: input.path };
+      },
+    });
+
+    await expect(applyPublication(h.deps, command)).rejects.toMatchObject({ code: 'internal_error' });
+    expect(state).toBe('failed');
+    expect(failed).toEqual([{
+      publishJobId, attemptToken: '60000000-0000-4000-8000-000000000011', failureCode: 'publication_claim_uncertain',
+    }]);
+
+    const resumed = applyPublication(h.deps, command);
+    await vi.waitFor(() => expect(state).toBe('publishing'));
+    await expect(applyPublication(h.deps, command)).rejects.toMatchObject({ code: 'publication_in_progress' });
+    releaseCreate();
+    await expect(resumed).resolves.toMatchObject({ status: 'published', commitSha });
+    expect(createCount).toBe(1);
+  });
 });
 
 describe('publish-draft HTTP boundary', () => {

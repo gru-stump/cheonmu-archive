@@ -38,6 +38,7 @@ alter table public.publish_jobs
   add column published_path text,
   add column failure_code text,
   add column claimed_at timestamptz,
+  add column claim_expires_at timestamptz,
   add column commit_created_at timestamptz,
   add constraint publish_jobs_publication_details_object_check check (jsonb_typeof(publication_details) = 'object'),
   add constraint publish_jobs_idempotency_key_check check (
@@ -65,6 +66,7 @@ alter table public.publish_jobs
     failure_code is null or failure_code in (
       'record_validation_failed', 'github_path_conflict', 'github_conflict', 'github_validation_failed',
       'github_credentials_rejected', 'github_timeout', 'github_network_failure', 'github_response_invalid',
+      'publication_claim_uncertain', 'publication_claim_expired',
       'publication_completion_failed'
     )
   );
@@ -141,9 +143,10 @@ begin
   from public.draft_versions as version
   where version.owner_id = new.owner_id and version.draft_id = new.draft_id and version.id = new.draft_version_id;
   if approved_content is null then raise exception 'publish_job_version_required' using errcode = 'P0002'; end if;
-  if new.publication_details = '{}'::jsonb and jsonb_typeof(approved_content -> 'publication') = 'object' then
-    new.publication_details := approved_content -> 'publication';
-  end if;
+  new.publication_details := case
+    when jsonb_typeof(approved_content -> 'publication') = 'object' then approved_content -> 'publication'
+    else '{}'::jsonb
+  end;
   return new;
 end;
 $$;
@@ -161,13 +164,15 @@ language plpgsql
 set search_path = ''
 as $$
 begin
-  if old.status <> 'queued' and (
-    new.owner_id is distinct from old.owner_id
+  if new.owner_id is distinct from old.owner_id
     or new.draft_id is distinct from old.draft_id
     or new.draft_version_id is distinct from old.draft_version_id
     or new.approval_action_id is distinct from old.approval_action_id
-    or new.publication_details is distinct from old.publication_details
-    or new.idempotency_key is distinct from old.idempotency_key
+    or new.publication_details is distinct from old.publication_details then
+    raise exception 'publication binding is immutable after creation' using errcode = '55000';
+  end if;
+  if old.status <> 'queued' and (
+    new.idempotency_key is distinct from old.idempotency_key
     or new.repository_owner is distinct from old.repository_owner
     or new.repository_name is distinct from old.repository_name
     or new.repository_branch is distinct from old.repository_branch
@@ -212,6 +217,7 @@ declare
   frozen_owner text;
   frozen_repository text;
   frozen_branch text;
+  expired_job public.publish_jobs;
 begin
   if auth.role() is distinct from 'service_role' then
     raise exception 'publication claim caller is not authorized' using errcode = '42501';
@@ -223,6 +229,23 @@ begin
   end if;
 
   perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('narrative-publication-queue', 0));
+  for expired_job in
+    select job.* from public.publish_jobs as job
+    where job.status = 'publishing'
+      and (job.claim_expires_at is null or job.claim_expires_at <= pg_catalog.clock_timestamp())
+    order by job.claimed_at, job.id
+    for update
+  loop
+    update public.publish_jobs
+    set status = 'failed', failure_code = 'publication_claim_expired', claim_expires_at = null, updated_at = now()
+    where id = expired_job.id;
+    update public.drafts set status = 'publish_failed', updated_at = now()
+    where id = expired_job.draft_id and owner_id = expired_job.owner_id and status = 'publishing';
+    insert into public.audit_events (owner_id, event_type, entity_type, entity_id, payload)
+    values (expired_job.owner_id, 'publication_failed', 'draft', expired_job.draft_id,
+      jsonb_build_object('publishJobId', expired_job.id, 'versionId', expired_job.draft_version_id,
+        'failureCode', 'publication_claim_expired'));
+  end loop;
   select job.* into locked_job from public.publish_jobs as job
   where job.id = p_publish_job_id and job.owner_id = p_owner_id and job.draft_version_id = p_expected_version_id
   for update;
@@ -266,7 +289,11 @@ begin
   if locked_draft.id is null or locked_version.id is null or locked_approval.id is null
     or latest_version_id is distinct from locked_version.id
     or locked_approval.action is distinct from 'approve_public'
-    or locked_approval.resulting_state is distinct from 'approved' then
+    or locked_approval.resulting_state is distinct from 'approved'
+    or locked_job.publication_details is distinct from (case
+      when jsonb_typeof(locked_version.content -> 'publication') = 'object' then locked_version.content -> 'publication'
+      else '{}'::jsonb
+    end) then
     raise exception 'publication_not_approved' using errcode = 'P0001';
   end if;
 
@@ -311,6 +338,7 @@ begin
       repository_branch = frozen_branch,
       failure_code = null,
       claimed_at = now(),
+      claim_expires_at = pg_catalog.clock_timestamp() + interval '5 minutes',
       updated_at = now()
   where id = locked_job.id
   returning * into locked_job;
@@ -382,12 +410,13 @@ begin
   select draft.* into locked_draft from public.drafts as draft
   where draft.id = locked_job.draft_id and draft.owner_id = locked_job.owner_id for update;
   if locked_job.status is distinct from 'publishing' or locked_job.attempt_token is distinct from p_attempt_token
+    or locked_job.claim_expires_at is null or locked_job.claim_expires_at <= pg_catalog.clock_timestamp()
     or locked_draft.status is distinct from 'publishing' then
     raise exception 'publication_attempt_mismatch' using errcode = 'P0001';
   end if;
   update public.publish_jobs
   set status = 'published', commit_sha = lower(p_commit_sha), published_path = p_published_path,
-      failure_code = null, commit_created_at = now(), updated_at = now()
+      failure_code = null, claim_expires_at = null, commit_created_at = now(), updated_at = now()
   where id = locked_job.id returning * into locked_job;
   update public.drafts set status = 'published', updated_at = now()
   where id = locked_draft.id and owner_id = locked_draft.owner_id;
@@ -420,6 +449,7 @@ begin
   if p_publish_job_id is null or p_attempt_token is null or p_failure_code not in (
     'record_validation_failed', 'github_path_conflict', 'github_conflict', 'github_validation_failed',
     'github_credentials_rejected', 'github_timeout', 'github_network_failure', 'github_response_invalid',
+    'publication_claim_uncertain', 'publication_claim_expired',
     'publication_completion_failed'
   ) then raise exception 'invalid_publication_failure' using errcode = '22023'; end if;
   perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('narrative-publication-queue', 0));
@@ -434,10 +464,11 @@ begin
   select draft.* into locked_draft from public.drafts as draft
   where draft.id = locked_job.draft_id and draft.owner_id = locked_job.owner_id for update;
   if locked_job.status is distinct from 'publishing' or locked_job.attempt_token is distinct from p_attempt_token
+    or locked_job.claim_expires_at is null or locked_job.claim_expires_at <= pg_catalog.clock_timestamp()
     or locked_draft.status is distinct from 'publishing' then
     raise exception 'publication_attempt_mismatch' using errcode = 'P0001';
   end if;
-  update public.publish_jobs set status = 'failed', failure_code = p_failure_code, updated_at = now()
+  update public.publish_jobs set status = 'failed', failure_code = p_failure_code, claim_expires_at = null, updated_at = now()
   where id = locked_job.id returning * into locked_job;
   update public.drafts set status = 'publish_failed', updated_at = now()
   where id = locked_draft.id and owner_id = locked_draft.owner_id;

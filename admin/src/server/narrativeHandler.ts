@@ -5,6 +5,8 @@ const conflicts = new Set([
   'blocked_version_reject_only', 'revision_cost_changed', 'duplicate_review', 'version_not_approvable', 'duplicate_generation',
   'fixed_canon_read_only', 'stale_memory', 'stale_provider_pricing', 'automation_disabled',
   'budget_limit_below_committed', 'duplicate_schedule_key', 'active_provider_setting_required',
+  'publication_in_progress', 'publication_queue_busy', 'publication_idempotency_mismatch',
+  'publication_not_approved', 'publication_attempt_mismatch', 'publication_already_finalized', 'publication_not_configured',
 ]);
 
 function bearer(request: Request): string | null {
@@ -157,7 +159,24 @@ export function createNarrativeHandler({ supabaseUrl, supabaseAnonKey, fetch = g
           if (typeof input.expectedVersionId !== 'string' || !input.expectedVersionId) return json({ error: 'invalid_restore_command' }, 400);
           return json(await rpc('restore_narrative_draft', { p_draft_id: input.draftId, p_expected_version_id: input.expectedVersionId }));
         }
-        if (path[2] === 'retry-publish') return json(await rpc('retry_narrative_publish', { p_draft_id: input.draftId, p_expected_version_id: input.expectedVersionId, p_expected_state: input.expectedState }));
+        if (path[2] === 'retry-publish') {
+          if (input.expectedState !== 'publish_failed' || typeof input.expectedVersionId !== 'string' || !input.expectedVersionId) {
+            return json({ error: 'invalid_publish_retry' }, 400);
+          }
+          const select = encodeURIComponent('id,draft_id,draft_version_id,idempotency_key,status');
+          const jobs = await upstream(`/rest/v1/publish_jobs?select=${select}&draft_id=eq.${encodeURIComponent(input.draftId)}&draft_version_id=eq.${encodeURIComponent(input.expectedVersionId)}&status=eq.failed&limit=2`) as unknown as Array<Record<string, unknown>>;
+          const job = jobs.length === 1 ? jobs[0] : undefined;
+          if (!job || job.draft_id !== input.draftId || job.draft_version_id !== input.expectedVersionId || job.status !== 'failed') {
+            return json({ error: 'publication_target_not_found' }, 404);
+          }
+          if (typeof job.id !== 'string' || !job.id || typeof job.idempotency_key !== 'string' || !job.idempotency_key) {
+            return json({ error: 'publication_not_retriable' }, 409);
+          }
+          return json(await upstream('/functions/v1/publish-draft', {
+            method: 'POST',
+            body: JSON.stringify({ publishJobId: job.id, expectedVersionId: job.draft_version_id, idempotencyKey: job.idempotency_key }),
+          }));
+        }
         if (path[2] === 'review') {
           if (input.expectedState === 'generated') await rpc('submit_draft_for_review', { p_draft_id: input.draftId, p_expected_version_id: input.expectedVersionId, p_expected_state: 'generated' });
           const command = { draftId: input.draftId, expectedVersionId: input.expectedVersionId, expectedState: 'reviewing', idempotencyKey: crypto.randomUUID(), action: input.action, ...(input.reason ? { reason: input.reason } : {}) };

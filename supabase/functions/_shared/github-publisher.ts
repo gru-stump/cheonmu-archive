@@ -34,7 +34,7 @@ export interface CreateFileResult {
   commitSha: string;
 }
 
-type ExistingFile = { outcome: 'missing' } | { outcome: 'same' } | { outcome: 'different' };
+type ExistingFile = { outcome: 'missing' } | { outcome: 'same'; commitSha: string } | { outcome: 'different' };
 
 const repositoryPart = /^[A-Za-z0-9_.-]+$/;
 const commitSha = /^[0-9a-f]{40}$/i;
@@ -110,7 +110,7 @@ export class GitHubPublisher {
     const existing = await this.inspectPath(input.path, input.branch, bytes);
     if (existing.outcome === 'different') throw new GitHubPublisherError('github_path_conflict');
     if (existing.outcome === 'same') {
-      return { outcome: 'reconciled', commitSha: await this.latestPathCommit(input.path, input.branch) };
+      return { outcome: 'reconciled', commitSha: existing.commitSha };
     }
 
     let response: Response;
@@ -147,10 +147,20 @@ export class GitHubPublisher {
     if (response.status === 404) return { outcome: 'missing' };
     if (response.status !== 200) throw mapStatus(response.status);
     const value = await json(response);
-    if (!isRecord(value) || value.type !== 'file' || value.encoding !== 'base64' || typeof value.content !== 'string') {
+    if (!isRecord(value) || value.type !== 'file') {
       throw new GitHubPublisherError('github_response_invalid');
     }
-    return { outcome: sameBytes(decodeBase64(value.content), expected) ? 'same' : 'different' };
+    const candidate = await this.latestPathCommit(path, branch);
+    const committed = await this.fetchWithTimeout(`${this.contentUrl(path)}?ref=${encodeURIComponent(candidate)}`, { method: 'GET', headers: this.headers });
+    if (committed.status === 404) return { outcome: 'different' };
+    if (committed.status !== 200) throw mapStatus(committed.status);
+    const immutableValue = await json(committed);
+    if (!isRecord(immutableValue) || immutableValue.type !== 'file' || immutableValue.encoding !== 'base64' || typeof immutableValue.content !== 'string') {
+      throw new GitHubPublisherError('github_response_invalid');
+    }
+    return sameBytes(decodeBase64(immutableValue.content), expected)
+      ? { outcome: 'same', commitSha: candidate }
+      : { outcome: 'different' };
   }
 
   private async latestPathCommit(path: string, branch: string): Promise<string> {
@@ -166,7 +176,7 @@ export class GitHubPublisher {
   private async reconcileUncertain(path: string, branch: string, expected: Uint8Array, original: GitHubPublisherError): Promise<CreateFileResult> {
     try {
       const existing = await this.inspectPath(path, branch, expected);
-      if (existing.outcome === 'same') return { outcome: 'reconciled', commitSha: await this.latestPathCommit(path, branch) };
+      if (existing.outcome === 'same') return { outcome: 'reconciled', commitSha: existing.commitSha };
       if (existing.outcome === 'different') throw new GitHubPublisherError('github_path_conflict');
     } catch (error) {
       if (error instanceof GitHubPublisherError && error.code === 'github_path_conflict') throw error;

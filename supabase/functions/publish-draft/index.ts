@@ -85,6 +85,8 @@ export type PublicationFailureCode =
   | 'github_timeout'
   | 'github_network_failure'
   | 'github_response_invalid'
+  | 'publication_claim_uncertain'
+  | 'publication_claim_expired'
   | 'publication_completion_failed';
 
 export class PublicationError extends Error {
@@ -200,10 +202,18 @@ function publicError(error: unknown): PublicationError {
 export async function applyPublication(deps: PublicationDependencies, command: PublicationCommand): Promise<PublicationResponse> {
   const { ownerId } = await deps.authenticate(command.authToken);
   const attemptToken = deps.createAttemptToken();
-  const claim = await deps.claimPublication({
-    ownerId, publishJobId: command.publishJobId, expectedVersionId: command.expectedVersionId,
-    idempotencyKey: command.idempotencyKey, attemptToken,
-  });
+  let claim: PublicationClaim;
+  try {
+    claim = await deps.claimPublication({
+      ownerId, publishJobId: command.publishJobId, expectedVersionId: command.expectedVersionId,
+      idempotencyKey: command.idempotencyKey, attemptToken,
+    });
+  } catch (error) {
+    try {
+      await deps.failPublication({ publishJobId: command.publishJobId, attemptToken, failureCode: 'publication_claim_uncertain' });
+    } catch { /* If the claim did not commit or recovery is also lost, the durable lease remains authoritative. */ }
+    throw publicError(error);
+  }
   if (claim.outcome === 'already_published') {
     return { publishJobId: claim.publishJobId, versionId: claim.versionId, status: 'published', commitSha: claim.commitSha, path: claim.path };
   }

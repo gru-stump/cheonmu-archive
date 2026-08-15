@@ -105,10 +105,10 @@ select public.claim_narrative_publication('${ownerId}', '${publishJobId}', '${ve
 reset role;
 `));
   assert.equal(
-    await scalar(`select concat(job.status, '|', draft.status, '|', job.repository_owner, '/', job.repository_name, '@', job.repository_branch, '|', job.idempotency_key)
+    await scalar(`select concat(job.status, '|', draft.status, '|', job.repository_owner, '/', job.repository_name, '@', job.repository_branch, '|', job.idempotency_key, '|', job.claim_expires_at > now())
       from public.publish_jobs as job join public.drafts as draft on draft.id = job.draft_id where job.id = '${publishJobId}';`),
-    'publishing|publishing|cheonmu-owner/cheonmu-archive@main|legacy-publish-key',
-    'a migrated queued row remains claimable through the locked server configuration',
+    'publishing|publishing|cheonmu-owner/cheonmu-archive@main|legacy-publish-key|t',
+    'a migrated queued row remains claimable with a durable lease through the locked server configuration',
   );
 } catch (error) {
   primaryError = error;

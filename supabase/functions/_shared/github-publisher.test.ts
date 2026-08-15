@@ -59,23 +59,47 @@ describe('GitHubPublisher.createFile', () => {
     const methods: string[] = [];
     const fetch: typeof globalThis.fetch = vi.fn(async (_input, init) => {
       methods.push(init?.method ?? 'GET');
-      return methods.length === 1
-        ? response(200, { type: 'file', encoding: 'base64', content: encoded(content), sha: 'blob-sha' })
-        : response(200, [{ sha: reconciledSha }]);
+      if (methods.length === 1) return response(200, { type: 'file', encoding: 'base64', content: encoded(content), sha: 'moving-branch-blob' });
+      if (methods.length === 2) return response(200, [{ sha: reconciledSha }]);
+      return response(200, { type: 'file', encoding: 'base64', content: encoded(content), sha: 'immutable-blob' });
     });
 
     await expect(publisher(fetch).createFile(request)).resolves.toEqual({ outcome: 'reconciled', commitSha: reconciledSha });
-    expect(methods).toEqual(['GET', 'GET']);
+    expect(methods).toEqual(['GET', 'GET', 'GET']);
+  });
+
+  it('rejects reconciliation when the candidate commit contains different bytes than the moving branch check', async () => {
+    // Returning a candidate SHA before verifying its immutable tree can bind publication success to unrelated bytes.
+    const urls: string[] = [];
+    const methods: string[] = [];
+    const candidateSha = '3333333333333333333333333333333333333333';
+    const fetch: typeof globalThis.fetch = vi.fn(async (input, init) => {
+      urls.push(String(input));
+      methods.push(init?.method ?? 'GET');
+      if (urls.length === 1) return response(200, { type: 'file', encoding: 'base64', content: encoded(content), sha: 'moving-branch-blob' });
+      if (urls.length === 2) return response(200, [{ sha: candidateSha }]);
+      return response(200, { type: 'file', encoding: 'base64', content: encoded('concurrent replacement'), sha: 'immutable-other-blob' });
+    });
+
+    await expect(publisher(fetch).createFile(request)).rejects.toMatchObject({ code: 'github_path_conflict' });
+    expect(methods).toEqual(['GET', 'GET', 'GET']);
+    expect(urls[2]).toBe(`https://api.github.com/repos/cheonmu-owner/cheonmu-archive/contents/src/content/records/08-rainy-return.md?ref=${candidateSha}`);
+    expect(methods).not.toContain('PUT');
   });
 
   it('rejects different content at the expected path and never sends an update request', async () => {
     // Adding a sha-bearing update PUT or overwriting a collision must fail this test.
-    const fetch = vi.fn<typeof globalThis.fetch>(async () => response(200, {
-      type: 'file', encoding: 'base64', content: encoded('different archive content'), sha: 'existing-blob',
-    }));
+    let call = 0;
+    const fetch = vi.fn<typeof globalThis.fetch>(async () => {
+      call += 1;
+      if (call === 2) return response(200, [{ sha: reconciledSha }]);
+      return response(200, {
+        type: 'file', encoding: 'base64', content: encoded('different archive content'), sha: 'existing-blob',
+      });
+    });
 
     await expect(publisher(fetch).createFile(request)).rejects.toMatchObject({ code: 'github_path_conflict' });
-    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(fetch).toHaveBeenCalledTimes(3);
     expect(fetch.mock.calls.some(([, init]) => init?.method === 'PUT')).toBe(false);
   });
 
@@ -143,7 +167,7 @@ describe('GitHubPublisher.createFile', () => {
   });
 
   it.each([
-    ['existing content', [response(200, { type: 'file', encoding: 'utf-8', content: 'not-base64' })]],
+    ['existing content', [response(200, { type: 'dir', encoding: 'utf-8', content: 'not-base64' })]],
     ['created commit', [response(404, { message: 'Not Found' }), response(201, { commit: {} })]],
     ['reconciliation commit', [response(200, { type: 'file', encoding: 'base64', content: encoded(content) }), response(200, [{}])]],
   ] as const)('rejects a malformed %s response without exposing it', async (_label, scripted) => {
@@ -163,10 +187,11 @@ describe('GitHubPublisher.createFile', () => {
       if (call === 1) return response(404, { message: 'Not Found' });
       if (call === 2) throw new TypeError('connection closed after upstream accepted request');
       if (call === 3) return response(200, { type: 'file', encoding: 'base64', content: encoded(content), sha: 'blob-sha' });
-      return response(200, [{ sha: reconciledSha }]);
+      if (call === 4) return response(200, [{ sha: reconciledSha }]);
+      return response(200, { type: 'file', encoding: 'base64', content: encoded(content), sha: 'immutable-blob' });
     });
 
     await expect(publisher(fetch).createFile(request)).resolves.toEqual({ outcome: 'reconciled', commitSha: reconciledSha });
-    expect(methods).toEqual(['GET', 'PUT', 'GET', 'GET']);
+    expect(methods).toEqual(['GET', 'PUT', 'GET', 'GET', 'GET']);
   });
 });

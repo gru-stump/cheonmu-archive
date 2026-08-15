@@ -152,6 +152,43 @@ describe('same-origin narrative server boundary', () => {
     });
   });
 
+  it('resolves the failed server-owned publish job and retries through publish-draft with its stable key', async () => {
+    // Calling the removed browser RPC or accepting a browser job/key would bypass the migrated Edge boundary.
+    const draftId = '91000000-0000-0000-0000-000000000001';
+    const versionId = '92000000-0000-0000-0000-000000000001';
+    const publishJobId = '94000000-0000-0000-0000-000000000001';
+    const calls: Array<{ path: string; body: Record<string, unknown> }> = [];
+    const fetch: typeof globalThis.fetch = vi.fn(async (input, init) => {
+      const url = new URL(String(input));
+      calls.push({ path: `${url.pathname}${url.search}`, body: init?.body ? JSON.parse(String(init.body)) : {} });
+      if (url.pathname === '/auth/v1/user') return Response.json({ id: 'owner-1' });
+      if (url.pathname === '/rest/v1/owner_profiles') return Response.json([{ owner_id: 'owner-1' }]);
+      if (url.pathname === '/rest/v1/publish_jobs') return Response.json([{
+        id: publishJobId, draft_id: draftId, draft_version_id: versionId,
+        idempotency_key: 'stable-publication-key', status: 'failed',
+      }]);
+      return Response.json({ publishJobId, versionId, status: 'published', commitSha: '1'.repeat(40), path: 'src/content/records/08-rainy-return.md' });
+    });
+    const handler = createNarrativeHandler({ supabaseUrl: 'https://db.example.test', supabaseAnonKey: 'anon', fetch });
+    const response = await handler(new Request(`https://admin.example.test/api/narrative/drafts/${draftId}/retry-publish`, {
+      method: 'POST', headers: { authorization: 'Bearer owner-token', 'content-type': 'application/json' },
+      body: JSON.stringify({
+        draftId, expectedVersionId: versionId, expectedState: 'publish_failed',
+        publishJobId: 'browser-supplied-job-must-be-ignored', idempotencyKey: 'browser-supplied-key-must-be-ignored',
+      }),
+    }));
+
+    expect(response.status).toBe(200);
+    expect(calls.map(({ path }) => path)).toEqual([
+      '/auth/v1/user',
+      '/rest/v1/owner_profiles?select=owner_id&owner_id=eq.owner-1',
+      `/rest/v1/publish_jobs?select=id%2Cdraft_id%2Cdraft_version_id%2Cidempotency_key%2Cstatus&draft_id=eq.${draftId}&draft_version_id=eq.${versionId}&status=eq.failed&limit=2`,
+      '/functions/v1/publish-draft',
+    ]);
+    expect(calls[3]?.body).toEqual({ publishJobId, expectedVersionId: versionId, idempotencyKey: 'stable-publication-key' });
+    expect(calls.some(({ path }) => path.includes('retry_narrative_publish'))).toBe(false);
+  });
+
   it('maps only stable expected-state database conflicts to 409', async () => {
     const fetch: typeof globalThis.fetch = vi.fn(async (input) => {
       const path = new URL(String(input)).pathname;

@@ -1,6 +1,6 @@
 begin;
 
-select plan(49);
+select plan(61);
 
 select has_column('public', 'publish_jobs', 'approval_action_id', 'publication binds the exact public approval action');
 select has_column('public', 'publish_jobs', 'publication_details', 'publication metadata is frozen on the server-owned job');
@@ -14,6 +14,7 @@ select has_column('public', 'publish_jobs', 'commit_sha', 'commit success record
 select has_column('public', 'publish_jobs', 'published_path', 'commit success records its exact archive path');
 select has_column('public', 'publish_jobs', 'failure_code', 'publication stores only a sanitized failure code');
 select has_column('public', 'publish_jobs', 'claimed_at', 'the current publication claim is observable');
+select has_column('public', 'publish_jobs', 'claim_expires_at', 'publication claims have a durable recovery lease');
 select has_function('public', 'claim_narrative_publication', array['uuid','uuid','uuid','text','uuid'], 'one service RPC claims a locked publication snapshot');
 select has_function('public', 'complete_narrative_publication', array['uuid','uuid','text','text'], 'one service RPC records commit success');
 select has_function('public', 'fail_narrative_publication', array['uuid','uuid','text'], 'one service RPC records sanitized failure');
@@ -96,14 +97,69 @@ where id in (
   '91000000-0000-0000-0000-000000000003', '91000000-0000-0000-0000-000000000004'
 );
 
-insert into public.publish_jobs (id, owner_id, draft_id, draft_version_id, status) values
-  ('94000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001', '91000000-0000-0000-0000-000000000001', '92000000-0000-0000-0000-000000000001', 'queued'),
-  ('94000000-0000-0000-0000-000000000002', '10000000-0000-0000-0000-000000000001', '91000000-0000-0000-0000-000000000002', '92000000-0000-0000-0000-000000000002', 'queued'),
-  ('94000000-0000-0000-0000-000000000003', '10000000-0000-0000-0000-000000000001', '91000000-0000-0000-0000-000000000003', '92000000-0000-0000-0000-000000000003', 'queued'),
-  ('94000000-0000-0000-0000-000000000004', '10000000-0000-0000-0000-000000000001', '91000000-0000-0000-0000-000000000004', '92000000-0000-0000-0000-000000000004', 'queued');
+insert into public.publish_jobs (id, owner_id, draft_id, draft_version_id, status, publication_details) values
+  ('94000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001', '91000000-0000-0000-0000-000000000001', '92000000-0000-0000-0000-000000000001', 'queued', '{"id":"forged-browser-record"}'::jsonb),
+  ('94000000-0000-0000-0000-000000000002', '10000000-0000-0000-0000-000000000001', '91000000-0000-0000-0000-000000000002', '92000000-0000-0000-0000-000000000002', 'queued', '{}'::jsonb),
+  ('94000000-0000-0000-0000-000000000003', '10000000-0000-0000-0000-000000000001', '91000000-0000-0000-0000-000000000003', '92000000-0000-0000-0000-000000000003', 'queued', '{}'::jsonb),
+  ('94000000-0000-0000-0000-000000000004', '10000000-0000-0000-0000-000000000001', '91000000-0000-0000-0000-000000000004', '92000000-0000-0000-0000-000000000004', 'queued', '{}'::jsonb);
 
 select is((select approval_action_id from public.publish_jobs where id = '94000000-0000-0000-0000-000000000001'), '93000000-0000-0000-0000-000000000001'::uuid, 'new jobs bind the exact public approval row');
 select is((select publication_details ->> 'id' from public.publish_jobs where id = '94000000-0000-0000-0000-000000000001'), 'rainy-return', 'new jobs freeze publication metadata from the immutable approved version');
+
+select throws_ok(
+  $$ do $command$ begin
+    update public.publish_jobs set owner_id = '10000000-0000-0000-0000-000000000099' where id = '94000000-0000-0000-0000-000000000004';
+    raise exception 'queued_binding_mutation_accepted' using errcode = 'P0001';
+  end $command$ $$,
+  '55000', 'publication binding is immutable after creation', 'a queued job cannot change its bound owner'
+);
+select throws_ok(
+  $$ do $command$ begin
+    update public.publish_jobs set draft_id = '91000000-0000-0000-0000-000000000001' where id = '94000000-0000-0000-0000-000000000004';
+    raise exception 'queued_binding_mutation_accepted' using errcode = 'P0001';
+  end $command$ $$,
+  '55000', 'publication binding is immutable after creation', 'a queued job cannot change its bound draft'
+);
+select throws_ok(
+  $$ do $command$ begin
+    update public.publish_jobs set draft_version_id = '92000000-0000-0000-0000-000000000001' where id = '94000000-0000-0000-0000-000000000004';
+    raise exception 'queued_binding_mutation_accepted' using errcode = 'P0001';
+  end $command$ $$,
+  '55000', 'publication binding is immutable after creation', 'a queued job cannot change its bound immutable version'
+);
+select throws_ok(
+  $$ do $command$ begin
+    update public.publish_jobs set approval_action_id = '93000000-0000-0000-0000-000000000001' where id = '94000000-0000-0000-0000-000000000004';
+    raise exception 'queued_binding_mutation_accepted' using errcode = 'P0001';
+  end $command$ $$,
+  '55000', 'publication binding is immutable after creation', 'a queued job cannot change its exact public approval'
+);
+select throws_ok(
+  $$ do $command$ begin
+    update public.publish_jobs set publication_details = '{"id":"forged-update"}'::jsonb where id = '94000000-0000-0000-0000-000000000004';
+    raise exception 'queued_binding_mutation_accepted' using errcode = 'P0001';
+  end $command$ $$,
+  '55000', 'publication binding is immutable after creation', 'a queued job cannot replace its frozen publication details'
+);
+
+alter table public.publish_jobs disable trigger publish_jobs_protect_claimed_binding;
+update public.publish_jobs set publication_details = '{"id":"forged-corruption"}'::jsonb
+where id = '94000000-0000-0000-0000-000000000004';
+alter table public.publish_jobs enable trigger publish_jobs_protect_claimed_binding;
+select set_config('request.jwt.claim.role', 'service_role', true);
+set local role service_role;
+select throws_ok(
+  $$ do $command$ begin
+    perform public.claim_narrative_publication('10000000-0000-0000-0000-000000000001', '94000000-0000-0000-0000-000000000004', '92000000-0000-0000-0000-000000000004', 'tampered-binding', '95000000-0000-4000-8000-000000000099');
+    raise exception 'tampered_publication_claim_accepted' using errcode = 'P0001';
+  end $command$ $$,
+  'P0001', 'publication_not_approved', 'claim revalidates frozen publication details against the immutable version'
+);
+reset role;
+alter table public.publish_jobs disable trigger publish_jobs_protect_claimed_binding;
+update public.publish_jobs set publication_details = (select content -> 'publication' from public.draft_versions where id = '92000000-0000-0000-0000-000000000004')
+where id = '94000000-0000-0000-0000-000000000004';
+alter table public.publish_jobs enable trigger publish_jobs_protect_claimed_binding;
 
 select set_config('request.jwt.claim.role', 'service_role', true);
 set local role service_role;
@@ -173,6 +229,27 @@ select lives_ok(
 reset role;
 select is((select draft.status || '|' || job.status from public.drafts as draft join public.publish_jobs as job on job.draft_id = draft.id where job.id = '94000000-0000-0000-0000-000000000003'), 'publishing|publishing', 'retry transactionally restores both states to publishing');
 select is((select attempt_count from public.publish_jobs where id = '94000000-0000-0000-0000-000000000003'), 2, 'retry records a distinct second attempt');
+select ok((select claim_expires_at > now() from public.publish_jobs where id = '94000000-0000-0000-0000-000000000003'), 'a live publication attempt has an unexpired durable lease');
+
+select set_config('request.jwt.claim.role', 'service_role', true);
+set local role service_role;
+select throws_ok(
+  $$ select public.claim_narrative_publication('10000000-0000-0000-0000-000000000001', '94000000-0000-0000-0000-000000000003', '92000000-0000-0000-0000-000000000003', 'publish-retry', '95000000-0000-4000-8000-000000000007') $$,
+  'P0001', 'publication_in_progress', 'an unexpired lease does not admit a concurrent same-key publisher'
+);
+reset role;
+
+update public.publish_jobs set claim_expires_at = now() - interval '1 second'
+where id = '94000000-0000-0000-0000-000000000003';
+select set_config('request.jwt.claim.role', 'service_role', true);
+set local role service_role;
+select lives_ok(
+  $$ select public.claim_narrative_publication('10000000-0000-0000-0000-000000000001', '94000000-0000-0000-0000-000000000003', '92000000-0000-0000-0000-000000000003', 'publish-retry', '95000000-0000-4000-8000-000000000008') $$,
+  'the same job and key recover an expired committed claim'
+);
+reset role;
+select is((select attempt_count from public.publish_jobs where id = '94000000-0000-0000-0000-000000000003'), 3, 'lease recovery records one new attempt without duplicating the job');
+select is((select attempt_token from public.publish_jobs where id = '94000000-0000-0000-0000-000000000003'), '95000000-0000-4000-8000-000000000008'::uuid, 'only the recovered attempt owns completion authority');
 
 select set_config('request.jwt.claim.role', 'service_role', true);
 set local role service_role;
@@ -184,7 +261,7 @@ reset role;
 
 select throws_ok(
   $$ update public.publish_jobs set publication_details = jsonb_build_object('id', 'changed') where id = '94000000-0000-0000-0000-000000000003' $$,
-  '55000', 'publication binding is immutable after claim', 'a retry cannot replace the frozen publication material'
+  '55000', 'publication binding is immutable after creation', 'a retry cannot replace the frozen publication material'
 );
 select is((select count(*) from public.audit_events where entity_id = '91000000-0000-0000-0000-000000000001' and payload::text ~* '(prompt|provider|memory|cost|publication-pgtap-fixture-value|공개 본문)'), 0::bigint, 'publication audit payloads contain no source, private fields, costs, or credentials');
 select hasnt_column('public', 'publish_jobs', 'credential', 'GitHub credentials are never persisted on publication rows');

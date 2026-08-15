@@ -70,6 +70,19 @@ describe('NarrativeApi', () => {
     }));
   });
 
+  it('keeps publish retry selectors on the authenticated same-origin server boundary', async () => {
+    const fetch = vi.fn().mockResolvedValue(Response.json({ status: 'published' }));
+    const api = createNarrativeApi({ tokenProvider: async () => 'owner-token', fetch });
+
+    await api.retryPublish({ draftId: 'd1', expectedVersionId: 'v2', expectedState: 'publish_failed' });
+
+    expect(fetch).toHaveBeenCalledWith('/api/narrative/drafts/d1/retry-publish', expect.objectContaining({
+      method: 'POST',
+      body: JSON.stringify({ draftId: 'd1', expectedVersionId: 'v2', expectedState: 'publish_failed' }),
+      headers: expect.objectContaining({ authorization: 'Bearer owner-token' }),
+    }));
+  });
+
   it('keeps every Task 3 read and mutation on the authenticated same-origin boundary', async () => {
     const fetch = vi.fn()
       .mockResolvedValueOnce(Response.json({ fixedCanon: [], continuity: [], recent: [], feedback: [], unresolved: [] }))
