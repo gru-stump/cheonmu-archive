@@ -14,7 +14,11 @@ export const recordMetaSchema = z.object({
   id: contentId,
   recordNumber: nonEmptyText,
   title: nonEmptyText,
+  // Legacy archive records predate these publication fields. New records are
+  // required to provide them by the publishing transformer.
+  summary: nonEmptyText.optional(),
   stage: z.number().int().min(0).max(8),
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   status: statusSchema,
   characters: z.array(contentId),
   tags: z.array(nonEmptyText),
