@@ -510,12 +510,18 @@ export function createSupabaseGenerationDependencies(
 interface DenoRuntime { env: { get(name: string): string | undefined }; serve(handler: (request: Request) => Response | Promise<Response>): void }
 declare const Deno: DenoRuntime;
 const defaultFakeResult: GenerationResult = { title: '로컬 생성 초안', kind: 'short_dialogue', setting: { time: '저녁', place: '처마 아래' }, body: '천령과 무영은 빗소리 사이에서 잠시 말을 멈추었다.', emotionalStart: '고요함', emotionalEnd: '잔잔한 안도', continuityUsed: [], continuityCandidates: [], canonChangeCandidates: [], unresolvedCallbacks: [], riskFlags: [] };
+export function createLocalFixtureProvider(sleep: (milliseconds: number) => Promise<unknown> = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds))): NarrativeProvider {
+  return {
+    generate: async (providerRequest) => {
+      await sleep(5_000);
+      return { result: { ...defaultFakeResult, kind: providerRequest.kind }, usage: { inputTokens: 14, outputTokens: 9 }, rawId: `fake-${providerRequest.kind}`, responseModel: providerRequest.modelKey };
+    },
+  };
+}
 if (typeof Deno !== 'undefined' && (import.meta as ImportMeta & { main?: boolean }).main) {
   const url = Deno.env.get('SUPABASE_URL'); const anonKey = Deno.env.get('SUPABASE_ANON_KEY'); const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
   if (!url || !anonKey || !serviceRoleKey) throw new Error('SUPABASE_URL, SUPABASE_ANON_KEY, and SUPABASE_SERVICE_ROLE_KEY are required');
-  const fakeLocalProvider: NarrativeProvider | undefined = Deno.env.get('NARRATIVE_FAKE_LOCAL_FIXTURE') === 'true' ? {
-    generate: async (providerRequest) => ({ result: { ...defaultFakeResult, kind: providerRequest.kind }, usage: { inputTokens: 14, outputTokens: 9 }, rawId: `fake-${providerRequest.kind}`, responseModel: providerRequest.modelKey }),
-  } : undefined;
+  const fakeLocalProvider: NarrativeProvider | undefined = Deno.env.get('NARRATIVE_FAKE_LOCAL_FIXTURE') === 'true' ? createLocalFixtureProvider() : undefined;
   const readVaultSecret = createSupabaseProviderSecretReader({ url, anonKey, serviceRoleKey });
   const resolveProvider: GenerationDependencies['resolveProvider'] = async (ownerId, loadedPolicy) => {
     const resolvedSecret = loadedPolicy.providerKey === 'fake-local-provider'

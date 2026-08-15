@@ -57,6 +57,19 @@ describe('NarrativeApi', () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
+  it('sends archived restore through the authenticated same-origin boundary with the exact version', async () => {
+    const fetch = vi.fn().mockResolvedValue(Response.json({ status: 'approved_private' }));
+    const api = createNarrativeApi({ tokenProvider: async () => 'owner-token', fetch });
+
+    await api.restore({ draftId: 'd1', expectedVersionId: 'v2' });
+
+    expect(fetch).toHaveBeenCalledWith('/api/narrative/drafts/d1/restore', expect.objectContaining({
+      method: 'POST',
+      body: JSON.stringify({ draftId: 'd1', expectedVersionId: 'v2' }),
+      headers: expect.objectContaining({ authorization: 'Bearer owner-token' }),
+    }));
+  });
+
   it('keeps every Task 3 read and mutation on the authenticated same-origin boundary', async () => {
     const fetch = vi.fn()
       .mockResolvedValueOnce(Response.json({ fixedCanon: [], continuity: [], recent: [], feedback: [], unresolved: [] }))

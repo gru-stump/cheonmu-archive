@@ -8,6 +8,7 @@ import {
   CONTINUITY_POLICY_VERSION,
   PersistenceError,
   buildFrozenContinuityContext,
+  createLocalFixtureProvider,
   createGenerateDraftHandler,
   createSupabaseGenerationDependencies,
   createSupabaseProviderSecretReader,
@@ -63,6 +64,16 @@ function harness(overrides: Partial<GenerationDependencies> & { provider?: Narra
 }
 
 describe('trusted generation policy', () => {
+  it('holds the loopback-only fake provider long enough to expose the reserved budget state', async () => {
+    const sleep = vi.fn().mockResolvedValue(undefined);
+    const provider = createLocalFixtureProvider(sleep);
+
+    const response = await provider.generate({ kind: 'short_dialogue', modelKey: 'fake-local-model' } as never);
+
+    expect(sleep).toHaveBeenCalledWith(5_000);
+    expect(response.usage).toEqual({ inputTokens: 14, outputTokens: 9 });
+  });
+
   it('estimates reservation from trusted model prices and caps revision output', () => {
     expect(estimateWorstCaseCostMicros(policy, 'new')).toBe(905);
     expect(estimateWorstCaseCostMicros(policy, 'revise_selection')).toBe(665);

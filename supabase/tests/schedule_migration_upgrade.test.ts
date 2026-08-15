@@ -119,8 +119,8 @@ insert into public.provider_settings (
   headApplied = true;
   assert.equal(
     await scalar('select max(version) from supabase_migrations.schema_migrations;'),
-    '202608140015',
-    'upgrade fixture must apply migrations 011 through the admin settings workflow at current head',
+    '202608140016',
+    'upgrade fixture must apply migrations 011 through the final admin review fixes at current head',
   );
   assert.equal(
     await scalar("select concat(to_regprocedure('public.submit_draft_for_review(uuid,uuid,text)') is not null, '|', has_function_privilege('authenticated', 'public.submit_draft_for_review(uuid,uuid,text)', 'EXECUTE'), '|', not has_function_privilege('anon', 'public.submit_draft_for_review(uuid,uuid,text)', 'EXECUTE'));"),
@@ -131,6 +131,11 @@ insert into public.provider_settings (
     await scalar("select concat(to_regprocedure('public.save_manual_draft_version(uuid,uuid,text,jsonb)') is not null, '|', has_function_privilege('authenticated', 'public.save_manual_draft_version(uuid,uuid,text,jsonb)', 'EXECUTE'), '|', not has_function_privilege('anon', 'public.save_manual_draft_version(uuid,uuid,text,jsonb)', 'EXECUTE'));"),
     't|t|t',
     'upgrade must install the narrow immutable manual-version boundary without anonymous access',
+  );
+  assert.equal(
+    await scalar("select concat(to_regprocedure('public.restore_narrative_draft(uuid,uuid)') is not null, '|', has_function_privilege('authenticated', 'public.restore_narrative_draft(uuid,uuid)', 'EXECUTE'), '|', not has_function_privilege('anon', 'public.restore_narrative_draft(uuid,uuid)', 'EXECUTE'), '|', not has_function_privilege('service_role', 'narrative_private.next_narrative_schedule_at(uuid,timestamptz)', 'EXECUTE'));"),
+    't|t|t|t',
+    'upgrade installs owner-only restore while keeping the shared next-run helper private',
   );
   assert.equal(
     await scalar("select concat(to_regprocedure('public.save_narrative_settings(boolean,text,jsonb,bigint,bigint,integer,integer,integer,numeric,integer)') is not null, '|', has_function_privilege('authenticated', 'public.save_narrative_settings(boolean,text,jsonb,bigint,bigint,integer,integer,integer,numeric,integer)', 'EXECUTE'), '|', not has_function_privilege('anon', 'public.save_narrative_settings(boolean,text,jsonb,bigint,bigint,integer,integer,integer,numeric,integer)', 'EXECUTE'), '|', has_function_privilege('service_role', 'public.store_narrative_secret(uuid,text,text)', 'EXECUTE'), '|', not has_function_privilege('authenticated', 'public.store_narrative_secret(uuid,text,text)', 'EXECUTE'));"),

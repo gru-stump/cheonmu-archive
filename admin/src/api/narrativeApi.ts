@@ -163,6 +163,7 @@ export interface NarrativeApi {
   review(input: ReviewInput): Promise<{ draftId: string; versionId: string; status: 'rejected' | 'approved_private' | 'approved' }>;
   retryPublish(input: { draftId: string; expectedVersionId: string; expectedState: 'publish_failed' }): Promise<{ status: 'publishing' }>;
   archive(input: { draftId: string; expectedVersionId: string; expectedState: ArchiveSourceStatus }): Promise<{ status: 'archived' }>;
+  restore(input: { draftId: string; expectedVersionId: string }): Promise<{ status: ArchiveSourceStatus }>;
   getMemory(): Promise<MemoryData>;
   setMemoryEnabled(input: { memoryId: string; enabled: boolean }): Promise<{ enabled: boolean }>;
   correctMemory(input: { memoryId: string; content: string; note: string }): Promise<{ memoryId: string }>;
@@ -212,6 +213,7 @@ export function createNarrativeApi({ tokenProvider, fetch = globalThis.fetch }: 
     archive: (input) => isArchiveSourceStatus(input.expectedState)
       ? post(`drafts/${encodeURIComponent(input.draftId)}/archive`, input)
       : Promise.reject(new NarrativeApiError(400, 'invalid_archive_state')),
+    restore: (input) => post(`drafts/${encodeURIComponent(input.draftId)}/restore`, input),
     getMemory: () => request<MemoryData>('memory'),
     setMemoryEnabled: (input) => post(`memory/${encodeURIComponent(input.memoryId)}/enabled`, input),
     correctMemory: (input) => post(`memory/${encodeURIComponent(input.memoryId)}/corrections`, input),

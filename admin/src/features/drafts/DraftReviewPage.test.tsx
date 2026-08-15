@@ -40,6 +40,7 @@ function api(overrides: Partial<NarrativeApi> = {}): NarrativeApi {
     review: vi.fn(),
     retryPublish: vi.fn(),
     archive: vi.fn(),
+    restore: vi.fn(),
     ...overrides,
   } as NarrativeApi;
 }
@@ -117,6 +118,19 @@ describe('DraftReviewPage', () => {
     expect(within(screen.getByRole('dialog', { name: '부분 AI 수정' })).getByRole('checkbox', { name: /최대 비용을 확인했습니다/ })).not.toBeChecked();
   });
 
+  it('shows pricing conflicts without misleading stale-version reload recovery', async () => {
+    const saveManualVersion = vi.fn().mockRejectedValue(new NarrativeApiError(409, 'stale_provider_pricing'));
+    const user = userEvent.setup();
+    render(<DraftReviewPage api={api({ saveManualVersion })} draftId="draft-1" />);
+
+    await user.click(await screen.findByRole('button', { name: '직접 수정' }));
+    const dialog = screen.getByRole('dialog', { name: '직접 수정' });
+    await user.click(within(dialog).getByRole('button', { name: '새 버전 저장' }));
+
+    expect(within(dialog).getByRole('alert')).toHaveTextContent('제공자 단가 확인일이 만료되었습니다. 설정에서 단가를 다시 확인해 주세요.');
+    expect(within(dialog).queryByRole('button', { name: '새로 불러오기' })).not.toBeInTheDocument();
+  });
+
   it('requires and submits a confirmed focused revision without overwriting the selected version', async () => {
     const generate = vi.fn().mockResolvedValue({ draftId: 'draft-1', versionId: 'version-3', status: 'generated', continuityLevel: 'review' });
     const user = userEvent.setup();
@@ -192,6 +206,14 @@ describe('DraftReviewPage', () => {
     expect(review).toHaveBeenCalledWith(expect.objectContaining({ expectedState: 'generated', action: 'reject', reason: '연속성 차단' }));
   });
 
+  it('does not offer another rejection after a blocked draft is already rejected', async () => {
+    const rejected = { ...detail, latestVersion: { ...detail.latestVersion, continuityLevel: 'block' as const }, status: 'rejected' as const };
+    render(<DraftReviewPage api={api({ getDraft: vi.fn().mockResolvedValue(rejected) })} draftId="draft-1" />);
+
+    expect(await screen.findByText('차단된 버전')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '거절' })).not.toBeInTheDocument();
+  });
+
   it('retries the real draft detail request and recovers from an initial route error', async () => {
     const getDraft = vi.fn().mockRejectedValueOnce(new Error('temporary failure')).mockResolvedValueOnce(detail);
     render(<DraftReviewPage api={api({ getDraft })} draftId="draft-1" />);
@@ -220,6 +242,17 @@ describe('DraftReviewPage', () => {
       expect(screen.getByRole('button', { name: '보관' })).toBeInTheDocument();
     },
   );
+
+  it('restores an archived draft through the exact latest-version command', async () => {
+    const restore = vi.fn().mockResolvedValue({ status: 'approved_private' as const });
+    render(<DraftReviewPage api={api({ getDraft: vi.fn().mockResolvedValue({ ...detail, status: 'archived' }), restore })} draftId="draft-1" />);
+
+    await userEvent.click(await screen.findByRole('button', { name: '복원' }));
+
+    expect(restore).toHaveBeenCalledWith({ draftId: 'draft-1', expectedVersionId: 'version-2' });
+    expect(await screen.findByText('초안을 approved_private 상태로 복원했습니다.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '복원' })).not.toBeInTheDocument();
+  });
 
   it('closes its modal dialog with Escape and restores focus', async () => {
     const user = userEvent.setup();

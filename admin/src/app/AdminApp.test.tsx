@@ -48,7 +48,7 @@ function previewApi(): NarrativeApi {
     getSchedules: vi.fn().mockResolvedValue({ schedules: [{ id: 'local-preview-schedule', scheduleKey: 'daily', scheduleType: 'automatic', enabled: true, seoulTime: '09:00', weekday: null, specialDate: null, minimumIntervalMinutes: 1440, kind: 'daily_event', lastRunAt: '2026-08-15T00:00:00Z', nextRunAt: '2026-08-16T00:00:00Z' }] }),
     getSettings: vi.fn().mockResolvedValue({ automationEnabled: false, pricingValidDays: 30, providers: [], budget: { monthlyLimitMicros: 100000000, dailyLimitMicros: 20000000, spentMicros: 8400, reservedMicros: 300, manualCallLimit: 3, warningThresholdPercent: 80, riskThresholdPercent: 95, krwPerUsd: 1380 }, secrets: { openai: false, anthropic: false, github: false } }),
     generate: forbidden, saveManualVersion: forbidden, review: forbidden, retryPublish: forbidden,
-    archive: forbidden, setMemoryEnabled: forbidden, correctMemory: forbidden,
+    archive: forbidden, restore: forbidden, setMemoryEnabled: forbidden, correctMemory: forbidden,
     saveSchedule: forbidden, saveSettings: forbidden, saveSecret: forbidden,
   } as NarrativeApi;
 }

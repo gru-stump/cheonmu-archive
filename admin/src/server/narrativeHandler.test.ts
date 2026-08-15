@@ -130,6 +130,28 @@ describe('same-origin narrative server boundary', () => {
     expect(fetch).toHaveBeenCalledTimes(2);
   });
 
+  it('restores only through the narrow audited database command', async () => {
+    const calls: Array<{ path: string; body: Record<string, unknown> }> = [];
+    const fetch: typeof globalThis.fetch = vi.fn(async (input, init) => {
+      const path = new URL(String(input)).pathname;
+      calls.push({ path, body: init?.body ? JSON.parse(String(init.body)) : {} });
+      if (path === '/auth/v1/user') return Response.json({ id: 'owner-1' });
+      if (path === '/rest/v1/owner_profiles') return Response.json([{ owner_id: 'owner-1' }]);
+      return Response.json({ status: 'approved_private' });
+    });
+    const handler = createNarrativeHandler({ supabaseUrl: 'https://db.example.test', supabaseAnonKey: 'anon', fetch });
+    const response = await handler(new Request('https://admin.example.test/api/narrative/drafts/draft-1/restore', {
+      method: 'POST', headers: { authorization: 'Bearer owner-token', 'content-type': 'application/json' },
+      body: JSON.stringify({ draftId: 'draft-1', expectedVersionId: 'version-2' }),
+    }));
+
+    expect(response.status).toBe(200);
+    expect(calls[2]).toEqual({
+      path: '/rest/v1/rpc/restore_narrative_draft',
+      body: { p_draft_id: 'draft-1', p_expected_version_id: 'version-2' },
+    });
+  });
+
   it('maps only stable expected-state database conflicts to 409', async () => {
     const fetch: typeof globalThis.fetch = vi.fn(async (input) => {
       const path = new URL(String(input)).pathname;

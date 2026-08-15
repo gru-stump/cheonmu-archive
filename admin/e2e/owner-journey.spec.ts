@@ -74,6 +74,11 @@ test('authenticated owner journey persists budget, private approval, rejection f
   const session = await authenticateSeedOwner(page);
   await routeRealNarrativeApi(page, session);
   await clearAccessFixture(session);
+  await serviceDelete(session.config, `budget_entries?owner_id=eq.${seedOwnerId}`);
+  await servicePatch(session.config, 'provider_settings?id=eq.12000000-0000-0000-0000-000000000001', {
+    max_input_tokens: 4096, max_output_tokens: 1024, max_revision_output_tokens: 256,
+    input_cost_micros_per_million: 0, output_cost_micros_per_million: 1_477_540, fixed_cost_micros: 2_686,
+  });
   const functions = await startFakeProviderFunctions();
   let accessJobId: string | null = null;
   const rejectedDraftId = randomUUID();
@@ -90,14 +95,25 @@ test('authenticated owner journey persists budget, private approval, rejection f
     await servicePatch(session.config, `generation_jobs?id=eq.${accessJob.id}`, { draft_id: accessDraftId });
     const [persistedJob] = await serviceGet<Array<{ id: string; draft_id: string }>>(session.config, `generation_jobs?select=id,draft_id&id=eq.${accessJob.id}`);
     expect(persistedJob?.draft_id).toBe(accessDraftId);
-    const generated = await edgeJson<{ versionId: string; continuityLevel: string }>(await edgePost(session, 'generate-draft', {
+    const generationResponsePromise = edgePost(session, 'generate-draft', {
       jobId: accessJob.id,
       draftId: persistedJob!.draft_id,
       idempotencyKey: `e2e-access-${randomUUID()}`,
       mode: 'new',
       kind: 'short_dialogue',
-    }));
+    });
+    await expect.poll(async () => {
+      const pending = await serviceGet<Array<{ amount_micros: number }>>(session.config, `budget_entries?select=amount_micros&generation_job_id=eq.${accessJob.id}&entry_type=eq.reservation`);
+      return pending[0]?.amount_micros ?? null;
+    }).toBe(4_200);
+    await page.reload();
+    const reservationSection = page.locator('.admin-section').filter({ has: page.getByRole('heading', { name: '예약 비용' }) });
+    await expect(reservationSection).toContainText('4,200 μUSD');
+    const generated = await edgeJson<{ versionId: string; continuityLevel: string }>(await generationResponsePromise);
     expect(generated.continuityLevel).toBe('review');
+    await page.reload();
+    await expect(page.locator('.admin-section').filter({ has: page.getByRole('heading', { name: '일일 예산' }) })).toContainText('2,700 μUSD');
+    await expect(page.locator('.admin-section').filter({ has: page.getByRole('heading', { name: '예약 비용' }) })).toContainText('0 μUSD');
 
     await openDraft(page, persistedJob!.draft_id);
     const originalBody = await page.locator('.draft-body').textContent();
@@ -111,14 +127,33 @@ test('authenticated owner journey persists budget, private approval, rejection f
     const accessDraft = await serviceGet<Array<{ status: string }>>(session.config, `drafts?select=status&id=eq.${persistedJob!.draft_id}`);
     const accessVersions = await serviceGet<Array<{ version_number: number; content: { body: string } }>>(session.config, `draft_versions?select=version_number,content&draft_id=eq.${persistedJob!.draft_id}&order=version_number.asc`);
     const publishJobs = await serviceGet<unknown[]>(session.config, `publish_jobs?select=id&draft_id=eq.${persistedJob!.draft_id}`);
-    const ledger = await serviceGet<Array<{ entry_type: string; amount_micros: number }>>(session.config, `budget_entries?select=entry_type,amount_micros&generation_job_id=eq.${accessJob.id}&order=created_at.asc`);
+    const ledger = await serviceGet<Array<{ entry_type: string; amount_micros: number; usage_json: { inputTokens?: number; outputTokens?: number } | null }>>(session.config, `budget_entries?select=entry_type,amount_micros,usage_json&generation_job_id=eq.${accessJob.id}&order=created_at.asc`);
     expect(accessDraft).toEqual([{ status: 'approved_private' }]);
     expect(accessVersions).toHaveLength(2);
     expect(accessVersions[0]?.content.body).toBe(originalBody);
     expect(accessVersions[1]?.content.body).toContain('한 줄을 고쳤다');
     expect(publishJobs).toEqual([]);
     expect(ledger.map((entry) => entry.entry_type)).toEqual(['reservation', 'reconciliation']);
-    expect(ledger.reduce((sum, entry) => sum + Number(entry.amount_micros), 0)).toBeGreaterThan(0);
+    expect(ledger.map((entry) => Number(entry.amount_micros))).toEqual([4_200, -1_500]);
+    expect(ledger.reduce((sum, entry) => sum + Number(entry.amount_micros), 0)).toBe(2_700);
+    expect(ledger[1]?.usage_json).toEqual({ inputTokens: 14, outputTokens: 9 });
+
+    const archiveVersionCount = accessVersions.length;
+    const archiveMemoryIds = await serviceGet<Array<{ id: string }>>(session.config, `memory_items?select=id&owner_id=eq.${seedOwnerId}&order=id.asc`);
+    await openDraft(page, persistedJob!.draft_id);
+    await page.getByRole('button', { name: '보관' }).click();
+    await expect(page.getByRole('status').filter({ hasText: '초안을 보관했습니다.' })).toBeVisible();
+    await page.getByRole('link', { name: '초안' }).click();
+    await expect(page.locator(`a[href="/drafts/${persistedJob!.draft_id}"]`)).toHaveCount(0);
+    await page.getByRole('button', { name: '보관됨' }).click();
+    await page.locator(`a[href="/drafts/${persistedJob!.draft_id}"]`).click();
+    await page.getByRole('button', { name: '복원' }).click();
+    await expect(page.getByRole('status').filter({ hasText: '초안을 approved_private 상태로 복원했습니다.' })).toBeVisible();
+    expect(await serviceGet(session.config, `drafts?select=status&id=eq.${persistedJob!.draft_id}`)).toEqual([{ status: 'approved_private' }]);
+    expect(await serviceGet(session.config, `draft_versions?select=id&draft_id=eq.${persistedJob!.draft_id}`)).toHaveLength(archiveVersionCount);
+    expect(await serviceGet(session.config, `publish_jobs?select=id&draft_id=eq.${persistedJob!.draft_id}`)).toEqual([]);
+    expect(await serviceGet(session.config, `memory_items?select=id&owner_id=eq.${seedOwnerId}&order=id.asc`)).toEqual(archiveMemoryIds);
+    expect(await serviceGet(session.config, `audit_events?select=event_type&entity_id=eq.${persistedJob!.draft_id}&event_type=in.(draft_archived,draft_restored)&order=created_at.asc`)).toEqual([{ event_type: 'draft_archived' }, { event_type: 'draft_restored' }]);
 
     const canonBeforeReject = await serviceGet<Array<{ id: string }>>(session.config, 'memory_items?select=id&memory_type=eq.canon&order=id.asc');
     await serviceInsert(session.config, 'drafts', {
@@ -254,6 +289,10 @@ test('authenticated owner journey persists budget, private approval, rejection f
     expect(majorVersions.map((version) => version.version_number)).toEqual([1, 2, 3]);
   } finally {
     if (accessJobId) await servicePatch(session.config, `generation_jobs?id=eq.${accessJobId}`, { schedule_key: `retired-access-${accessJobId}` }).catch(() => undefined);
+    await servicePatch(session.config, 'provider_settings?id=eq.12000000-0000-0000-0000-000000000001', {
+      max_input_tokens: 4096, max_output_tokens: 1024, max_revision_output_tokens: 256,
+      input_cost_micros_per_million: 0, output_cost_micros_per_million: 0, fixed_cost_micros: 100,
+    }).catch(() => undefined);
     await serviceDelete(session.config, 'schedules?schedule_key=eq.special-date').catch(() => undefined);
     await functions.stop();
   }

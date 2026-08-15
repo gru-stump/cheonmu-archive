@@ -1,7 +1,7 @@
 type ServerConfig = { supabaseUrl: string; supabaseAnonKey: string; fetch?: typeof globalThis.fetch };
 
 const conflicts = new Set([
-  'stale_review', 'stale_review_submission', 'stale_manual_version', 'stale_revision', 'stale_archive', 'stale_publish_retry',
+  'stale_review', 'stale_review_submission', 'stale_manual_version', 'stale_revision', 'stale_archive', 'stale_restore', 'stale_publish_retry',
   'blocked_version_reject_only', 'revision_cost_changed', 'duplicate_review', 'version_not_approvable', 'duplicate_generation',
   'fixed_canon_read_only', 'stale_memory', 'stale_provider_pricing', 'automation_disabled',
   'budget_limit_below_committed', 'duplicate_schedule_key', 'active_provider_setting_required',
@@ -152,6 +152,10 @@ export function createNarrativeHandler({ supabaseUrl, supabaseAnonKey, fetch = g
         if (path[2] === 'archive') {
           if (!['generated', 'reviewing', 'rejected', 'approved_private', 'publish_failed'].includes(String(input.expectedState))) return json({ error: 'invalid_archive_state' }, 400);
           return json(await rpc('archive_narrative_draft', { p_draft_id: input.draftId, p_expected_version_id: input.expectedVersionId, p_expected_state: input.expectedState }));
+        }
+        if (path[2] === 'restore') {
+          if (typeof input.expectedVersionId !== 'string' || !input.expectedVersionId) return json({ error: 'invalid_restore_command' }, 400);
+          return json(await rpc('restore_narrative_draft', { p_draft_id: input.draftId, p_expected_version_id: input.expectedVersionId }));
         }
         if (path[2] === 'retry-publish') return json(await rpc('retry_narrative_publish', { p_draft_id: input.draftId, p_expected_version_id: input.expectedVersionId, p_expected_state: input.expectedState }));
         if (path[2] === 'review') {
