@@ -15,7 +15,10 @@
     "narrative:canon": "tsx scripts/export-narrative-canon.ts",
     "validate": "tsx scripts/validate-content.ts",
     "e2e": "playwright test",
-    "e2e:editor": "playwright test --config playwright.editor.config.ts"
+    "e2e:editor": "playwright test --config playwright.editor.config.ts",
+    "admin:dev": "npm --prefix admin run dev",
+    "admin:test": "npm --prefix admin run test -- --run",
+    "admin:build": "npm --prefix admin run build"
   },
   "dependencies": {
     "express": "^5.2.1",

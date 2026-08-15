@@ -1,0 +1,13 @@
+:root { color: #211b18; background: #faf7f0; font-family: system-ui, sans-serif; }
+body { margin: 0; }
+button, input { font: inherit; }
+main, .admin-header { max-width: 72rem; margin: 0 auto; padding: 1rem; }
+.admin-header { display: flex; flex-wrap: wrap; align-items: center; gap: 1rem; border-bottom: 1px solid #d9d0c2; }
+.admin-header p { margin: 0; font-weight: 700; }
+nav { display: flex; flex-wrap: wrap; gap: .5rem; }
+nav a { color: inherit; padding: .5rem; text-decoration: none; }
+nav a[aria-current="page"] { background: #5b1616; color: #fff; }
+form { display: grid; gap: .75rem; max-width: 28rem; }
+input, button { min-height: 2.75rem; padding: .5rem .75rem; }
+button { width: fit-content; cursor: pointer; }
+@media (max-width: 36rem) { .admin-header { align-items: stretch; } nav { justify-content: space-between; } nav a { flex: 1 1 auto; text-align: center; } }

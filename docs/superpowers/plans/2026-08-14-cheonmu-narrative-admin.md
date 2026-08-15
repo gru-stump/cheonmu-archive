@@ -38,7 +38,7 @@
 **Interfaces:**
 - Produces `AuthGate`, authenticated routes `/`, `/drafts`, `/memory`, `/schedules`, `/settings`.
 
-- [ ] **Step 1: Write failing authentication tests**
+- [x] **Step 1: Write failing authentication tests**
 
 ```tsx
 render(<AuthGate client={signedOutClient}><p>비공개</p></AuthGate>);
@@ -46,17 +46,17 @@ expect(screen.queryByText('비공개')).not.toBeInTheDocument();
 expect(screen.getByRole('button', { name: '로그인 링크 받기' })).toBeInTheDocument();
 ```
 
-- [ ] **Step 2: Scaffold the separate app and confirm the test fails**
+- [x] **Step 2: Scaffold the separate app and confirm the test fails**
 
 Run: `npm --prefix admin install`
 
 Run: `npm --prefix admin run test -- --run src/auth/AuthGate.test.tsx`
 
-- [ ] **Step 3: Implement owner authentication**
+- [x] **Step 3: Implement owner authentication**
 
 Use email magic-link login, session restoration, logout, and a server-stored allowlisted owner check. Render no private route before both session and owner membership resolve. Configure Vercel SPA rewrites without adding secrets to `vercel.json`.
 
-- [ ] **Step 4: Verify build contains only publishable Supabase environment variables**
+- [x] **Step 4: Verify build contains only publishable Supabase environment variables**
 
 Run: `npm --prefix admin run test -- --run && npm --prefix admin run build`
 
@@ -64,7 +64,7 @@ Run: `rg "SERVICE_ROLE|OPENAI_API_KEY|ANTHROPIC_API_KEY|GITHUB_TOKEN" admin/dist
 
 Expected: tests/build PASS and secret scan has no matches.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```powershell
 git add admin package.json package-lock.json
