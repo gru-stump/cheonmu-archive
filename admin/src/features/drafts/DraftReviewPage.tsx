@@ -34,7 +34,7 @@ function estimateRevisionCost(detail: DraftDetail, outputTokens: number): number
   return pricing.fixedCostMicros + Math.ceil(pricing.maximumInputTokens * pricing.inputCostMicrosPerMillion / 1_000_000) + Math.ceil(boundedOutput * pricing.outputCostMicrosPerMillion / 1_000_000);
 }
 
-export function DraftReviewPage({ api, draftId }: { api: NarrativeApi; draftId: string }) {
+export function DraftReviewPage({ api, draftId, readOnly = false }: { api: NarrativeApi; draftId: string; readOnly?: boolean }) {
   const [detail, setDetail] = useState<DraftDetail | null>(null);
   const [loadError, setLoadError] = useState(false);
   const [dialog, setDialog] = useState<DialogKind>(null);
@@ -119,13 +119,13 @@ export function DraftReviewPage({ api, draftId }: { api: NarrativeApi; draftId: 
       <section aria-labelledby="canon-candidates"><h2 id="canon-candidates">정사 변경 후보</h2>{version.content.canonChangeCandidates.length ? <ul>{version.content.canonChangeCandidates.map((candidate) => <li key={candidate}>{candidate}</li>)}</ul> : <p>후보 없음</p>}</section>
       <section aria-labelledby="history"><h2 id="history">버전 이력</h2><ol>{detail.versions.map((item: DraftVersion) => <li key={item.id}><strong>버전 {item.versionNumber}</strong> <time dateTime={item.createdAt}>{seoulDate(item.createdAt)}</time><p>{item.content.body}</p></li>)}</ol></section>
       <div className="review-actions" aria-label="초안 작업">
-        {!blocked && reviewable && <button type="button" onClick={(event) => openDialog('manual', event)}>직접 수정</button>}
-        {!blocked && reviewable && <button type="button" onClick={(event) => openDialog('revision', event)}>부분 AI 수정</button>}
-        {!blocked && reviewable && <button type="button" onClick={() => void review('approve_private')}>비공개 정사 승인</button>}
-        {!blocked && reviewable && <button type="button" onClick={() => void review('approve_public')}>승인하고 게시</button>}
-        {(reviewable || blocked) && <button type="button" onClick={(event) => openDialog('reject', event)}>거절</button>}
-        {!blocked && isArchiveSourceStatus(detail.status) && <button type="button" onClick={() => void archive()}>보관</button>}
-        {!blocked && detail.status === 'publish_failed' && <button type="button" onClick={() => void retryPublish()}>게시 재시도</button>}
+        {!blocked && reviewable && <button type="button" disabled={readOnly} onClick={(event) => openDialog('manual', event)}>직접 수정</button>}
+        {!blocked && reviewable && <button type="button" disabled={readOnly} onClick={(event) => openDialog('revision', event)}>부분 AI 수정</button>}
+        {!blocked && reviewable && <button type="button" disabled={readOnly} onClick={() => void review('approve_private')}>비공개 정사 승인</button>}
+        {!blocked && reviewable && <button type="button" disabled={readOnly} onClick={() => void review('approve_public')}>승인하고 게시</button>}
+        {(reviewable || blocked) && <button type="button" disabled={readOnly} onClick={(event) => openDialog('reject', event)}>거절</button>}
+        {!blocked && isArchiveSourceStatus(detail.status) && <button type="button" disabled={readOnly} onClick={() => void archive()}>보관</button>}
+        {!blocked && detail.status === 'publish_failed' && <button type="button" disabled={readOnly} onClick={() => void retryPublish()}>게시 재시도</button>}
       </div>
       {dialog === 'manual' && <Modal title="직접 수정" onClose={() => closeDialog()}>{conflictRecovery}<form onSubmit={saveManual}><label htmlFor="manual-body">최종 본문</label><textarea id="manual-body" rows={12} value={manualText} onChange={(event) => setManualText(event.target.value)} required /><button type="submit">새 버전 저장</button></form></Modal>}
       {dialog === 'revision' && <Modal title="부분 AI 수정" onClose={() => closeDialog()}>{conflictRecovery}<form onSubmit={revise}><label htmlFor="selected-text">선택한 구절</label><textarea id="selected-text" value={selectedText} onChange={(event) => { setSelectedText(event.target.value); setConfirmedRevisionSignature(null); }} required /><label htmlFor="revision-instruction">수정 지시</label><textarea id="revision-instruction" value={instruction} onChange={(event) => { setInstruction(event.target.value); setConfirmedRevisionSignature(null); }} required /><label htmlFor="max-tokens">최대 출력 토큰</label><input id="max-tokens" type="number" min="1" max={detail.revisionPricing?.maximumRevisionOutputTokens ?? 4096} value={maxTokens} onChange={(event) => { setMaxTokens(Number(event.target.value)); setConfirmedRevisionSignature(null); }} required /><p>예상 최대 비용: {estimatedRevisionCost.toLocaleString('en-US')} μUSD</p><label><input type="checkbox" checked={costConfirmed} onChange={(event) => setConfirmedRevisionSignature(event.target.checked ? revisionSignature : null)} /> 최대 비용을 확인했습니다</label><button type="submit">새 버전 생성</button></form></Modal>}

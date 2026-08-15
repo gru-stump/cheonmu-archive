@@ -1,6 +1,8 @@
 project_id = "cheonmu-narrative"
 
 [auth]
+site_url = "http://127.0.0.1:4174"
+additional_redirect_urls = ["http://127.0.0.1:4174"]
 # This disables signup in the local auth emulator. Hosted projects must also
 # disable "Enable signups" in the Supabase Dashboard; no hosted credentials
 # or project secrets belong in this repository.

@@ -10,7 +10,7 @@ const seoulDate = (value: string | null) => {
   return `${parts.year}. ${Number(parts.month)}. ${Number(parts.day)}. ${hour < 12 ? '오전' : '오후'} ${hour % 12 || 12}:${parts.minute}`;
 };
 
-function ScheduleForm({ api, schedule, onSaved }: { api: NarrativeApi; schedule: NarrativeSchedule; onSaved(): Promise<void> }) {
+function ScheduleForm({ api, schedule, readOnly, onSaved }: { api: NarrativeApi; schedule: NarrativeSchedule; readOnly: boolean; onSaved(): Promise<void> }) {
   const [draft, setDraft] = useState<SaveScheduleInput>({
     scheduleId: schedule.id.startsWith('new-') ? undefined : schedule.id,
     scheduleKey: schedule.scheduleKey, scheduleType: schedule.scheduleType, enabled: schedule.enabled,
@@ -43,13 +43,13 @@ function ScheduleForm({ api, schedule, onSaved }: { api: NarrativeApi; schedule:
       <label htmlFor={`schedule-kind-${schedule.id}`}>생성 종류</label>
       <select id={`schedule-kind-${schedule.id}`} value={draft.kind} onChange={(event) => setDraft({ ...draft, kind: event.target.value as SaveScheduleInput['kind'] })}><option value="short_dialogue">짧은 대화</option><option value="daily_event">일상 사건</option></select>
       <dl><dt>마지막 실행</dt><dd>{seoulDate(schedule.lastRunAt)}</dd><dt>다음 실행</dt><dd>{seoulDate(schedule.nextRunAt)}</dd></dl>
-      <button type="submit" aria-label={`${draft.scheduleKey} 일정 저장`}>일정 저장</button>
+      <button type="submit" aria-label={`${draft.scheduleKey} 일정 저장`} disabled={readOnly}>일정 저장</button>
     </form>
     {message && <p role="status">{message}</p>}
   </article>;
 }
 
-export function SchedulesPage({ api }: { api: NarrativeApi }) {
+export function SchedulesPage({ api, readOnly = false }: { api: NarrativeApi; readOnly?: boolean }) {
   const [schedules, setSchedules] = useState<NarrativeSchedule[] | null>(null);
   const [error, setError] = useState(false);
   const load = async () => { const value = await api.getSchedules(); setSchedules(value.schedules); setError(false); };
@@ -62,7 +62,7 @@ export function SchedulesPage({ api }: { api: NarrativeApi }) {
   return <section aria-labelledby="schedules-title">
     <h1 id="schedules-title">일정</h1>
     <p>모든 실행 시각과 특별일은 Asia/Seoul 기준입니다.</p>
-    <button type="button" onClick={addSpecial}>특별일 추가</button>
-    {error ? <p role="alert">일정을 불러오지 못했습니다.</p> : schedules === null ? <p role="status">일정을 불러오는 중입니다.</p> : <div className="settings-grid">{schedules.map((schedule) => <ScheduleForm key={schedule.id} api={api} schedule={schedule} onSaved={load} />)}</div>}
+    <button type="button" onClick={addSpecial} disabled={readOnly}>특별일 추가</button>
+    {error ? <p role="alert">일정을 불러오지 못했습니다.</p> : schedules === null ? <p role="status">일정을 불러오는 중입니다.</p> : <div className="settings-grid">{schedules.map((schedule) => <ScheduleForm key={schedule.id} api={api} schedule={schedule} readOnly={readOnly} onSaved={load} />)}</div>}
   </section>;
 }

@@ -37,6 +37,52 @@ const awaitedSettings = {
 
 describe('SettingsPage', () => {
   it.each([
+    ['zero rows', [], []],
+    ['one OpenAI row', [{ providerKey: 'openai', enabled: false, modelKey: 'gpt-existing', maxInputTokens: 4096, maxOutputTokens: 1024, maxRevisionOutputTokens: 256, inputPriceMicrosPerMillion: 0, outputPriceMicrosPerMillion: 0, pricingVerifiedAt: '' }], ['openai']],
+  ] as const)('omits untouched synthetic provider drafts from a budget-only save with %s', async (_label, providers, expectedKeys) => {
+    const client = apiWithProviders([...providers]);
+    const user = userEvent.setup();
+    render(<SettingsPage api={client} />);
+
+    const budget = await screen.findByLabelText('월간 예산 USD');
+    await user.clear(budget);
+    await user.type(budget, '25');
+    await user.click(screen.getByRole('button', { name: '설정 저장' }));
+
+    await waitFor(() => expect(client.saveSettings).toHaveBeenCalled());
+    expect(vi.mocked(client.saveSettings).mock.calls[0][0].providers.map((provider) => provider.providerKey)).toEqual(expectedKeys);
+  });
+
+  it('keeps a synthetic provider explicitly touched after its field is returned to the default value', async () => {
+    const client = apiWithProviders([]);
+    const user = userEvent.setup();
+    render(<SettingsPage api={client} />);
+
+    const anthropic = await screen.findByRole('group', { name: 'Anthropic' });
+    const model = within(anthropic).getByLabelText('모델');
+    await user.type(model, 'temporary-model');
+    await user.clear(model);
+    await user.click(screen.getByRole('button', { name: '설정 저장' }));
+
+    await waitFor(() => expect(client.saveSettings).toHaveBeenCalled());
+    expect(vi.mocked(client.saveSettings).mock.calls[0][0].providers.map((provider) => provider.providerKey)).toEqual(['anthropic']);
+  });
+
+  it('recalculates the exact synthetic provider set after settings are refreshed', async () => {
+    const emptyClient = apiWithProviders([]);
+    const refreshedClient = apiWithProviders([{ providerKey: 'anthropic', enabled: false, modelKey: 'claude-existing', maxInputTokens: 4096, maxOutputTokens: 1024, maxRevisionOutputTokens: 256, inputPriceMicrosPerMillion: 0, outputPriceMicrosPerMillion: 0, pricingVerifiedAt: '' }]);
+    const user = userEvent.setup();
+    const { rerender } = render(<SettingsPage api={emptyClient} />);
+
+    await screen.findByRole('group', { name: 'OpenAI' });
+    rerender(<SettingsPage api={refreshedClient} />);
+    await screen.findByDisplayValue('claude-existing');
+    await user.click(screen.getByRole('button', { name: '설정 저장' }));
+
+    await waitFor(() => expect(refreshedClient.saveSettings).toHaveBeenCalled());
+    expect(vi.mocked(refreshedClient.saveSettings).mock.calls[0][0].providers.map((provider) => provider.providerKey)).toEqual(['anthropic']);
+  });
+  it.each([
     ['zero provider rows', []],
     ['only an OpenAI row', [{ providerKey: 'openai', enabled: false, modelKey: 'gpt-existing', maxInputTokens: 4096, maxOutputTokens: 1024, maxRevisionOutputTokens: 256, inputPriceMicrosPerMillion: 0, outputPriceMicrosPerMillion: 0, pricingVerifiedAt: '' }]],
   ] as const)('renders editable OpenAI and Anthropic onboarding cards with %s', async (_label, providers) => {

@@ -19,21 +19,36 @@ const withProviderDrafts = (settings: NarrativeSettings): NarrativeSettings => (
   ],
 });
 
-export function SettingsPage({ api }: { api: NarrativeApi }) {
+export function SettingsPage({ api, readOnly = false }: { api: NarrativeApi; readOnly?: boolean }) {
   const [settings, setSettings] = useState<NarrativeSettings | null>(null);
+  const [syntheticProviderKeys, setSyntheticProviderKeys] = useState<Set<ProviderSetting['providerKey']>>(new Set());
+  const [touchedSyntheticProviderKeys, setTouchedSyntheticProviderKeys] = useState<Set<ProviderSetting['providerKey']>>(new Set());
   const [error, setError] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [secretInputs, setSecretInputs] = useState<Record<'openai' | 'anthropic' | 'github', string>>({ openai: '', anthropic: '', github: '' });
-  useEffect(() => { let active = true; void api.getSettings().then((value) => { if (active) setSettings(withProviderDrafts(value)); }).catch(() => { if (active) setError(true); }); return () => { active = false; }; }, [api]);
+  useEffect(() => { let active = true; void api.getSettings().then((value) => { if (active) {
+    const actualKeys = new Set(value.providers.map((provider) => provider.providerKey));
+    setSyntheticProviderKeys(new Set((['openai', 'anthropic'] as const).filter((key) => !actualKeys.has(key))));
+    setTouchedSyntheticProviderKeys(new Set());
+    setSettings(withProviderDrafts(value));
+  } }).catch(() => { if (active) setError(true); }); return () => { active = false; }; }, [api]);
 
-  const updateProvider = (key: ProviderSetting['providerKey'], change: Partial<ProviderSetting>) => setSettings((current) => current ? { ...current, providers: current.providers.map((provider) => provider.providerKey === key ? { ...provider, ...change } : provider) } : current);
+  const touchSyntheticProvider = (key: ProviderSetting['providerKey']) => {
+    if (syntheticProviderKeys.has(key)) setTouchedSyntheticProviderKeys((current) => new Set(current).add(key));
+  };
+  const updateProvider = (key: ProviderSetting['providerKey'], change: Partial<ProviderSetting>) => {
+    touchSyntheticProvider(key);
+    setSettings((current) => current ? { ...current, providers: current.providers.map((provider) => provider.providerKey === key ? { ...provider, ...change } : provider) } : current);
+  };
   const save = async (event: FormEvent) => {
     event.preventDefault(); if (!settings) return; setMessage(null);
     const activeProviderKey = settings.automationEnabled ? settings.providers.find((provider) => provider.enabled)?.providerKey ?? null : null;
     try {
       await api.saveSettings({
         automationEnabled: settings.automationEnabled, activeProviderKey, pricingValidDays: settings.pricingValidDays,
-        providers: settings.providers.map(({ enabled: _enabled, ...provider }) => provider),
+        providers: settings.providers
+          .filter((provider) => !syntheticProviderKeys.has(provider.providerKey) || touchedSyntheticProviderKeys.has(provider.providerKey))
+          .map(({ enabled: _enabled, ...provider }) => provider),
         monthlyLimitMicros: settings.budget.monthlyLimitMicros, dailyLimitMicros: settings.budget.dailyLimitMicros,
         manualCallLimit: settings.budget.manualCallLimit, warningThresholdPercent: settings.budget.warningThresholdPercent,
         riskThresholdPercent: settings.budget.riskThresholdPercent, krwPerUsd: settings.budget.krwPerUsd,
@@ -61,7 +76,7 @@ export function SettingsPage({ api }: { api: NarrativeApi }) {
         <label><input type="checkbox" checked={settings.automationEnabled} onChange={(event) => setSettings({ ...settings, automationEnabled: event.target.checked, providers: event.target.checked ? settings.providers : settings.providers.map((provider) => ({ ...provider, enabled: false })) })} /> 자동화 사용</label>
         <label htmlFor="pricing-valid-days">단가 유효 기간(일)</label><input id="pricing-valid-days" type="number" min="1" max="365" value={settings.pricingValidDays} onChange={(event) => setSettings({ ...settings, pricingValidDays: Number(event.target.value) })} />
         <div className="settings-grid">{settings.providers.map((provider) => { const label = providerName(provider.providerKey); return <fieldset key={provider.providerKey} className="settings-card"><legend>{label}</legend>
-          <label><input type="radio" name="active-provider" aria-label={`${label} 활성 제공자`} checked={provider.enabled} disabled={!settings.automationEnabled} onChange={() => setSettings({ ...settings, providers: settings.providers.map((candidate) => ({ ...candidate, enabled: candidate.providerKey === provider.providerKey })) })} /> 활성 제공자</label>
+          <label><input type="radio" name="active-provider" aria-label={`${label} 활성 제공자`} checked={provider.enabled} disabled={readOnly || !settings.automationEnabled} onChange={() => { touchSyntheticProvider(provider.providerKey); setSettings({ ...settings, providers: settings.providers.map((candidate) => ({ ...candidate, enabled: candidate.providerKey === provider.providerKey })) }); }} /> 활성 제공자</label>
           <label htmlFor={`${provider.providerKey}-model`}>모델</label><input id={`${provider.providerKey}-model`} value={provider.modelKey} onChange={(event) => updateProvider(provider.providerKey, { modelKey: event.target.value })} />
           <label htmlFor={`${provider.providerKey}-input-price`}>{label} 입력 단가 USD / 1M</label><input id={`${provider.providerKey}-input-price`} type="number" min="0" step="0.000001" value={microsToUsd(provider.inputPriceMicrosPerMillion)} onChange={(event) => updateProvider(provider.providerKey, { inputPriceMicrosPerMillion: usdToMicros(Number(event.target.value)) })} />
           <label htmlFor={`${provider.providerKey}-output-price`}>{label} 출력 단가 USD / 1M</label><input id={`${provider.providerKey}-output-price`} type="number" min="0" step="0.000001" value={microsToUsd(provider.outputPriceMicrosPerMillion)} onChange={(event) => updateProvider(provider.providerKey, { outputPriceMicrosPerMillion: usdToMicros(Number(event.target.value)) })} />
@@ -80,14 +95,14 @@ export function SettingsPage({ api }: { api: NarrativeApi }) {
         <label htmlFor="risk-threshold">위험 기준 %</label><input id="risk-threshold" type="number" min="2" max="100" value={settings.budget.riskThresholdPercent} onChange={(event) => setSettings({ ...settings, budget: { ...settings.budget, riskThresholdPercent: Number(event.target.value) } })} />
         <label htmlFor="krw-rate">참고 환율 KRW / USD</label><input id="krw-rate" type="number" min="0.0001" step="0.0001" value={settings.budget.krwPerUsd} onChange={(event) => setSettings({ ...settings, budget: { ...settings.budget, krwPerUsd: Number(event.target.value) } })} />
       </fieldset>
-      <button type="submit">설정 저장</button>
+      <button type="submit" disabled={readOnly}>설정 저장</button>
     </form>
     <section aria-labelledby="secret-settings"><h2 id="secret-settings">비밀 연결</h2>
       {(['openai', 'anthropic', 'github'] as const).map((kind) => { const label = kind === 'github' ? 'GitHub' : providerName(kind); return <form key={kind} onSubmit={(event) => void saveSecret(event, kind)} className="secret-form">
         <p>{label}: {settings.secrets[kind] ? '연결됨' : '미연결'}</p>
         <label htmlFor={`${kind}-secret`}>{label} 비밀 키</label>
         <input id={`${kind}-secret`} type="password" autoComplete="new-password" value={secretInputs[kind]} onChange={(event) => setSecretInputs({ ...secretInputs, [kind]: event.target.value })} required />
-        <button type="submit">{label} 비밀 저장</button>
+        <button type="submit" disabled={readOnly}>{label} 비밀 저장</button>
       </form>; })}
     </section>
     {message && <p role="status">{message}</p>}

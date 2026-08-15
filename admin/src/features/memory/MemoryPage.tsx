@@ -58,7 +58,7 @@ const sections: Array<{ key: keyof MemoryData; title: string; readOnly?: boolean
   { key: 'unresolved', title: '미회수 요소' },
 ];
 
-export function MemoryPage({ api }: { api: NarrativeApi }) {
+export function MemoryPage({ api, readOnly = false }: { api: NarrativeApi; readOnly?: boolean }) {
   const [data, setData] = useState<MemoryData | null>(null);
   const [error, setError] = useState(false);
   const load = async () => { const value = await api.getMemory(); setData(value); setError(false); };
@@ -68,7 +68,7 @@ export function MemoryPage({ api }: { api: NarrativeApi }) {
     <p>고정 정사는 이 화면에서 바꿀 수 없습니다. 다른 기억은 사용 상태를 전환하거나 새 교정 이력을 추가합니다.</p>
     {error ? <p role="alert">기억을 불러오지 못했습니다.</p> : !data ? <p role="status">기억을 불러오는 중입니다.</p> : sections.map((section) => <section key={section.key} aria-labelledby={`memory-${section.key}`}>
       <h2 id={`memory-${section.key}`}>{section.title}</h2>
-      <MemoryList api={api} items={data[section.key]} readOnly={section.readOnly} onChanged={load} />
+      <MemoryList api={api} items={data[section.key]} readOnly={readOnly || section.readOnly} onChanged={load} />
     </section>)}
   </section>;
 }
