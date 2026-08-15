@@ -1,4 +1,5 @@
 import type { ArchiveContent, ValidationResult } from './schema';
+import { normalizeArchiveRecordNumber } from '../../shared/narrative/archive-record';
 
 export interface ValidationOptions {
   publicImagePaths?: readonly string[];
@@ -12,6 +13,7 @@ export function validateArchiveContent(
   const warnings: string[] = [];
   const ids = new Set<string>();
   const recordIds = new Set(content.records.map((record) => record.id));
+  const recordNumbers = new Set<string>();
 
   for (const item of [...content.records, ...content.profiles, ...content.documents, ...content.gallery]) {
     if (ids.has(item.id)) {
@@ -21,6 +23,11 @@ export function validateArchiveContent(
   }
 
   for (const record of content.records) {
+    const normalizedRecordNumber = normalizeArchiveRecordNumber(record.recordNumber);
+    if (recordNumbers.has(normalizedRecordNumber)) {
+      errors.push(`Duplicate record number: ${record.recordNumber}`);
+    }
+    recordNumbers.add(normalizedRecordNumber);
     if (!Number.isInteger(record.stage) || record.stage < 0 || record.stage > 8) {
       errors.push(`Record ${record.id} has invalid stage: ${record.stage}`);
     }

@@ -1,9 +1,9 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
-exports[`toPublishedRecord > renders an approved Korean narrative using only the public archive allowlist 1`] = `
+exports[`toPublishedRecord > renders the bound immutable approved version deterministically with canonical archive numbering 1`] = `
 "---
 id: "rainy-return"
-recordNumber: "08"
+recordNumber: "CM-08"
 title: "비가 그친 뒤"
 summary: "비가 그친 뒤, 두 사람은 처마 아래에서 잠시 머문다."
 stage: 7
