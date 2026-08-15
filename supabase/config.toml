@@ -17,6 +17,11 @@ verify_jwt = false
 # The function validates the bearer token against Supabase Auth itself.
 verify_jwt = false
 
+[functions.publish-draft]
+# The function validates the bearer token against Supabase Auth itself before
+# any service-role publication mutation or GitHub request is attempted.
+verify_jwt = false
+
 [functions.run-schedules]
 # Cron authenticates with the dispatch secret; browser access is authenticated
 # explicitly by the handler before it evaluates or queues anything.

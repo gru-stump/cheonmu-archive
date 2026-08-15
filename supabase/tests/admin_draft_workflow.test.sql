@@ -5,13 +5,12 @@ select plan(31);
 select has_function('public', 'save_manual_draft_version', array['uuid', 'uuid', 'text', 'jsonb'], 'manual edits use one narrow immutable-version command');
 select has_function('public', 'queue_draft_revision', array['uuid', 'uuid', 'text', 'text', 'integer', 'bigint'], 'partial revision preparation has one narrow owner command');
 select has_function('public', 'archive_narrative_draft', array['uuid', 'uuid', 'text'], 'archive is a narrow reversible command');
-select has_function('public', 'retry_narrative_publish', array['uuid', 'uuid', 'text'], 'publish retry is a narrow expected-state command');
+select hasnt_function('public', 'retry_narrative_publish', array['uuid', 'uuid', 'text'], 'browser retry is removed in favor of the authenticated Edge publication boundary');
 select ok(
   has_function_privilege('authenticated', 'public.save_manual_draft_version(uuid,uuid,text,jsonb)', 'EXECUTE')
   and has_function_privilege('authenticated', 'public.queue_draft_revision(uuid,uuid,text,text,integer,bigint)', 'EXECUTE')
-  and has_function_privilege('authenticated', 'public.archive_narrative_draft(uuid,uuid,text)', 'EXECUTE')
-  and has_function_privilege('authenticated', 'public.retry_narrative_publish(uuid,uuid,text)', 'EXECUTE'),
-  'authenticated owner receives only the named workflow commands'
+  and has_function_privilege('authenticated', 'public.archive_narrative_draft(uuid,uuid,text)', 'EXECUTE'),
+  'authenticated owner receives only the remaining non-publication workflow commands'
 );
 select ok(
   not has_function_privilege('anon', 'public.save_manual_draft_version(uuid,uuid,text,jsonb)', 'EXECUTE')
@@ -38,6 +37,8 @@ insert into public.draft_versions (id, owner_id, draft_id, generation_job_id, ve
 update public.drafts set status = 'reviewing' where id in ('a1000000-0000-0000-0000-000000000001', 'a1000000-0000-0000-0000-000000000002', 'a1000000-0000-0000-0000-000000000003', 'a1000000-0000-0000-0000-000000000006');
 update public.drafts set status = 'generated' where id = 'a1000000-0000-0000-0000-000000000004';
 update public.drafts set status = 'publish_failed' where id = 'a1000000-0000-0000-0000-000000000005';
+insert into public.draft_review_actions (id, owner_id, draft_id, draft_version_id, idempotency_key, action, expected_state, resulting_state)
+values ('a4000000-0000-0000-0000-000000000005', '10000000-0000-0000-0000-000000000001', 'a1000000-0000-0000-0000-000000000005', 'a2000000-0000-0000-0000-000000000005', 'admin-workflow-public-five', 'approve_public', 'reviewing', 'approved');
 insert into public.publish_jobs (id, owner_id, draft_id, draft_version_id, status) values ('a3000000-0000-0000-0000-000000000005', '10000000-0000-0000-0000-000000000001', 'a1000000-0000-0000-0000-000000000005', 'a2000000-0000-0000-0000-000000000005', 'failed');
 update public.schedules set enabled = true where owner_id = '10000000-0000-0000-0000-000000000001' and schedule_key = 'daily-local-fixture';
 
@@ -65,10 +66,10 @@ select throws_ok($$ select public.archive_narrative_draft('a1000000-0000-0000-00
 select lives_ok($$ select public.archive_narrative_draft('a1000000-0000-0000-0000-000000000004', 'a2000000-0000-0000-0000-000000000004', 'generated') $$, 'owner can reversibly archive an expected latest version');
 select is((select status from public.drafts where id = 'a1000000-0000-0000-0000-000000000004'), 'archived', 'archive moves the draft to archived without deleting its version');
 select throws_ok($$ select public.archive_narrative_draft('a1000000-0000-0000-0000-000000000002', 'a2000000-0000-0000-0000-000000000002', 'reviewing') $$, 'P0001', 'blocked_version_reject_only', 'blocked latest version cannot be archived');
-select lives_ok($$ select public.retry_narrative_publish('a1000000-0000-0000-0000-000000000005', 'a2000000-0000-0000-0000-000000000005', 'publish_failed') $$, 'failed publication can be retried for the exact latest approved version');
-select is((select status from public.drafts where id = 'a1000000-0000-0000-0000-000000000005'), 'publishing', 'publish retry keeps approval and moves the draft back to publishing');
-select is((select status from public.publish_jobs where id = 'a3000000-0000-0000-0000-000000000005'), 'queued', 'publish retry requeues the existing immutable-version job');
-select throws_ok($$ select public.archive_narrative_draft('a1000000-0000-0000-0000-000000000005', 'a2000000-0000-0000-0000-000000000005', 'publishing') $$, '22023', 'invalid_archive_state', 'an in-flight publication cannot be archived without cancellation');
+select lives_ok($$ select public.archive_narrative_draft('a1000000-0000-0000-0000-000000000005', 'a2000000-0000-0000-0000-000000000005', 'publish_failed') $$, 'failed publication remains recoverably archivable without a browser mutation RPC');
+select is((select status from public.drafts where id = 'a1000000-0000-0000-0000-000000000005'), 'archived', 'archive preserves the failed publication as immutable history');
+select is((select status from public.publish_jobs where id = 'a3000000-0000-0000-0000-000000000005'), 'failed', 'archiving does not rewrite the publication queue result');
+select is((select approval_action_id from public.publish_jobs where id = 'a3000000-0000-0000-0000-000000000005'), 'a4000000-0000-0000-0000-000000000005'::uuid, 'legacy workflow fixtures retain the exact public approval binding');
 reset role;
 update public.drafts set status = 'published' where id = 'a1000000-0000-0000-0000-000000000005';
 set local role authenticated;

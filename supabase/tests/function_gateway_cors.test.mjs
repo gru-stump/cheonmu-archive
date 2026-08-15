@@ -37,6 +37,11 @@ async function waitForGateway(child, logs) {
 function requestBody(name) {
   if (name === 'generate-draft') return { jobId: 'job-1', draftId: 'draft-1', idempotencyKey: 'gateway-auth-probe', mode: 'new', kind: 'daily_event' };
   if (name === 'review-draft') return { draftId: 'draft-1', expectedVersionId: 'version-1', expectedState: 'reviewing', idempotencyKey: 'gateway-auth-probe', action: 'approve_private' };
+  if (name === 'publish-draft') return {
+    publishJobId: 'a3000000-0000-0000-0000-000000000001',
+    expectedVersionId: 'a2000000-0000-0000-0000-000000000001',
+    idempotencyKey: 'gateway-auth-probe',
+  };
   if (name === 'manage-settings') return { kind: 'github', value: 'x' };
   return { action: 'access' };
 }
@@ -177,11 +182,11 @@ try {
   const keys = localKeys();
   const user = await createTestUser(keys);
   try {
-    for (const name of ['generate-draft', 'review-draft', 'run-schedules', 'manage-settings']) await verifyFunction(name, keys.anon, user.accessToken);
+    for (const name of ['generate-draft', 'review-draft', 'publish-draft', 'run-schedules', 'manage-settings']) await verifyFunction(name, keys.anon, user.accessToken);
   } finally {
     await deleteTestUser(user.id, keys.service);
   }
-  console.log('Actual local Supabase gateway CORS/auth probes passed for 4 functions.');
+  console.log('Actual local Supabase gateway CORS/auth probes passed for 5 functions.');
 } finally {
   stopServer(child);
   await rm(temp, { recursive: true, force: true });

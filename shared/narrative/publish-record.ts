@@ -1,4 +1,4 @@
-import { isCalendarDate, isPublicRecordNumber, normalizeArchiveRecordNumber } from './archive-record';
+import { isCalendarDate, isPublicRecordNumber, normalizeArchiveRecordNumber } from './archive-record.ts';
 
 const contentIdPattern = /^[a-z0-9-]+$/;
 export interface CanonChangeCandidate {
