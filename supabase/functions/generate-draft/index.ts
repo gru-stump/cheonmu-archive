@@ -36,6 +36,7 @@ export interface GenerationPolicyValues {
 export interface TrustedGenerationPolicy extends GenerationPolicyValues {
   providerKey: 'openai' | 'anthropic' | 'fake-local-provider';
   secretRef: string | null;
+  secretSource: 'env' | 'vault' | null;
 }
 
 export interface FrozenGenerationPolicy extends GenerationPolicyValues {
@@ -77,7 +78,7 @@ export interface GenerationDependencies {
     | { status: 'reserved'; budgetStatus: string; remainingMicros: number | null }
     | { status: 'blocked'; budgetStatus: string; remainingMicros: number | null }
   >;
-  resolveProvider(loadedPolicy: TrustedGenerationPolicy, frozenPolicy: FrozenGenerationPolicy): NarrativeProvider | Promise<NarrativeProvider>;
+  resolveProvider(ownerId: string, loadedPolicy: TrustedGenerationPolicy, frozenPolicy: FrozenGenerationPolicy): NarrativeProvider | Promise<NarrativeProvider>;
   parseProviderResponse(value: unknown): NarrativeProviderResponse;
   checkContinuity(result: GenerationResult, context: ContinuityContext): ContinuityCheck;
   finalizeSuccess(input: {
@@ -310,7 +311,7 @@ export async function runGeneration(deps: GenerationDependencies, command: Gener
 
   let raw: unknown;
   try {
-    const provider = await deps.resolveProvider(loadedPolicy, frozenPolicy);
+    const provider = await deps.resolveProvider(ownerId, loadedPolicy, frozenPolicy);
     raw = await provider.generate(request);
   }
   catch (error) { return abortAfterFreeze(deps, command, attemptToken, 'provider_generation_failed', error, new GenerationError(502, 'provider_generation_failed')); }
@@ -391,13 +392,35 @@ function trustedSettingFromRecord(value: Record<string, unknown>, ownerId: strin
   if (providerKey !== 'openai' && providerKey !== 'anthropic' && providerKey !== 'fake-local-provider') throw new Error('invalid_trusted_provider_setting');
   const configuration = value.configuration && typeof value.configuration === 'object' ? value.configuration as Record<string, unknown> : {};
   let secretRef: string | null = null;
+  let secretSource: TrustedGenerationPolicy['secretSource'] = null;
   if (providerKey === 'fake-local-provider') {
     if (configuration.mode !== 'fixture') throw new Error('invalid_trusted_provider_setting');
   } else {
-    if (typeof configuration.apiKeyEnv !== 'string' || !/^[A-Z][A-Z0-9_]*$/.test(configuration.apiKeyEnv)) throw new Error('invalid_trusted_provider_setting');
-    secretRef = configuration.apiKeyEnv;
+    if (typeof configuration.apiKeyEnv === 'string' && /^[A-Z][A-Z0-9_]*$/.test(configuration.apiKeyEnv)) {
+      secretRef = configuration.apiKeyEnv;
+      secretSource = 'env';
+    } else {
+      const expectedVaultName = `narrative_${ownerId}_${providerKey}`;
+      if (configuration.vaultSecretName !== expectedVaultName) throw new Error('invalid_trusted_provider_setting');
+      secretRef = expectedVaultName;
+      secretSource = 'vault';
+    }
   }
-  return { ...policyFromRecord(value), providerKey, secretRef };
+  return { ...policyFromRecord(value), providerKey, secretRef, secretSource };
+}
+
+export function createSupabaseProviderSecretReader(config: SupabaseRestConfig) {
+  const request = config.fetch ?? globalThis.fetch;
+  return async (ownerId: string, providerKey: 'openai' | 'anthropic'): Promise<string> => {
+    const response = await request(`${config.url}/rest/v1/rpc/read_narrative_secret`, {
+      method: 'POST',
+      headers: { apikey: config.serviceRoleKey, authorization: `Bearer ${config.serviceRoleKey}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ p_owner_id: ownerId, p_secret_kind: providerKey }),
+    });
+    const value = await response.json().catch(() => null);
+    if (!response.ok || typeof value !== 'string' || !value.trim()) throw new GenerationError(500, 'provider_secret_unavailable');
+    return value;
+  };
 }
 
 export function createSupabaseGenerationDependencies(
@@ -493,11 +516,21 @@ if (typeof Deno !== 'undefined' && (import.meta as ImportMeta & { main?: boolean
   const fakeLocalProvider: NarrativeProvider | undefined = Deno.env.get('NARRATIVE_FAKE_LOCAL_FIXTURE') === 'true' ? {
     generate: async (providerRequest) => ({ result: { ...defaultFakeResult, kind: providerRequest.kind }, usage: { inputTokens: 14, outputTokens: 9 }, rawId: `fake-${providerRequest.kind}`, responseModel: providerRequest.modelKey }),
   } : undefined;
-  const resolveProvider: GenerationDependencies['resolveProvider'] = (loadedPolicy) => {
+  const readVaultSecret = createSupabaseProviderSecretReader({ url, anonKey, serviceRoleKey });
+  const resolveProvider: GenerationDependencies['resolveProvider'] = async (ownerId, loadedPolicy) => {
+    const resolvedSecret = loadedPolicy.providerKey === 'fake-local-provider'
+      ? undefined
+      : loadedPolicy.secretSource === 'vault'
+        ? await readVaultSecret(ownerId, loadedPolicy.providerKey)
+        : loadedPolicy.secretRef ? Deno.env.get(loadedPolicy.secretRef) : undefined;
     const configuration = loadedPolicy.providerKey === 'fake-local-provider'
       ? { mode: 'fixture' }
-      : { apiKeyEnv: loadedPolicy.secretRef };
-    return createServerNarrativeProvider([{ provider_key: loadedPolicy.providerKey, enabled: true, model_key: loadedPolicy.modelKey, configuration }], (name) => Deno.env.get(name), { timeoutMs: 30_000, ...(fakeLocalProvider ? { fakeLocalProvider } : {}) });
+      : { apiKeyEnv: 'NARRATIVE_RESOLVED_PROVIDER_SECRET' };
+    return createServerNarrativeProvider(
+      [{ provider_key: loadedPolicy.providerKey, enabled: true, model_key: loadedPolicy.modelKey, configuration }],
+      (name) => name === 'NARRATIVE_RESOLVED_PROVIDER_SECRET' ? resolvedSecret : undefined,
+      { timeoutMs: 30_000, ...(fakeLocalProvider ? { fakeLocalProvider } : {}) },
+    );
   };
   const cors = corsPolicyFromEnvironment(Deno.env.get('NARRATIVE_ADMIN_ORIGINS'));
   Deno.serve((request) => {

@@ -107,8 +107,8 @@ insert into public.schedules (id, owner_id, schedule_key, cron_expression, enabl
   headApplied = true;
   assert.equal(
     await scalar('select max(version) from supabase_migrations.schema_migrations;'),
-    '202608140014',
-    'upgrade fixture must apply migrations 011 through the admin draft workflow at current head',
+    '202608140015',
+    'upgrade fixture must apply migrations 011 through the admin settings workflow at current head',
   );
   assert.equal(
     await scalar("select concat(to_regprocedure('public.submit_draft_for_review(uuid,uuid,text)') is not null, '|', has_function_privilege('authenticated', 'public.submit_draft_for_review(uuid,uuid,text)', 'EXECUTE'), '|', not has_function_privilege('anon', 'public.submit_draft_for_review(uuid,uuid,text)', 'EXECUTE'));"),
@@ -119,6 +119,11 @@ insert into public.schedules (id, owner_id, schedule_key, cron_expression, enabl
     await scalar("select concat(to_regprocedure('public.save_manual_draft_version(uuid,uuid,text,jsonb)') is not null, '|', has_function_privilege('authenticated', 'public.save_manual_draft_version(uuid,uuid,text,jsonb)', 'EXECUTE'), '|', not has_function_privilege('anon', 'public.save_manual_draft_version(uuid,uuid,text,jsonb)', 'EXECUTE'));"),
     't|t|t',
     'upgrade must install the narrow immutable manual-version boundary without anonymous access',
+  );
+  assert.equal(
+    await scalar("select concat(to_regprocedure('public.save_narrative_settings(boolean,text,jsonb,bigint,bigint,integer,integer,integer,numeric,integer)') is not null, '|', has_function_privilege('authenticated', 'public.save_narrative_settings(boolean,text,jsonb,bigint,bigint,integer,integer,integer,numeric,integer)', 'EXECUTE'), '|', not has_function_privilege('anon', 'public.save_narrative_settings(boolean,text,jsonb,bigint,bigint,integer,integer,integer,numeric,integer)', 'EXECUTE'), '|', has_function_privilege('service_role', 'public.store_narrative_secret(uuid,text,text)', 'EXECUTE'), '|', not has_function_privilege('authenticated', 'public.store_narrative_secret(uuid,text,text)', 'EXECUTE'));"),
+    't|t|t|t|t',
+    'upgrade must install owner settings commands while keeping Vault writes service-only',
   );
 
   const rows = JSON.parse(await scalar(`
@@ -213,4 +218,4 @@ where owner_id = '${ownerId}' and schedule_key = 'legacy-unsupported';
 }
 
 if (primaryError) throw primaryError;
-console.log('PASS: migration 010 schedules upgrade safely through 011/current head and only supported enabled automatic rows queue.');
+console.log('PASS: migration 010 schedules upgrade safely through 011/current head, settings privileges stay narrow, and only supported enabled automatic rows queue.');

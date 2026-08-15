@@ -10,6 +10,7 @@ import {
   buildFrozenContinuityContext,
   createGenerateDraftHandler,
   createSupabaseGenerationDependencies,
+  createSupabaseProviderSecretReader,
   estimateActualCostMicros,
   estimateWorstCaseCostMicros,
   runGeneration,
@@ -30,7 +31,7 @@ const canon: NarrativeMemory = {
 const continuity: NarrativeMemory = { versionId: 'continuity-v2', memoryType: 'continuity', content: '비 오는 날의 약속', tokenCount: 10, status: 'approved', continuityFacts: { continuityId: 'rain-promise' } };
 const feedback: NarrativeMemory = { versionId: 'feedback-v3', memoryType: 'feedback', content: '현대식 농담 금지', tokenCount: 8, status: 'active', blocking: true, continuityFacts: { rejectedMotifs: ['스마트폰'], voiceAndTitleRules: true } };
 const selection: ContextSelection = { versionIds: ['canon-v1', 'feedback-v3', 'continuity-v2'], fixedCanon: [canon], continuity: [continuity], recent: [], feedback: [feedback], claims: canon.claims ?? [], tokenCount: 38 };
-const policy: TrustedGenerationPolicy = { providerSettingId: 'setting-1', modelKey: 'fake-model', maxInputTokens: 500, maxOutputTokens: 200, maxRevisionOutputTokens: 80, inputCostMicrosPerMillion: 1_000_000, outputCostMicrosPerMillion: 2_000_000, fixedCostMicros: 5, providerKey: 'fake-local-provider', secretRef: null };
+const policy: TrustedGenerationPolicy = { providerSettingId: 'setting-1', modelKey: 'fake-model', maxInputTokens: 500, maxOutputTokens: 200, maxRevisionOutputTokens: 80, inputCostMicrosPerMillion: 1_000_000, outputCostMicrosPerMillion: 2_000_000, fixedCostMicros: 5, providerKey: 'fake-local-provider', secretRef: null, secretSource: null };
 const baseCommand = { authToken: 'valid-token', jobId: 'job-1', draftId: 'draft-1', idempotencyKey: 'request-1', mode: 'new' as const, kind: 'short_dialogue' as const };
 const attemptToken = 'd3000000-0000-4000-8000-000000000001';
 
@@ -191,9 +192,9 @@ describe('runGeneration', () => {
 
   it('resolves the provider only after reserve using the loaded owner setting and exact frozen policy', async () => {
     const seen: unknown[] = [];
-    const h = harness({ resolveProvider: async (loaded, frozen) => { seen.push({ loaded, frozen }); return h.provider; } });
+    const h = harness({ resolveProvider: async (ownerId, loaded, frozen) => { seen.push({ ownerId, loaded, frozen }); return h.provider; } });
     await runGeneration(h.deps, baseCommand);
-    expect(seen).toMatchObject([{ loaded: { providerSettingId: 'setting-1', providerKey: 'fake-local-provider', modelKey: 'fake-model' }, frozen: { providerSettingId: 'setting-1', modelKey: 'fake-model', attemptToken } }]);
+    expect(seen).toMatchObject([{ ownerId: 'owner-1', loaded: { providerSettingId: 'setting-1', providerKey: 'fake-local-provider', modelKey: 'fake-model' }, frozen: { providerSettingId: 'setting-1', modelKey: 'fake-model', attemptToken } }]);
     expect(h.events.indexOf('reserve-start')).toBeLessThan(h.events.indexOf('provider'));
   });
 
@@ -409,7 +410,23 @@ describe('Supabase generation adapter', () => {
       return Response.json([]);
     };
     const deps = createSupabaseGenerationDependencies({ url: 'http://supabase', anonKey: 'anon', serviceRoleKey: 'service-secret', fetch }, 'token', async () => new FakeNarrativeProvider(result));
-    await expect(deps.loadPolicy('owner-1', baseCommand)).resolves.toMatchObject({ providerSettingId: 'setting-1', providerKey: 'openai', modelKey: 'fake-model', secretRef: 'OWNER_ONE_KEY' });
+    await expect(deps.loadPolicy('owner-1', baseCommand)).resolves.toMatchObject({ providerSettingId: 'setting-1', providerKey: 'openai', modelKey: 'fake-model', secretRef: 'OWNER_ONE_KEY', secretSource: 'env' });
+  });
+
+  it('accepts only the owner/provider-bound Vault reference and reads it with the service credential', async () => {
+    const seen: Array<{ authorization: string | null; body: unknown }> = [];
+    const fetch: typeof globalThis.fetch = async (input, init) => {
+      const path = new URL(String(input)).pathname;
+      if (path.endsWith('/provider_settings')) return Response.json([{ id: 'setting-1', owner_id: 'owner-1', provider_key: 'openai', enabled: true, configuration: { vaultSecretName: 'narrative_owner-1_openai' }, model_key: 'server-model', max_input_tokens: 500, max_output_tokens: 200, max_revision_output_tokens: 80, input_cost_micros_per_million: 1, output_cost_micros_per_million: 2, fixed_cost_micros: 0 }]);
+      seen.push({ authorization: new Headers(init?.headers).get('authorization'), body: init?.body ? JSON.parse(String(init.body)) : null });
+      return Response.json('resolved-material');
+    };
+    const config = { url: 'http://supabase', anonKey: 'anon', serviceRoleKey: 'service-credential', fetch };
+    const deps = createSupabaseGenerationDependencies(config, 'token', async () => new FakeNarrativeProvider(result));
+    const loaded = await deps.loadPolicy('owner-1', baseCommand);
+    expect(loaded).toMatchObject({ providerKey: 'openai', secretSource: 'vault', secretRef: 'narrative_owner-1_openai' });
+    await expect(createSupabaseProviderSecretReader(config)('owner-1', 'openai')).resolves.toBe('resolved-material');
+    expect(seen).toEqual([{ authorization: 'Bearer service-credential', body: { p_owner_id: 'owner-1', p_secret_kind: 'openai' } }]);
   });
 
   it.each([

@@ -161,4 +161,40 @@ describe('same-origin narrative server boundary', () => {
     expect(response.status).toBe(409);
     await expect(response.json()).resolves.toEqual({ error: 'stale_review' });
   });
+
+  it('reads settings through a secret-free owner RPC response', async () => {
+    const fetch: typeof globalThis.fetch = vi.fn(async (input) => {
+      const path = new URL(String(input)).pathname;
+      if (path === '/auth/v1/user') return Response.json({ id: 'owner-1' });
+      if (path === '/rest/v1/owner_profiles') return Response.json([{ owner_id: 'owner-1' }]);
+      return Response.json({ automationEnabled: false, providers: [], budget: {}, secrets: { openai: false, anthropic: false, github: false } });
+    });
+    const handler = createNarrativeHandler({ supabaseUrl: 'https://db.example.test', supabaseAnonKey: 'anon', fetch });
+    const response = await handler(new Request('https://admin.example.test/api/narrative/settings', { headers: { authorization: 'Bearer owner-token' } }));
+    const value = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(JSON.stringify(value)).not.toMatch(/api.?key|token|secret.?value/i);
+  });
+
+  it('forwards secret writes only to manage-settings and returns only configured state', async () => {
+    const calls: Array<{ path: string; authorization: string | null; body: unknown }> = [];
+    const fetch: typeof globalThis.fetch = vi.fn(async (input, init) => {
+      const path = new URL(String(input)).pathname;
+      calls.push({ path, authorization: new Headers(init?.headers).get('authorization'), body: init?.body ? JSON.parse(String(init.body)) : null });
+      if (path === '/auth/v1/user') return Response.json({ id: 'owner-1' });
+      if (path === '/rest/v1/owner_profiles') return Response.json([{ owner_id: 'owner-1' }]);
+      return Response.json({ configured: true, ignoredUpstreamField: 'must-not-pass-through' });
+    });
+    const handler = createNarrativeHandler({ supabaseUrl: 'https://db.example.test', supabaseAnonKey: 'anon', fetch });
+    const response = await handler(new Request('https://admin.example.test/api/narrative/settings/secret', {
+      method: 'POST', headers: { authorization: 'Bearer owner-token', 'content-type': 'application/json' },
+      body: JSON.stringify({ kind: 'openai', value: 'write-only-value' }),
+    }));
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ configured: true });
+    expect(calls.map(({ path }) => path)).toEqual(['/auth/v1/user', '/rest/v1/owner_profiles', '/functions/v1/manage-settings']);
+    expect(calls[2]).toMatchObject({ authorization: 'Bearer owner-token', body: { kind: 'openai', value: 'write-only-value' } });
+  });
 });

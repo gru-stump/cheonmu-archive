@@ -81,6 +81,17 @@ describe('runSchedules', () => {
     expect(h.inserted).toEqual([]);
   });
 
+  it('queues a special date only at its exact Seoul calendar minute', async () => {
+    const special = { ownerId: 'owner-1', scheduleKey: 'anniversary', scheduleType: 'special' as const, cronExpression: null, enabled: true, payload: { kind: 'short_dialogue' as const }, specialDate: '2026-09-07', seoulTime: '21:30', minimumIntervalMinutes: 1440 };
+    const due = harness({ now: () => new Date('2026-09-07T12:30:00Z'), listSchedules: async () => [special] });
+    await runSchedules(due.deps);
+    expect(due.inserted).toMatchObject([{ scheduleKey: 'owner-1:anniversary:2026-09-07', scheduledFor: '2026-09-07T12:30:00.000Z' }]);
+
+    const early = harness({ now: () => new Date('2026-09-07T12:29:00Z'), listSchedules: async () => [special] });
+    await runSchedules(early.deps);
+    expect(early.inserted).toEqual([]);
+  });
+
   it('does not consume a quarantined disabled legacy expression', async () => {
     const h = harness({ listSchedules: async () => [
       { ownerId: 'owner-1', scheduleKey: 'legacy-disabled', scheduleType: 'automatic', cronExpression: '*/15 9 * * *', enabled: false, payload: { kind: 'daily_event' } },

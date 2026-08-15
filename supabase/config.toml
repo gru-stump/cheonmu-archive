@@ -19,3 +19,8 @@ verify_jwt = false
 # Cron authenticates with the dispatch secret; browser access is authenticated
 # explicitly by the handler before it evaluates or queues anything.
 verify_jwt = false
+
+[functions.manage-settings]
+# Secret writes authenticate the owner inside the function before the
+# service-only Vault RPC is invoked.
+verify_jwt = false

@@ -56,4 +56,33 @@ describe('NarrativeApi', () => {
       .rejects.toEqual(new NarrativeApiError(400, 'invalid_archive_state'));
     expect(fetch).not.toHaveBeenCalled();
   });
+
+  it('keeps every Task 3 read and mutation on the authenticated same-origin boundary', async () => {
+    const fetch = vi.fn()
+      .mockResolvedValueOnce(Response.json({ fixedCanon: [], continuity: [], recent: [], feedback: [], unresolved: [] }))
+      .mockResolvedValueOnce(Response.json({ schedules: [] }))
+      .mockResolvedValueOnce(Response.json({ providers: [], budget: {}, secrets: {} }))
+      .mockResolvedValueOnce(Response.json({ enabled: false }))
+      .mockResolvedValueOnce(Response.json({ memoryId: 'memory-2' }))
+      .mockResolvedValueOnce(Response.json({ scheduleId: 'schedule-1' }))
+      .mockResolvedValueOnce(Response.json({ saved: true }))
+      .mockResolvedValueOnce(Response.json({ configured: true }));
+    const api = createNarrativeApi({ tokenProvider: async () => 'owner-token', fetch });
+
+    await api.getMemory();
+    await api.getSchedules();
+    await api.getSettings();
+    await api.setMemoryEnabled({ memoryId: 'memory-1', enabled: false });
+    await api.correctMemory({ memoryId: 'memory-1', content: '교정본', note: '사유' });
+    await api.saveSchedule({ scheduleId: 'schedule-1', scheduleKey: 'daily', scheduleType: 'automatic', enabled: true, seoulTime: '09:00', weekday: null, specialDate: null, minimumIntervalMinutes: 60, kind: 'daily_event' });
+    await api.saveSettings({ automationEnabled: false, activeProviderKey: null, pricingValidDays: 30, providers: [], monthlyLimitMicros: 10_000_000, dailyLimitMicros: 1_000_000, manualCallLimit: 3, warningThresholdPercent: 80, riskThresholdPercent: 95, krwPerUsd: 1380 });
+    await api.saveSecret({ kind: 'github', value: 'one-time-value' });
+
+    expect(fetch.mock.calls.map(([path]) => path)).toEqual([
+      '/api/narrative/memory', '/api/narrative/schedules', '/api/narrative/settings',
+      '/api/narrative/memory/memory-1/enabled', '/api/narrative/memory/memory-1/corrections',
+      '/api/narrative/schedules/schedule-1', '/api/narrative/settings', '/api/narrative/settings/secret',
+    ]);
+    expect(fetch.mock.calls.every(([, init]) => new Headers(init?.headers).get('authorization') === 'Bearer owner-token')).toBe(true);
+  });
 });

@@ -5,6 +5,9 @@ import type { NarrativeApi } from '../api/narrativeApi';
 import { TodayPage } from '../features/today/TodayPage';
 import { DraftListPage } from '../features/drafts/DraftListPage';
 import { DraftReviewPage } from '../features/drafts/DraftReviewPage';
+import { MemoryPage } from '../features/memory/MemoryPage';
+import { SchedulesPage } from '../features/schedules/SchedulesPage';
+import { SettingsPage } from '../features/settings/SettingsPage';
 import './admin.css';
 
 const routes = [
@@ -14,10 +17,6 @@ const routes = [
   { path: '/schedules', label: '일정', title: '일정' },
   { path: '/settings', label: '설정', title: '설정' },
 ] as const;
-
-function PlaceholderPage({ title }: { title: string }) {
-  return <section aria-labelledby="page-title"><h1 id="page-title">{title}</h1><p>이 기능은 다음 작업에서 연결됩니다.</p></section>;
-}
 
 function DraftRoute({ api }: { api: NarrativeApi }) {
   const { draftId } = useParams();
@@ -32,7 +31,9 @@ function PrivateAdminRoutes({ api }: { api: NarrativeApi }) {
         <Route path="/" element={<TodayPage api={api} />} />
         <Route path="/drafts" element={<DraftListPage api={api} />} />
         <Route path="/drafts/:draftId" element={<DraftRoute api={api} />} />
-        {routes.filter((route) => !['/', '/drafts'].includes(route.path)).map((route) => <Route key={route.path} path={route.path} element={<PlaceholderPage title={route.title} />} />)}
+        <Route path="/memory" element={<MemoryPage api={api} />} />
+        <Route path="/schedules" element={<SchedulesPage api={api} />} />
+        <Route path="/settings" element={<SettingsPage api={api} />} />
       </Routes></main>
     </div>
   );

@@ -1,0 +1,58 @@
+import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { describe, expect, it, vi } from 'vitest';
+import type { NarrativeApi } from '../../api/narrativeApi';
+import { SettingsPage } from './SettingsPage';
+
+function api() {
+  return {
+    getSettings: vi.fn().mockResolvedValue({
+      automationEnabled: true,
+      pricingValidDays: 30,
+      providers: [
+        { providerKey: 'openai', enabled: true, modelKey: 'gpt-test', maxInputTokens: 4096, maxOutputTokens: 1024, maxRevisionOutputTokens: 256, inputPriceMicrosPerMillion: 1_250_000, outputPriceMicrosPerMillion: 5_000_000, pricingVerifiedAt: '2026-08-10' },
+        { providerKey: 'anthropic', enabled: false, modelKey: 'claude-test', maxInputTokens: 4096, maxOutputTokens: 1024, maxRevisionOutputTokens: 256, inputPriceMicrosPerMillion: 2_000_000, outputPriceMicrosPerMillion: 6_000_000, pricingVerifiedAt: '2026-08-10' },
+      ],
+      budget: { monthlyLimitMicros: 20_000_000, dailyLimitMicros: 2_000_000, spentMicros: 1_000_000, reservedMicros: 250_000, manualCallLimit: 3, warningThresholdPercent: 80, riskThresholdPercent: 95, krwPerUsd: 1380.5 },
+      secrets: { openai: false, anthropic: true, github: false },
+    }),
+    saveSettings: vi.fn().mockResolvedValue({ saved: true }),
+    saveSecret: vi.fn().mockResolvedValue({ configured: true }),
+  } as unknown as NarrativeApi;
+}
+
+describe('SettingsPage', () => {
+  it('shows one active provider, per-million USD prices, verified date, token caps, and all budget controls', async () => {
+    render(<SettingsPage api={api()} />);
+
+    expect(await screen.findByRole('heading', { name: '설정' })).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: 'OpenAI 활성 제공자' })).toBeChecked();
+    expect(screen.getByLabelText('OpenAI 입력 단가 USD / 1M')).toHaveValue(1.25);
+    expect(screen.getByLabelText('OpenAI 단가 확인일')).toHaveValue('2026-08-10');
+    expect(screen.getByLabelText('OpenAI 최대 출력 토큰')).toHaveValue(1024);
+    expect(screen.getByLabelText('월간 예산 USD')).toHaveValue(20);
+    expect(screen.getByLabelText('일일 예산 USD')).toHaveValue(2);
+    expect(screen.getByLabelText('일일 수동 생성 횟수')).toHaveValue(3);
+    expect(screen.getByLabelText('주의 기준 %')).toHaveValue(80);
+    expect(screen.getByLabelText('위험 기준 %')).toHaveValue(95);
+    expect(screen.getByLabelText('참고 환율 KRW / USD')).toHaveValue(1380.5);
+  });
+
+  it('never prefills secrets, clears them after save, and renders only connection state', async () => {
+    const client = api();
+    const user = userEvent.setup();
+    render(<SettingsPage api={client} />);
+
+    const secret = await screen.findByLabelText('OpenAI 비밀 키');
+    expect(secret).toHaveValue('');
+    expect(screen.getByText('OpenAI: 미연결')).toBeInTheDocument();
+    expect(screen.getByText('Anthropic: 연결됨')).toBeInTheDocument();
+    await user.type(secret, 'entered-only-in-this-test');
+    await user.click(screen.getByRole('button', { name: 'OpenAI 비밀 저장' }));
+
+    await waitFor(() => expect(client.saveSecret).toHaveBeenCalledWith({ kind: 'openai', value: 'entered-only-in-this-test' }));
+    expect(secret).toHaveValue('');
+    expect(screen.getByText('OpenAI: 연결됨')).toBeInTheDocument();
+    expect(screen.queryByDisplayValue('entered-only-in-this-test')).not.toBeInTheDocument();
+  });
+});

@@ -3,6 +3,8 @@ type ServerConfig = { supabaseUrl: string; supabaseAnonKey: string; fetch?: type
 const conflicts = new Set([
   'stale_review', 'stale_review_submission', 'stale_manual_version', 'stale_revision', 'stale_archive', 'stale_publish_retry',
   'blocked_version_reject_only', 'revision_cost_changed', 'duplicate_review', 'version_not_approvable', 'duplicate_generation',
+  'fixed_canon_read_only', 'stale_memory', 'stale_provider_pricing', 'automation_disabled',
+  'budget_limit_below_committed', 'duplicate_schedule_key', 'active_provider_setting_required',
 ]);
 
 function bearer(request: Request): string | null {
@@ -54,6 +56,9 @@ export function createNarrativeHandler({ supabaseUrl, supabaseAnonKey, fetch = g
       const path = url.pathname.replace(/^\/api\/narrative\/?/, '').split('/').filter(Boolean).map(decodeURIComponent);
 
       if (request.method === 'GET' && path.join('/') === 'dashboard') return json(await rpc('get_narrative_dashboard', {}));
+      if (request.method === 'GET' && path.join('/') === 'memory') return json(await rpc('get_narrative_memory', {}));
+      if (request.method === 'GET' && path.join('/') === 'schedules') return json(await rpc('get_narrative_schedules', {}));
+      if (request.method === 'GET' && path.join('/') === 'settings') return json(await rpc('get_narrative_settings', {}));
       if (request.method === 'GET' && path.length === 1 && path[0] === 'drafts') {
         const status = url.searchParams.get('status');
         const filter = status === 'active' ? '&status=not.in.(archived)' : status ? `&status=eq.${encodeURIComponent(status)}` : '';
@@ -87,6 +92,55 @@ export function createNarrativeHandler({ supabaseUrl, supabaseAnonKey, fetch = g
         command.jobId = queued.job_id; command.idempotencyKey = queued.idempotency_key; command.draftId = queued.draft_id; command.kind = queued.kind;
         delete command.expectedVersionId; delete command.expectedState; delete command.maximumCostConfirmed; delete command.confirmedMaximumCostMicros;
         return json(await upstream('/functions/v1/generate-draft', { method: 'POST', body: JSON.stringify(command) }));
+      }
+      if (request.method === 'POST' && path.length === 3 && path[0] === 'memory') {
+        const input = await body();
+        if (!input || input.memoryId !== path[1]) return json({ error: 'invalid_command' }, 400);
+        if (path[2] === 'enabled' && typeof input.enabled === 'boolean') {
+          return json(await rpc('set_narrative_memory_enabled', { p_memory_id: input.memoryId, p_enabled: input.enabled }));
+        }
+        if (path[2] === 'corrections' && typeof input.content === 'string' && typeof input.note === 'string') {
+          return json(await rpc('correct_narrative_memory', { p_memory_id: input.memoryId, p_content: input.content, p_note: input.note }));
+        }
+        return json({ error: 'invalid_command' }, 400);
+      }
+      if (request.method === 'POST' && path[0] === 'schedules' && path.length <= 2) {
+        const input = await body();
+        if (!input || (path[1] && input.scheduleId !== path[1])) return json({ error: 'invalid_command' }, 400);
+        return json(await rpc('save_narrative_schedule', {
+          p_schedule_id: input.scheduleId ?? null,
+          p_schedule_key: input.scheduleKey,
+          p_schedule_type: input.scheduleType,
+          p_enabled: input.enabled,
+          p_seoul_time: input.seoulTime,
+          p_weekday: input.weekday ?? null,
+          p_special_date: input.specialDate ?? null,
+          p_minimum_interval_minutes: input.minimumIntervalMinutes,
+          p_kind: input.kind,
+        }));
+      }
+      if (request.method === 'POST' && path.join('/') === 'settings') {
+        const input = await body(); if (!input) return json({ error: 'invalid_command' }, 400);
+        return json(await rpc('save_narrative_settings', {
+          p_automation_enabled: input.automationEnabled,
+          p_active_provider_key: input.activeProviderKey ?? null,
+          p_provider_updates: input.providers,
+          p_monthly_limit_micros: input.monthlyLimitMicros,
+          p_daily_limit_micros: input.dailyLimitMicros,
+          p_manual_call_limit: input.manualCallLimit,
+          p_warning_threshold_percent: input.warningThresholdPercent,
+          p_risk_threshold_percent: input.riskThresholdPercent,
+          p_krw_per_usd: input.krwPerUsd,
+          p_pricing_valid_days: input.pricingValidDays,
+        }));
+      }
+      if (request.method === 'POST' && path.join('/') === 'settings/secret') {
+        const input = await body();
+        if (!input || !['openai', 'anthropic', 'github'].includes(String(input.kind)) || typeof input.value !== 'string' || !input.value.trim()) {
+          return json({ error: 'invalid_command' }, 400);
+        }
+        const result = await upstream('/functions/v1/manage-settings', { method: 'POST', body: JSON.stringify({ kind: input.kind, value: input.value }) });
+        return json({ configured: result.configured === true });
       }
       if (request.method === 'POST' && path.length === 3 && path[0] === 'drafts') {
         const input = await body(); if (!input || input.draftId !== path[1]) return json({ error: 'invalid_command' }, 400);

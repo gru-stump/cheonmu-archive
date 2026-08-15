@@ -60,6 +60,80 @@ export interface DashboardData {
   failures: Array<{ id: string; occurredAt: string; code: string }>;
 }
 
+export type MemoryType = 'canon' | 'continuity' | 'summary' | 'feedback' | 'unresolved';
+export interface MemoryHistoryEntry { id: string; content: string; note: string | null; createdAt: string }
+export interface MemoryItem {
+  id: string;
+  memoryType: MemoryType;
+  content: string;
+  enabled: boolean;
+  createdAt: string;
+  correctionHistory: MemoryHistoryEntry[];
+}
+export interface MemoryData {
+  fixedCanon: MemoryItem[];
+  continuity: MemoryItem[];
+  recent: MemoryItem[];
+  feedback: MemoryItem[];
+  unresolved: MemoryItem[];
+}
+
+export type ScheduleType = 'automatic' | 'manual' | 'special';
+export interface NarrativeSchedule {
+  id: string;
+  scheduleKey: string;
+  scheduleType: ScheduleType;
+  enabled: boolean;
+  seoulTime: string;
+  weekday: number | null;
+  specialDate: string | null;
+  minimumIntervalMinutes: number;
+  kind: 'short_dialogue' | 'daily_event';
+  lastRunAt: string | null;
+  nextRunAt: string | null;
+}
+export type SaveScheduleInput = Omit<NarrativeSchedule, 'id' | 'lastRunAt' | 'nextRunAt'> & { scheduleId?: string };
+
+export interface ProviderSetting {
+  providerKey: 'openai' | 'anthropic' | 'fake-local-provider';
+  enabled: boolean;
+  modelKey: string;
+  maxInputTokens: number;
+  maxOutputTokens: number;
+  maxRevisionOutputTokens: number;
+  inputPriceMicrosPerMillion: number;
+  outputPriceMicrosPerMillion: number;
+  pricingVerifiedAt: string;
+}
+export interface NarrativeSettings {
+  automationEnabled: boolean;
+  pricingValidDays: number;
+  providers: ProviderSetting[];
+  budget: {
+    monthlyLimitMicros: number;
+    dailyLimitMicros: number;
+    spentMicros: number;
+    reservedMicros: number;
+    manualCallLimit: number;
+    warningThresholdPercent: number;
+    riskThresholdPercent: number;
+    krwPerUsd: number;
+  };
+  secrets: Record<'openai' | 'anthropic' | 'github', boolean>;
+}
+export interface SaveSettingsInput {
+  automationEnabled: boolean;
+  activeProviderKey: ProviderSetting['providerKey'] | null;
+  pricingValidDays: number;
+  providers: Array<Omit<ProviderSetting, 'enabled'>>;
+  monthlyLimitMicros: number;
+  dailyLimitMicros: number;
+  manualCallLimit: number;
+  warningThresholdPercent: number;
+  riskThresholdPercent: number;
+  krwPerUsd: number;
+}
+
 export interface GenerateInput {
   draftId: string;
   expectedVersionId: string;
@@ -89,6 +163,14 @@ export interface NarrativeApi {
   review(input: ReviewInput): Promise<{ draftId: string; versionId: string; status: 'rejected' | 'approved_private' | 'approved' }>;
   retryPublish(input: { draftId: string; expectedVersionId: string; expectedState: 'publish_failed' }): Promise<{ status: 'publishing' }>;
   archive(input: { draftId: string; expectedVersionId: string; expectedState: ArchiveSourceStatus }): Promise<{ status: 'archived' }>;
+  getMemory(): Promise<MemoryData>;
+  setMemoryEnabled(input: { memoryId: string; enabled: boolean }): Promise<{ enabled: boolean }>;
+  correctMemory(input: { memoryId: string; content: string; note: string }): Promise<{ memoryId: string }>;
+  getSchedules(): Promise<{ schedules: NarrativeSchedule[] }>;
+  saveSchedule(input: SaveScheduleInput): Promise<{ scheduleId: string }>;
+  getSettings(): Promise<NarrativeSettings>;
+  saveSettings(input: SaveSettingsInput): Promise<{ saved: true }>;
+  saveSecret(input: { kind: 'openai' | 'anthropic' | 'github'; value: string }): Promise<{ configured: boolean }>;
 }
 
 export class NarrativeApiError extends Error {
@@ -130,5 +212,13 @@ export function createNarrativeApi({ tokenProvider, fetch = globalThis.fetch }: 
     archive: (input) => isArchiveSourceStatus(input.expectedState)
       ? post(`drafts/${encodeURIComponent(input.draftId)}/archive`, input)
       : Promise.reject(new NarrativeApiError(400, 'invalid_archive_state')),
+    getMemory: () => request<MemoryData>('memory'),
+    setMemoryEnabled: (input) => post(`memory/${encodeURIComponent(input.memoryId)}/enabled`, input),
+    correctMemory: (input) => post(`memory/${encodeURIComponent(input.memoryId)}/corrections`, input),
+    getSchedules: () => request<{ schedules: NarrativeSchedule[] }>('schedules'),
+    saveSchedule: (input) => post(`schedules${input.scheduleId ? `/${encodeURIComponent(input.scheduleId)}` : ''}`, input),
+    getSettings: () => request<NarrativeSettings>('settings'),
+    saveSettings: (input) => post('settings', input),
+    saveSecret: (input) => post('settings/secret', input),
   };
 }
