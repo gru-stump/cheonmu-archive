@@ -2,6 +2,7 @@ import { type FormEvent, type ReactNode, useEffect, useState } from 'react';
 
 export interface AuthSession {
   user: { id: string; email?: string | null };
+  access_token?: string;
 }
 
 export interface AuthClient {

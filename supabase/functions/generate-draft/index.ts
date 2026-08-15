@@ -19,6 +19,7 @@ export interface GenerationCommand {
   seed?: string;
   tags?: string[];
   revision?: { selectedText: string; instruction: string };
+  requestedMaxOutputTokens?: number;
 }
 
 export interface GenerationPolicyValues {
@@ -106,6 +107,7 @@ const bodySchema = z.object({
   mode: z.enum(generationModes), kind: z.enum(draftKinds),
   seed: z.string().max(4_000).optional(), tags: z.array(z.string().max(100)).max(20).optional(),
   revision: z.object({ selectedText: z.string().trim().min(1).max(4_000), instruction: z.string().trim().min(1).max(1_000) }).strict().optional(),
+  requestedMaxOutputTokens: z.number().int().positive().optional(),
 }).strict();
 
 const narrativeClaimSchema = z.object({
@@ -210,6 +212,7 @@ function validateCommand(command: GenerationCommand, draftKind: DraftKind): void
   if ((command.mode === 'major_event_scene_plan' || command.mode === 'major_event_draft') && command.kind !== 'major_event_proposal') throw new GenerationError(400, 'mode_kind_mismatch');
   if (command.mode === 'revise_selection' && !command.revision) throw new GenerationError(400, 'revision_payload_required');
   if (command.mode !== 'revise_selection' && command.revision) throw new GenerationError(400, 'revision_payload_forbidden');
+  if (command.mode !== 'revise_selection' && command.requestedMaxOutputTokens !== undefined) throw new GenerationError(400, 'revision_token_limit_forbidden');
 }
 
 function prerequisiteApproved(mode: GenerationMode, phase: string | null): boolean {
@@ -218,10 +221,14 @@ function prerequisiteApproved(mode: GenerationMode, phase: string | null): boole
   return true;
 }
 
-function sameFrozenPolicy(loaded: TrustedGenerationPolicy, frozen: FrozenGenerationPolicy): boolean {
+function sameFrozenPolicy(loaded: TrustedGenerationPolicy, frozen: FrozenGenerationPolicy, command: GenerationCommand): boolean {
+  const revisionLimitMatches = command.mode === 'revise_selection' && command.requestedMaxOutputTokens !== undefined
+    ? command.requestedMaxOutputTokens <= loaded.maxRevisionOutputTokens
+      && frozen.maxRevisionOutputTokens === Math.min(loaded.maxOutputTokens, command.requestedMaxOutputTokens)
+    : loaded.maxRevisionOutputTokens === frozen.maxRevisionOutputTokens;
   return loaded.providerSettingId === frozen.providerSettingId && loaded.modelKey === frozen.modelKey
     && loaded.maxInputTokens === frozen.maxInputTokens && loaded.maxOutputTokens === frozen.maxOutputTokens
-    && loaded.maxRevisionOutputTokens === frozen.maxRevisionOutputTokens
+    && revisionLimitMatches
     && loaded.inputCostMicrosPerMillion === frozen.inputCostMicrosPerMillion
     && loaded.outputCostMicrosPerMillion === frozen.outputCostMicrosPerMillion
     && loaded.fixedCostMicros === frozen.fixedCostMicros;
@@ -282,7 +289,7 @@ export async function runGeneration(deps: GenerationDependencies, command: Gener
   } catch (error) { return abortAfterFreeze(deps, command, attemptToken, 'freeze_failed', error, mapPersistence(error)); }
   let continuityContext: ContinuityContext;
   try {
-    if (frozenPolicy.attemptToken !== attemptToken || !sameFrozenPolicy(loadedPolicy, frozenPolicy)
+    if (frozenPolicy.attemptToken !== attemptToken || !sameFrozenPolicy(loadedPolicy, frozenPolicy, command)
       || estimateWorstCaseCostMicros(frozenPolicy, command.mode) !== frozenPolicy.worstCaseCostMicros) throw new GenerationError(500, 'invalid_provider_setting');
     const frozenSelection = selectionFromSnapshot(frozenPolicy.contextVersionIds, frozenPolicy.contextSnapshot);
     continuityContext = buildFrozenContinuityContext(frozenSelection);

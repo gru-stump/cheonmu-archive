@@ -1,6 +1,10 @@
-import { BrowserRouter, NavLink, Route, Routes } from 'react-router-dom';
+import { BrowserRouter, NavLink, Route, Routes, useParams } from 'react-router-dom';
 import { AuthGate, type AuthClient } from '../auth/AuthGate';
-import { authClient } from '../lib/supabase';
+import { authClient, narrativeApi } from '../lib/supabase';
+import type { NarrativeApi } from '../api/narrativeApi';
+import { TodayPage } from '../features/today/TodayPage';
+import { DraftListPage } from '../features/drafts/DraftListPage';
+import { DraftReviewPage } from '../features/drafts/DraftReviewPage';
 import './admin.css';
 
 const routes = [
@@ -15,15 +19,25 @@ function PlaceholderPage({ title }: { title: string }) {
   return <section aria-labelledby="page-title"><h1 id="page-title">{title}</h1><p>이 기능은 다음 작업에서 연결됩니다.</p></section>;
 }
 
-function PrivateAdminRoutes() {
+function DraftRoute({ api }: { api: NarrativeApi }) {
+  const { draftId } = useParams();
+  return draftId ? <DraftReviewPage api={api} draftId={draftId} /> : <p role="alert">초안 ID가 없습니다.</p>;
+}
+
+function PrivateAdminRoutes({ api }: { api: NarrativeApi }) {
   return (
     <div className="admin-shell">
       <header className="admin-header"><p>천무 서사 관리</p><nav aria-label="관리자 메뉴">{routes.map((route) => <NavLink key={route.path} to={route.path} end={route.path === '/'}>{route.label}</NavLink>)}</nav></header>
-      <main><Routes>{routes.map((route) => <Route key={route.path} path={route.path} element={<PlaceholderPage title={route.title} />} />)}</Routes></main>
+      <main><Routes>
+        <Route path="/" element={<TodayPage api={api} />} />
+        <Route path="/drafts" element={<DraftListPage api={api} />} />
+        <Route path="/drafts/:draftId" element={<DraftRoute api={api} />} />
+        {routes.filter((route) => !['/', '/drafts'].includes(route.path)).map((route) => <Route key={route.path} path={route.path} element={<PlaceholderPage title={route.title} />} />)}
+      </Routes></main>
     </div>
   );
 }
 
-export function AdminApp({ client = authClient }: { client?: AuthClient }) {
-  return <AuthGate client={client}><BrowserRouter><PrivateAdminRoutes /></BrowserRouter></AuthGate>;
+export function AdminApp({ client = authClient, api = narrativeApi }: { client?: AuthClient; api?: NarrativeApi }) {
+  return <AuthGate client={client}><BrowserRouter><PrivateAdminRoutes api={api} /></BrowserRouter></AuthGate>;
 }

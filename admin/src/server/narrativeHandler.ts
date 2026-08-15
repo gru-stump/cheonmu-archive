@@ -1,0 +1,113 @@
+type ServerConfig = { supabaseUrl: string; supabaseAnonKey: string; fetch?: typeof globalThis.fetch };
+
+const conflicts = new Set([
+  'stale_review', 'stale_review_submission', 'stale_manual_version', 'stale_revision', 'stale_archive', 'stale_publish_retry',
+  'blocked_version_reject_only', 'revision_cost_changed', 'duplicate_review', 'version_not_approvable', 'duplicate_generation',
+]);
+
+function bearer(request: Request): string | null {
+  const match = /^Bearer ([^\s]+)$/.exec(request.headers.get('authorization') ?? '');
+  return match?.[1] ?? null;
+}
+
+function json(value: unknown, status = 200) {
+  return Response.json(value, { status, headers: { 'cache-control': 'no-store' } });
+}
+
+function mapVersion(row: Record<string, unknown>) {
+  const findings = Array.isArray(row.continuity_findings) ? row.continuity_findings : [];
+  return {
+    id: row.id, versionNumber: row.version_number, createdAt: row.created_at, content: row.content,
+    contextVersionIds: row.context_version_ids ?? [], continuityLevel: row.continuity_level ?? null,
+    continuityFindings: findings.map((finding) => {
+      const value = finding as Record<string, unknown>;
+      return { code: value.code, level: value.level, message: value.message, sourceIds: value.sourceIds ?? value.source_ids ?? [] };
+    }),
+  };
+}
+
+export function createNarrativeHandler({ supabaseUrl, supabaseAnonKey, fetch = globalThis.fetch }: ServerConfig) {
+  const base = supabaseUrl.replace(/\/$/, '');
+  return async (request: Request): Promise<Response> => {
+    const token = bearer(request);
+    if (!token) return json({ error: 'authentication_required' }, 401);
+    const headers = { apikey: supabaseAnonKey, authorization: `Bearer ${token}`, 'content-type': 'application/json' };
+    const upstream = async (path: string, init: RequestInit = {}) => {
+      const response = await fetch(`${base}${path}`, { ...init, headers: { ...headers, ...init.headers } });
+      const value = await response.json().catch(() => ({})) as Record<string, unknown>;
+      if (!response.ok) {
+        const message = typeof value.message === 'string' ? value.message : typeof value.error === 'string' ? value.error : 'upstream_error';
+        const stable = conflicts.has(message) && (value.code === 'P0001' || response.status === 409);
+        throw { status: stable ? 409 : response.status === 401 || response.status === 403 ? response.status : response.status === 402 ? 402 : 500, code: stable ? message : response.status === 401 ? 'authentication_required' : response.status === 402 ? 'budget_blocked' : 'request_failed' };
+      }
+      return value;
+    };
+    const rpc = (name: string, body: Record<string, unknown>) => upstream(`/rest/v1/rpc/${name}`, { method: 'POST', body: JSON.stringify(body) });
+    const body = async () => request.json().catch(() => null) as Promise<Record<string, unknown> | null>;
+
+    try {
+      const user = await upstream('/auth/v1/user');
+      if (typeof user.id !== 'string' || !user.id) throw { status: 401, code: 'authentication_required' };
+      const owners = await upstream(`/rest/v1/owner_profiles?select=owner_id&owner_id=eq.${encodeURIComponent(user.id)}`) as unknown as Array<{ owner_id?: string }>;
+      if (owners.length !== 1 || owners[0]?.owner_id !== user.id) throw { status: 403, code: 'owner_access_required' };
+      const url = new URL(request.url);
+      const path = url.pathname.replace(/^\/api\/narrative\/?/, '').split('/').filter(Boolean).map(decodeURIComponent);
+
+      if (request.method === 'GET' && path.join('/') === 'dashboard') return json(await rpc('get_narrative_dashboard', {}));
+      if (request.method === 'GET' && path.length === 1 && path[0] === 'drafts') {
+        const status = url.searchParams.get('status');
+        const filter = status === 'active' ? '&status=not.in.(archived)' : status ? `&status=eq.${encodeURIComponent(status)}` : '';
+        const rows = await upstream(`/rest/v1/drafts?select=id,kind,status,title,updated_at&order=updated_at.desc${filter}`) as unknown as Array<Record<string, unknown>>;
+        const versions = await upstream('/rest/v1/draft_versions?select=id,draft_id,version_number,continuity_level&order=version_number.desc') as unknown as Array<Record<string, unknown>>;
+        const latest = new Map<string, Record<string, unknown>>();
+        for (const version of versions) if (!latest.has(String(version.draft_id))) latest.set(String(version.draft_id), version);
+        return json({ drafts: rows.map((row) => ({ id: row.id, kind: row.kind, status: row.status, title: row.title, updatedAt: row.updated_at, latestVersionId: latest.get(String(row.id))?.id ?? null, continuityLevel: latest.get(String(row.id))?.continuity_level ?? null })) });
+      }
+      if (request.method === 'GET' && path.length === 2 && path[0] === 'drafts') {
+        const draftRows = await upstream(`/rest/v1/drafts?select=id,kind,status,title,updated_at&id=eq.${encodeURIComponent(path[1]!)}`) as unknown as Array<Record<string, unknown>>;
+        const draft = draftRows[0]; if (!draft) return json({ error: 'draft_not_found' }, 404);
+        const rows = await upstream(`/rest/v1/draft_versions?select=id,version_number,created_at,content,context_version_ids,continuity_level,continuity_findings&draft_id=eq.${encodeURIComponent(path[1]!)}&order=version_number.asc`) as unknown as Array<Record<string, unknown>>;
+        if (!rows.length) return json({ error: 'draft_version_not_found' }, 404);
+        const versions = rows.map(mapVersion); const latestVersion = versions[versions.length - 1]!;
+        const settings = await upstream('/rest/v1/provider_settings?select=max_input_tokens,max_revision_output_tokens,input_cost_micros_per_million,output_cost_micros_per_million,fixed_cost_micros&enabled=eq.true') as unknown as Array<Record<string, unknown>>;
+        const setting = settings.length === 1 ? settings[0] : undefined;
+        return json({ id: draft.id, kind: draft.kind, status: draft.status, title: draft.title, latestVersionId: latestVersion.id, latestVersion, versions, ...(setting ? { revisionPricing: { maximumInputTokens: setting.max_input_tokens, maximumRevisionOutputTokens: setting.max_revision_output_tokens, inputCostMicrosPerMillion: setting.input_cost_micros_per_million, outputCostMicrosPerMillion: setting.output_cost_micros_per_million, fixedCostMicros: setting.fixed_cost_micros } } : {}) });
+      }
+      if (request.method === 'POST' && path.join('/') === 'generate') {
+        const command = await body(); if (!command) return json({ error: 'invalid_command' }, 400);
+        if (command.mode === 'revise_selection') {
+          const revision = command.revision as Record<string, unknown> | undefined;
+          if (!command.maximumCostConfirmed || !revision || !Number.isSafeInteger(command.requestedMaxOutputTokens) || !Number.isSafeInteger(command.confirmedMaximumCostMicros)) return json({ error: 'revision_confirmation_required' }, 400);
+          if (command.expectedState === 'generated') await rpc('submit_draft_for_review', { p_draft_id: command.draftId, p_expected_version_id: command.expectedVersionId, p_expected_state: 'generated' });
+          const queued = await rpc('queue_draft_revision', {
+            p_draft_id: command.draftId, p_expected_version_id: command.expectedVersionId,
+            p_selected_text: revision.selectedText, p_instruction: revision.instruction,
+            p_requested_max_output_tokens: command.requestedMaxOutputTokens, p_confirmed_maximum_cost_micros: command.confirmedMaximumCostMicros,
+          });
+          command.jobId = queued.job_id; command.idempotencyKey = queued.idempotency_key; command.draftId = queued.draft_id; command.kind = queued.kind;
+        }
+        delete command.expectedVersionId; delete command.expectedState; delete command.maximumCostConfirmed; delete command.confirmedMaximumCostMicros;
+        return json(await upstream('/functions/v1/generate-draft', { method: 'POST', body: JSON.stringify(command) }));
+      }
+      if (request.method === 'POST' && path.length === 3 && path[0] === 'drafts') {
+        const input = await body(); if (!input || input.draftId !== path[1]) return json({ error: 'invalid_command' }, 400);
+        if (path[2] === 'manual-version') {
+          if (input.expectedState === 'generated') await rpc('submit_draft_for_review', { p_draft_id: input.draftId, p_expected_version_id: input.expectedVersionId, p_expected_state: 'generated' });
+          const version = await rpc('save_manual_draft_version', { p_draft_id: input.draftId, p_expected_version_id: input.expectedVersionId, p_expected_state: 'reviewing', p_content: input.content });
+          return json({ version: mapVersion(version) });
+        }
+        if (path[2] === 'archive') return json(await rpc('archive_narrative_draft', { p_draft_id: input.draftId, p_expected_version_id: input.expectedVersionId, p_expected_state: input.expectedState }));
+        if (path[2] === 'retry-publish') return json(await rpc('retry_narrative_publish', { p_draft_id: input.draftId, p_expected_version_id: input.expectedVersionId, p_expected_state: input.expectedState }));
+        if (path[2] === 'review') {
+          if (input.expectedState === 'generated') await rpc('submit_draft_for_review', { p_draft_id: input.draftId, p_expected_version_id: input.expectedVersionId, p_expected_state: 'generated' });
+          const command = { draftId: input.draftId, expectedVersionId: input.expectedVersionId, expectedState: 'reviewing', idempotencyKey: crypto.randomUUID(), action: input.action, ...(input.reason ? { reason: input.reason } : {}) };
+          return json(await upstream('/functions/v1/review-draft', { method: 'POST', body: JSON.stringify(command) }));
+        }
+      }
+      return json({ error: 'not_found' }, 404);
+    } catch (error) {
+      const value = error as { status?: number; code?: string };
+      return json({ error: value.code ?? 'internal_error' }, value.status ?? 500);
+    }
+  };
+}

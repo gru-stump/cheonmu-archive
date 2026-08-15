@@ -229,6 +229,20 @@ describe('runGeneration', () => {
     expect(h.providerRequests).toMatchObject([{ maxOutputTokens: 80, revision: { selectedText: '선택 문장', instruction: '말투만 다듬기' } }]);
   });
 
+  it('honors the owner-confirmed revision token ceiling frozen by the database', async () => {
+    const requestedPolicy = { ...policy, maxRevisionOutputTokens: 37 };
+    const reservations: unknown[] = [];
+    const requests: unknown[] = [];
+    const h = harness({
+      freezeContext: async (input) => ({ ...requestedPolicy, attemptToken: input.attemptToken, worstCaseCostMicros: estimateWorstCaseCostMicros(requestedPolicy, 'revise_selection'), contextVersionIds: input.contextVersionIds, contextSnapshot: input.contextSnapshot }),
+      reserveAndStart: async (input) => { reservations.push(input); return { status: 'reserved', budgetStatus: 'normal', remainingMicros: 999 }; },
+      provider: { generate: async (request) => { requests.push(request); return { result, usage: { inputTokens: 38, outputTokens: 37 }, rawId: 'requested-cap', responseModel: 'canonical-fake-model' }; } },
+    });
+    await runGeneration(h.deps, { ...baseCommand, mode: 'revise_selection', requestedMaxOutputTokens: 37, revision: { selectedText: '선택 문장', instruction: '말투만 다듬기' } });
+    expect(requests).toMatchObject([{ maxOutputTokens: 37 }]);
+    expect(reservations).toMatchObject([{ worstCaseCostMicros: 579 }]);
+  });
+
   it('atomically aborts provider failure using the full reservation', async () => {
     const h = harness({ provider: { generate: async () => { throw new Error('raw secret response'); } } });
     await expect(runGeneration(h.deps, baseCommand)).rejects.toMatchObject({ status: 502, code: 'provider_generation_failed', details: undefined });

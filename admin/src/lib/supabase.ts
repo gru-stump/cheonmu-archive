@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import type { AuthClient } from '../auth/AuthGate';
+import { createNarrativeApi } from '../api/narrativeApi';
 
 const url = import.meta.env.VITE_SUPABASE_URL;
 const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -26,6 +27,9 @@ export const authClient: AuthClient = {
   },
 };
 
-// Sensitive narrative Edge Function calls are intentionally reserved for a
-// same-origin /api/narrative/* Vercel proxy in a later task. The browser never
-// receives a service role, provider, GitHub, or model credential.
+export const narrativeApi = createNarrativeApi({
+  tokenProvider: async () => (await supabase.auth.getSession()).data.session?.access_token ?? null,
+});
+
+// All narrative access crosses the same-origin server boundary. The browser
+// supplies only the current owner token and never receives server credentials.

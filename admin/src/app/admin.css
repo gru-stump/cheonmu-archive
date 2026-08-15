@@ -1,6 +1,6 @@
 :root { color: #211b18; background: #faf7f0; font-family: system-ui, sans-serif; }
 body { margin: 0; }
-button, input { font: inherit; }
+button, input, textarea { font: inherit; }
 main, .admin-header { max-width: 72rem; margin: 0 auto; padding: 1rem; }
 .admin-header { display: flex; flex-wrap: wrap; align-items: center; gap: 1rem; border-bottom: 1px solid #d9d0c2; }
 .admin-header p { margin: 0; font-weight: 700; }
@@ -8,6 +8,19 @@ nav { display: flex; flex-wrap: wrap; gap: .5rem; }
 nav a { color: inherit; padding: .5rem; text-decoration: none; }
 nav a[aria-current="page"] { background: #5b1616; color: #fff; }
 form { display: grid; gap: .75rem; max-width: 28rem; }
-input, button { min-height: 2.75rem; padding: .5rem .75rem; }
+input, button, textarea { min-height: 2.75rem; padding: .5rem .75rem; box-sizing: border-box; }
 button { width: fit-content; cursor: pointer; }
-@media (max-width: 36rem) { .admin-header { align-items: stretch; } nav { justify-content: space-between; } nav a { flex: 1 1 auto; text-align: center; } }
+.dashboard-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: 1rem; }
+.dashboard-grid section, article > section { border: 1px solid #d9d0c2; padding: 1rem; margin-block: 1rem; }
+dl { display: grid; grid-template-columns: 1fr auto; gap: .5rem; }
+dd { margin: 0; font-variant-numeric: tabular-nums; }
+.draft-list { list-style: none; padding: 0; display: grid; gap: .75rem; }
+.draft-list a { display: grid; gap: .25rem; border: 1px solid #d9d0c2; color: inherit; padding: 1rem; text-decoration: none; }
+.draft-body { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; }
+.review-actions { display: flex; flex-wrap: wrap; gap: .5rem; padding-block: 1rem; }
+.blocked-notice { color: #8a1010; font-weight: 700; }
+.modal-backdrop { position: fixed; inset: 0; z-index: 10; display: grid; place-items: center; padding: 1rem; background: rgb(0 0 0 / 55%); }
+.modal { width: min(36rem, 100%); max-height: calc(100vh - 2rem); overflow: auto; background: #faf7f0; padding: 1.25rem; box-shadow: 0 .5rem 2rem rgb(0 0 0 / 30%); }
+.modal form { max-width: none; }
+.modal textarea, .modal input[type="number"] { width: 100%; }
+@media (max-width: 36rem) { .admin-header { align-items: stretch; } nav { justify-content: space-between; } nav a { flex: 1 1 auto; text-align: center; } .review-actions { position: sticky; bottom: 0; background: #faf7f0; border-top: 1px solid #d9d0c2; } .review-actions button { flex: 1 1 9rem; } }
