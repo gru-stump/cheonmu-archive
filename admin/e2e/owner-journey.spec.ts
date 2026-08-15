@@ -68,7 +68,7 @@ async function reopenApprovedMajorDraft(session: LocalOwnerSession, draftId: str
   await serviceRpc(session.config, 'transition_draft', { p_draft_id: draftId, p_expected: 'archived', p_next: 'queued' });
 }
 
-test('authenticated owner journey persists budget, immutable versions, private approval, schedule, and major-event order', async ({ page }) => {
+test('authenticated owner journey persists budget, private approval, rejection feedback, special date, and major-event order', async ({ page }) => {
   test.setTimeout(180_000);
   await page.setViewportSize({ width: 1440, height: 1000 });
   const session = await authenticateSeedOwner(page);
@@ -76,6 +76,8 @@ test('authenticated owner journey persists budget, immutable versions, private a
   await clearAccessFixture(session);
   const functions = await startFakeProviderFunctions();
   let accessJobId: string | null = null;
+  const rejectedDraftId = randomUUID();
+  const rejectedReason = `인물의 반응을 더 선명하게 다듬어 주세요. (${rejectedDraftId})`;
   try {
     await page.goto('/?real-owner=1');
     await expect(page.getByRole('button', { name: '로그아웃' })).toBeVisible();
@@ -118,12 +120,110 @@ test('authenticated owner journey persists budget, immutable versions, private a
     expect(ledger.map((entry) => entry.entry_type)).toEqual(['reservation', 'reconciliation']);
     expect(ledger.reduce((sum, entry) => sum + Number(entry.amount_micros), 0)).toBeGreaterThan(0);
 
+    const canonBeforeReject = await serviceGet<Array<{ id: string }>>(session.config, 'memory_items?select=id&memory_type=eq.canon&order=id.asc');
+    await serviceInsert(session.config, 'drafts', {
+      id: rejectedDraftId,
+      owner_id: seedOwnerId,
+      kind: 'short_dialogue',
+      status: 'queued',
+      title: `E2E 거절 대화 ${rejectedDraftId}`,
+    });
+    const [rejectedJob] = await serviceInsert<Array<{ id: string }>>(session.config, 'generation_jobs', {
+      owner_id: seedOwnerId,
+      draft_id: rejectedDraftId,
+      schedule_key: `e2e-reject-${rejectedDraftId}`,
+      scheduled_for: new Date().toISOString(),
+      status: 'queued',
+      payload: { kind: 'short_dialogue', source: 'e2e-owner-journey' },
+    });
+    const rejectedGenerated = await edgeJson<{ versionId: string; continuityLevel: string }>(await edgePost(session, 'generate-draft', {
+      jobId: rejectedJob!.id,
+      draftId: rejectedDraftId,
+      idempotencyKey: `e2e-reject-generate-${randomUUID()}`,
+      mode: 'new',
+      kind: 'short_dialogue',
+    }));
+    expect(rejectedGenerated.continuityLevel).toBe('review');
+    await openDraft(page, rejectedDraftId);
+    await page.getByRole('button', { name: '거절' }).click();
+    await page.getByRole('textbox', { name: '거절 사유' }).fill(rejectedReason);
+    await page.getByRole('button', { name: '거절 확정' }).click();
+    await expect(page.getByRole('status').filter({ hasText: '검토 결과를 저장했습니다.' })).toBeVisible();
+
     await page.getByRole('link', { name: '일정' }).click();
     await page.getByLabel('daily-local-fixture 서울 실행 시각').fill('10:15');
     await page.getByRole('button', { name: 'daily-local-fixture 일정 저장' }).click();
     await expect(page.getByRole('status').filter({ hasText: '일정을 저장했습니다.' })).toBeVisible();
     const schedule = await serviceGet<Array<{ seoul_time: string }>>(session.config, 'schedules?select=seoul_time&schedule_key=eq.daily-local-fixture');
     expect(schedule[0]?.seoul_time).toMatch(/^10:15/);
+    await page.getByRole('button', { name: '특별일 추가' }).click();
+    const specialScheduleForm = page.locator('.schedule-row').filter({ has: page.getByRole('heading', { name: 'special-date' }) });
+    await expect(specialScheduleForm).toBeVisible();
+    await specialScheduleForm.getByLabel('special-date 서울 실행 시각').fill('18:45');
+    await specialScheduleForm.getByLabel('특별일').fill('2026-10-03');
+    await specialScheduleForm.getByRole('checkbox', { name: '활성' }).check();
+    const specialSaveResponsePromise = page.waitForResponse((response) =>
+      new URL(response.url()).pathname === '/api/narrative/schedules' && response.request().method() === 'POST');
+    await specialScheduleForm.getByRole('button', { name: 'special-date 일정 저장' }).click();
+    const specialSaveResponse = await specialSaveResponsePromise;
+    expect(specialSaveResponse.status(), await specialSaveResponse.text()).toBe(200);
+    await expect(page.getByRole('status').filter({ hasText: '일정을 저장했습니다.' })).toBeVisible();
+    await expect(page.getByLabel('special-date 서울 실행 시각')).toHaveValue('18:45');
+    await expect(page.getByLabel('특별일')).toHaveValue('2026-10-03');
+
+    const rejectedDraftEvidence = await serviceGet<Array<{ status: string }>>(session.config, `drafts?select=status&id=eq.${rejectedDraftId}`);
+    const rejectedJobEvidence = await serviceGet<Array<{ draft_id: string; status: string }>>(session.config, `generation_jobs?select=draft_id,status&id=eq.${rejectedJob!.id}`);
+    const rejectedFeedbackEvidence = await serviceGet<Array<{ memory_type: string; status: string; content: string; source_draft_version_id: string }>>(
+      session.config,
+      `memory_items?select=memory_type,status,content,source_draft_version_id&content=eq.${encodeURIComponent(rejectedReason)}`,
+    );
+    const rejectedReviewEvidence = await serviceGet<Array<{ action: string; reason: string; resulting_state: string; draft_version_id: string }>>(
+      session.config,
+      `draft_review_actions?select=action,reason,resulting_state,draft_version_id&draft_id=eq.${rejectedDraftId}`,
+    );
+    const specialScheduleEvidence = await serviceGet<Array<{
+      schedule_key: string;
+      schedule_type: string;
+      enabled: boolean;
+      seoul_time: string;
+      special_date: string;
+      minimum_interval_minutes: number;
+      payload: { kind?: string };
+    }>>(
+      session.config,
+      'schedules?select=schedule_key,schedule_type,enabled,seoul_time,special_date,minimum_interval_minutes,payload&schedule_key=eq.special-date',
+    );
+    expect(rejectedDraftId).not.toBe(persistedJob!.draft_id);
+    expect.soft(rejectedDraftEvidence).toEqual([{ status: 'rejected' }]);
+    expect.soft(rejectedJobEvidence).toEqual([{ draft_id: rejectedDraftId, status: 'completed' }]);
+    expect.soft(rejectedFeedbackEvidence).toEqual([
+      expect.objectContaining({
+        memory_type: 'feedback',
+        status: 'active',
+        content: rejectedReason,
+        source_draft_version_id: rejectedGenerated.versionId,
+      }),
+    ]);
+    expect.soft(rejectedReviewEvidence).toEqual([{
+      action: 'reject',
+      reason: rejectedReason,
+      resulting_state: 'rejected',
+      draft_version_id: rejectedGenerated.versionId,
+    }]);
+    expect.soft(specialScheduleEvidence).toEqual([
+      expect.objectContaining({
+        schedule_key: 'special-date',
+        schedule_type: 'special',
+        enabled: true,
+        seoul_time: expect.stringMatching(/^18:45/),
+        special_date: '2026-10-03',
+        minimum_interval_minutes: 1440,
+        payload: expect.objectContaining({ kind: 'short_dialogue' }),
+      }),
+    ]);
+    expect(await serviceGet(session.config, `publish_jobs?select=id&draft_id=eq.${rejectedDraftId}`)).toEqual([]);
+    expect(await serviceGet(session.config, `memory_items?select=memory_type&source_draft_version_id=eq.${rejectedGenerated.versionId}`)).toEqual([{ memory_type: 'feedback' }]);
+    expect(await serviceGet(session.config, 'memory_items?select=id&memory_type=eq.canon&order=id.asc')).toEqual(canonBeforeReject);
 
     const majorDraftId = randomUUID();
     await serviceInsert(session.config, 'drafts', { id: majorDraftId, owner_id: seedOwnerId, kind: 'major_event_proposal', status: 'queued', title: 'E2E 중대 사건' });
