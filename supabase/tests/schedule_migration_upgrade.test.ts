@@ -145,6 +145,22 @@ insert into public.provider_settings (
     'f|1970-01-01|f',
     'legacy prices must migrate stale with automation disabled until the owner verifies them',
   );
+  await requireSuccess('upgraded provider Vault rotation failed', runPsql(`
+select set_config('request.jwt.claim.role', 'service_role', false);
+set role service_role;
+select public.store_narrative_secret('${ownerId}', 'openai', 'upgrade-vault-test-value');
+reset role;
+`));
+  assert.equal(
+    await scalar(`select concat(
+      provider.configuration = jsonb_build_object('vaultSecretName', 'narrative_${ownerId}_openai'), '|',
+      (select public.read_narrative_secret('${ownerId}', 'openai') = 'upgrade-vault-test-value'
+       from (select set_config('request.jwt.claim.role', 'service_role', false)) as claim)
+    ) from public.provider_settings as provider
+      where provider.owner_id = '${ownerId}' and provider.provider_key = 'openai';`),
+    't|t',
+    'saving a Vault secret must switch an upgraded environment-backed provider and resolve the new Vault value',
+  );
 
   const rows = JSON.parse(await scalar(`
 select coalesce(jsonb_agg(jsonb_build_object(

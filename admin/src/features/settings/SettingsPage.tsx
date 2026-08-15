@@ -4,13 +4,27 @@ import type { NarrativeApi, NarrativeSettings, ProviderSetting } from '../../api
 const providerName = (key: ProviderSetting['providerKey']) => key === 'openai' ? 'OpenAI' : key === 'anthropic' ? 'Anthropic' : '로컬 테스트';
 const microsToUsd = (value: number) => value / 1_000_000;
 const usdToMicros = (value: number) => Math.round(value * 1_000_000);
+const emptyProvider = (providerKey: 'openai' | 'anthropic'): ProviderSetting => ({
+  providerKey, enabled: false, modelKey: '', maxInputTokens: 4096, maxOutputTokens: 1024,
+  maxRevisionOutputTokens: 256, inputPriceMicrosPerMillion: 0,
+  outputPriceMicrosPerMillion: 0, pricingVerifiedAt: '',
+});
+const withProviderDrafts = (settings: NarrativeSettings): NarrativeSettings => ({
+  ...settings,
+  providers: [
+    ...settings.providers,
+    ...(['openai', 'anthropic'] as const)
+      .filter((providerKey) => !settings.providers.some((provider) => provider.providerKey === providerKey))
+      .map(emptyProvider),
+  ],
+});
 
 export function SettingsPage({ api }: { api: NarrativeApi }) {
   const [settings, setSettings] = useState<NarrativeSettings | null>(null);
   const [error, setError] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [secretInputs, setSecretInputs] = useState<Record<'openai' | 'anthropic' | 'github', string>>({ openai: '', anthropic: '', github: '' });
-  useEffect(() => { let active = true; void api.getSettings().then((value) => { if (active) setSettings(value); }).catch(() => { if (active) setError(true); }); return () => { active = false; }; }, [api]);
+  useEffect(() => { let active = true; void api.getSettings().then((value) => { if (active) setSettings(withProviderDrafts(value)); }).catch(() => { if (active) setError(true); }); return () => { active = false; }; }, [api]);
 
   const updateProvider = (key: ProviderSetting['providerKey'], change: Partial<ProviderSetting>) => setSettings((current) => current ? { ...current, providers: current.providers.map((provider) => provider.providerKey === key ? { ...provider, ...change } : provider) } : current);
   const save = async (event: FormEvent) => {

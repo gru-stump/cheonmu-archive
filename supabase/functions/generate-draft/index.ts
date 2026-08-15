@@ -238,7 +238,7 @@ function sameFrozenPolicy(loaded: TrustedGenerationPolicy, frozen: FrozenGenerat
 const stableConflictCodes = new Set([
   'duplicate_generation', 'stale_transition', 'stale_version', 'workflow_phase_not_approved',
   'mode_kind_mismatch', 'active_provider_setting_required', 'context_budget_too_small', 'stale_attempt',
-  'stale_provider_pricing',
+  'stale_provider_pricing', 'invalid_provider_pricing',
 ]);
 
 function mapPersistence(error: unknown, fallbackCode = 'internal_error'): GenerationError {

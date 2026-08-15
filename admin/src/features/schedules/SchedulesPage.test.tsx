@@ -21,7 +21,7 @@ describe('SchedulesPage', () => {
     expect(await screen.findByRole('heading', { name: '일정' })).toBeInTheDocument();
     expect(screen.getByDisplayValue('09:00')).toBeInTheDocument();
     expect(screen.getByDisplayValue('2026-09-07')).toBeInTheDocument();
-    expect(screen.getAllByText('최소 간격').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('최소 간격(분)').length).toBeGreaterThan(0);
     expect(screen.getByText(/2026\. 8\. 14\. 오전 9:00/)).toBeInTheDocument();
     expect(screen.getByText(/2026\. 9\. 7\. 오후 9:30/)).toBeInTheDocument();
   });

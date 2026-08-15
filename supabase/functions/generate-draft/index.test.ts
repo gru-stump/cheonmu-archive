@@ -224,6 +224,14 @@ describe('runGeneration', () => {
     expect(h.aborts).toEqual([]);
   });
 
+  it('maps a future-pricing reservation rejection to a stable conflict before provider work', async () => {
+    const h = harness({ reserveAndStart: async () => { throw new PersistenceError('invalid_provider_pricing'); } });
+
+    await expect(runGeneration(h.deps, baseCommand)).rejects.toMatchObject({ status: 409, code: 'invalid_provider_pricing' });
+    expect(h.events).not.toContain('provider');
+    expect(h.aborts).toMatchObject([{ failureCode: 'reservation_failed' }]);
+  });
+
   it('bounds revision output and passes explicit selection/instruction', async () => {
     const h = harness();
     await runGeneration(h.deps, { ...baseCommand, mode: 'revise_selection', revision: { selectedText: '선택 문장', instruction: '말투만 다듬기' } });

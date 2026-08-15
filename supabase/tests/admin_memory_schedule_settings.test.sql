@@ -1,6 +1,6 @@
 begin;
 
-select plan(60);
+select plan(61);
 
 select has_column('public', 'memory_items', 'supersedes_memory_item_id', 'memory corrections retain an immutable predecessor link');
 select has_column('public', 'schedules', 'special_date', 'special dates are relational schedule state');
@@ -136,6 +136,14 @@ select lives_ok($$
     (((current_timestamp at time zone 'Asia/Seoul')::date - 2 + time '09:00') at time zone 'Asia/Seoul')
   )
 $$, 'the first due schedule queues through the atomic boundary');
+select is(
+  (select payload ->> 'budgetPolicy' from public.generation_jobs
+   where owner_id = '10000000-0000-0000-0000-000000000001'
+     and schedule_key like '%:two-day:%'
+   order by created_at limit 1),
+  'block_at_risk',
+  'daily automatic queue payload freezes its reservation-time risk policy'
+);
 select throws_ok($$
   select public.queue_due_narrative_schedule_job(
     '10000000-0000-0000-0000-000000000001',
@@ -189,7 +197,7 @@ select throws_ok($$
   )
 $$, 'P0001', 'stale_provider_pricing', 'queueing rechecks provider freshness at the advanced Seoul business date');
 reset role;
-update public.provider_settings set pricing_verified_at = (current_timestamp at time zone 'Asia/Seoul')::date + 31
+update public.provider_settings set pricing_verified_at = (current_timestamp at time zone 'Asia/Seoul')::date
 where owner_id = '10000000-0000-0000-0000-000000000001' and provider_key = 'openai';
 select set_config('request.jwt.claim.role', 'authenticated', true);
 select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000001', true);
@@ -210,6 +218,9 @@ reset role;
 insert into public.budget_entries (owner_id, budget_period_id, amount_micros, entry_type, daily_bucket_date, description)
 select '10000000-0000-0000-0000-000000000001', id, 400, 'reservation', (current_timestamp at time zone 'Asia/Seoul')::date, 'custom risk threshold fixture'
 from public.budget_periods where owner_id = '10000000-0000-0000-0000-000000000001';
+update public.schedules
+set special_date = (current_timestamp at time zone 'Asia/Seoul')::date
+where owner_id = '10000000-0000-0000-0000-000000000001' and schedule_key = 'memorial';
 select set_config('request.jwt.claim.role', 'service_role', true);
 set local role service_role;
 select is(public.narrative_schedule_budget_state('10000000-0000-0000-0000-000000000001'), 'risk', 'the configured 20 percent risk threshold affects scheduling before the hard limit');
@@ -217,7 +228,7 @@ select throws_ok($$
   select public.queue_due_narrative_schedule_job(
     '10000000-0000-0000-0000-000000000001',
     (select id from public.schedules where owner_id = '10000000-0000-0000-0000-000000000001' and schedule_key = 'memorial'),
-    (((current_timestamp at time zone 'Asia/Seoul')::date + 31 + time '21:30') at time zone 'Asia/Seoul')
+    (((current_timestamp at time zone 'Asia/Seoul')::date + time '21:30') at time zone 'Asia/Seoul')
   )
 $$, 'P0001', 'budget_risk', 'the atomic schedule queue blocks at the configured risk threshold');
 reset role;

@@ -44,6 +44,60 @@ create trigger memory_items_preserve_history
 before update or delete on public.memory_items
 for each row execute function narrative_private.reject_memory_history_mutation();
 
+create function narrative_private.require_narrative_owner()
+returns void
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+begin
+  if auth.role() is distinct from 'authenticated'
+    or auth.uid() is null
+    or not exists (select 1 from public.owner_profiles where owner_id = auth.uid()) then
+    raise exception 'owner_access_required' using errcode = '42501';
+  end if;
+end;
+$$;
+
+revoke all on function narrative_private.require_narrative_owner()
+  from public, anon, authenticated, service_role;
+
+create or replace function narrative_private.populate_approved_continuity_metadata()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+declare
+  source_content jsonb;
+  generated_metadata jsonb;
+begin
+  if new.memory_type = 'continuity'
+    and new.status = 'approved'
+    and new.source_draft_version_id is not null then
+    if new.supersedes_memory_item_id is not null then
+      source_content := jsonb_build_object('body', new.content);
+    else
+      select version.content into source_content
+      from public.draft_versions as version
+      where version.id = new.source_draft_version_id
+        and version.owner_id = new.owner_id;
+    end if;
+    if source_content is null then
+      raise exception 'source draft version not found for approved continuity memory' using errcode = '23503';
+    end if;
+    generated_metadata := narrative_private.approved_continuity_metadata(
+      new.source_draft_version_id,
+      source_content
+    );
+    new.metadata := coalesce(new.metadata, '{}'::jsonb)
+      - 'tokenCount' - 'tags' - 'continuityFacts'
+      || generated_metadata;
+  end if;
+  return new;
+end;
+$$;
+
 alter table public.provider_settings
   add column pricing_verified_at date not null default date '1970-01-01';
 
@@ -125,11 +179,14 @@ alter table public.schedules
 
 create function public.get_narrative_memory()
 returns jsonb
-language sql
+language plpgsql
 stable
 security definer
 set search_path = ''
 as $$
+begin
+  perform narrative_private.require_narrative_owner();
+  return (
   with recursive latest as (
     select memory.*
     from public.memory_items as memory
@@ -176,7 +233,8 @@ as $$
     'unresolved', coalesce(jsonb_agg(item order by item ->> 'createdAt') filter (where memory_type = 'unresolved'), '[]'::jsonb)
   )
   from shaped
-  where auth.role() = 'authenticated' and auth.uid() is not null;
+  );
+end;
 $$;
 
 create function public.set_narrative_memory_enabled(p_memory_id uuid, p_enabled boolean)
@@ -189,9 +247,8 @@ declare
   locked_memory public.memory_items;
   next_status text;
 begin
-  if auth.role() is distinct from 'authenticated' or auth.uid() is null or p_memory_id is null or p_enabled is null then
-    raise exception 'memory command caller is not authorized' using errcode = '42501';
-  end if;
+  perform narrative_private.require_narrative_owner();
+  if p_memory_id is null or p_enabled is null then raise exception 'invalid_memory_command' using errcode = '22023'; end if;
   select memory.* into locked_memory
   from public.memory_items as memory
   where memory.id = p_memory_id and memory.owner_id = auth.uid()
@@ -228,9 +285,7 @@ declare
   locked_memory public.memory_items;
   created_memory public.memory_items;
 begin
-  if auth.role() is distinct from 'authenticated' or auth.uid() is null then
-    raise exception 'memory command caller is not authorized' using errcode = '42501';
-  end if;
+  perform narrative_private.require_narrative_owner();
   if p_memory_id is null or nullif(btrim(p_content), '') is null or nullif(btrim(p_note), '') is null
     or length(p_content) > 20000 or length(p_note) > 1000 then
     raise exception 'invalid_memory_correction' using errcode = '22023';
@@ -264,11 +319,14 @@ $$;
 
 create function public.get_narrative_schedules()
 returns jsonb
-language sql
+language plpgsql
 stable
 security definer
 set search_path = ''
 as $$
+begin
+  perform narrative_private.require_narrative_owner();
+  return (
   select jsonb_build_object('schedules', coalesce(jsonb_agg(jsonb_build_object(
     'id', schedule.id,
     'scheduleKey', schedule.schedule_key,
@@ -315,7 +373,9 @@ as $$
       ) end
   ) order by schedule.schedule_key), '[]'::jsonb))
   from public.schedules as schedule
-  where schedule.owner_id = auth.uid() and auth.role() = 'authenticated';
+  where schedule.owner_id = auth.uid()
+  );
+end;
 $$;
 
 create function public.save_narrative_schedule(
@@ -342,7 +402,7 @@ declare
   active_provider public.provider_settings;
   stored_schedule public.schedules;
 begin
-  if auth.role() is distinct from 'authenticated' or auth.uid() is null then raise exception 'schedule caller is not authorized' using errcode = '42501'; end if;
+  perform narrative_private.require_narrative_owner();
   if p_schedule_key is null or p_schedule_type is null or p_enabled is null
     or p_seoul_time is null or p_minimum_interval_minutes is null or p_kind is null
     or p_schedule_key !~ '^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$'
@@ -365,6 +425,7 @@ begin
     if settings.owner_id is null or not settings.automation_enabled then raise exception 'automation_disabled' using errcode = 'P0001'; end if;
     select provider.* into active_provider from public.provider_settings as provider where provider.owner_id = auth.uid() and provider.enabled for share;
     if active_provider.id is null
+      or active_provider.pricing_verified_at > public.narrative_business_date(current_timestamp)
       or active_provider.pricing_verified_at < public.narrative_business_date(current_timestamp) - settings.pricing_valid_days then
       raise exception 'stale_provider_pricing' using errcode = 'P0001';
     end if;
@@ -406,7 +467,7 @@ as $$
 declare
   result jsonb;
 begin
-  if auth.role() is distinct from 'authenticated' or auth.uid() is null then raise exception 'settings caller is not authorized' using errcode = '42501'; end if;
+  perform narrative_private.require_narrative_owner();
   with admin as (
     select * from public.narrative_admin_settings where owner_id = auth.uid()
   ), current_period as (
@@ -422,14 +483,28 @@ begin
   select jsonb_build_object(
     'automationEnabled', coalesce(admin.automation_enabled, false),
     'pricingValidDays', coalesce(admin.pricing_valid_days, 30),
-    'providers', coalesce((select jsonb_agg(jsonb_build_object(
+    'providers', (select jsonb_agg(jsonb_build_object(
       'providerKey', provider.provider_key, 'enabled', provider.enabled, 'modelKey', provider.model_key,
       'maxInputTokens', provider.max_input_tokens, 'maxOutputTokens', provider.max_output_tokens,
       'maxRevisionOutputTokens', provider.max_revision_output_tokens,
       'inputPriceMicrosPerMillion', provider.input_cost_micros_per_million,
       'outputPriceMicrosPerMillion', provider.output_cost_micros_per_million,
       'pricingVerifiedAt', provider.pricing_verified_at
-    ) order by provider.provider_key) from public.provider_settings as provider where provider.owner_id = auth.uid()), '[]'::jsonb),
+    ) order by provider.provider_key)
+    from (
+      select actual.provider_key, actual.enabled, actual.model_key,
+        actual.max_input_tokens, actual.max_output_tokens, actual.max_revision_output_tokens,
+        actual.input_cost_micros_per_million, actual.output_cost_micros_per_million,
+        actual.pricing_verified_at::text
+      from public.provider_settings as actual where actual.owner_id = auth.uid()
+      union all
+      select missing.provider_key, false, '', 4096, 1024, 256, 0::bigint, 0::bigint, ''
+      from (values ('openai'), ('anthropic')) as missing(provider_key)
+      where not exists (
+        select 1 from public.provider_settings as actual
+        where actual.owner_id = auth.uid() and actual.provider_key = missing.provider_key
+      )
+    ) as provider),
     'budget', jsonb_build_object(
       'monthlyLimitMicros', coalesce(current_period.limit_micros, 0),
       'dailyLimitMicros', coalesce(current_period.daily_limit_micros, 0),
@@ -448,7 +523,10 @@ begin
   ) into result
   from admin full join current_period on true full join totals on true;
   return coalesce(result, jsonb_build_object(
-    'automationEnabled', false, 'pricingValidDays', 30, 'providers', '[]'::jsonb,
+    'automationEnabled', false, 'pricingValidDays', 30, 'providers', jsonb_build_array(
+      jsonb_build_object('providerKey','openai','enabled',false,'modelKey','','maxInputTokens',4096,'maxOutputTokens',1024,'maxRevisionOutputTokens',256,'inputPriceMicrosPerMillion',0,'outputPriceMicrosPerMillion',0,'pricingVerifiedAt',''),
+      jsonb_build_object('providerKey','anthropic','enabled',false,'modelKey','','maxInputTokens',4096,'maxOutputTokens',1024,'maxRevisionOutputTokens',256,'inputPriceMicrosPerMillion',0,'outputPriceMicrosPerMillion',0,'pricingVerifiedAt','')
+    ),
     'budget', jsonb_build_object('monthlyLimitMicros',0,'dailyLimitMicros',0,'spentMicros',0,'reservedMicros',0,'manualCallLimit',3,'warningThresholdPercent',80,'riskThresholdPercent',95,'krwPerUsd',1350),
     'secrets', jsonb_build_object('openai',false,'anthropic',false,'github',false)
   ));
@@ -481,7 +559,7 @@ declare
   updated_provider public.provider_settings;
   update_count integer := 0;
 begin
-  if auth.role() is distinct from 'authenticated' or auth.uid() is null then raise exception 'settings caller is not authorized' using errcode = '42501'; end if;
+  perform narrative_private.require_narrative_owner();
   if p_automation_enabled is null or p_provider_updates is null or jsonb_typeof(p_provider_updates) <> 'array'
     or p_monthly_limit_micros < 0 or p_daily_limit_micros < 0 or p_manual_call_limit < 0
     or p_warning_threshold_percent not between 1 and 99 or p_risk_threshold_percent not between 2 and 100
@@ -503,6 +581,7 @@ begin
       or coalesce(provider_update ->> 'inputPriceMicrosPerMillion', '') !~ '^[0-9]+$'
       or coalesce(provider_update ->> 'outputPriceMicrosPerMillion', '') !~ '^[0-9]+$'
       or coalesce(provider_update ->> 'pricingVerifiedAt', '') !~ '^\d{4}-\d{2}-\d{2}$'
+      or (provider_update ->> 'pricingVerifiedAt')::date > public.narrative_business_date(now())
       or (provider_update ->> 'maxInputTokens')::integer < 1
       or (provider_update ->> 'maxOutputTokens')::integer < 1
       or (provider_update ->> 'maxRevisionOutputTokens')::integer < 1
@@ -583,7 +662,8 @@ begin
     select provider.* into updated_provider from public.provider_settings as provider
     where provider.owner_id = auth.uid() and provider.provider_key = p_active_provider_key for update;
     if updated_provider.id is null then raise exception 'active_provider_setting_required' using errcode = 'P0001'; end if;
-    if updated_provider.pricing_verified_at < public.narrative_business_date(now()) - p_pricing_valid_days then
+    if updated_provider.pricing_verified_at > public.narrative_business_date(now())
+      or updated_provider.pricing_verified_at < public.narrative_business_date(now()) - p_pricing_valid_days then
       raise exception 'stale_provider_pricing' using errcode = 'P0001';
     end if;
     update public.provider_settings set enabled = true, updated_at = now() where id = updated_provider.id;
@@ -615,24 +695,25 @@ declare
 begin
   if p_owner_id is null or p_at is null then return 'risk'; end if;
   business_date := public.narrative_business_date(p_at);
-  select admin.* into admin_settings from public.narrative_admin_settings as admin
-  where admin.owner_id = p_owner_id for share;
-  if admin_settings.owner_id is not null then
-    warning_percent := admin_settings.warning_threshold_percent;
-    risk_percent := admin_settings.risk_threshold_percent;
-    if not admin_settings.automation_enabled then return 'risk'; end if;
-    select provider.* into active_provider from public.provider_settings as provider
-    where provider.owner_id = p_owner_id and provider.enabled for share;
-    if active_provider.id is null
-      or active_provider.pricing_verified_at < business_date - admin_settings.pricing_valid_days then
-      return 'risk';
-    end if;
-  end if;
+  select provider.* into active_provider from public.provider_settings as provider
+  where provider.owner_id = p_owner_id and provider.enabled for share;
   select period.* into active_period
   from public.budget_periods as period
   where period.owner_id = p_owner_id and period.currency = 'USD'
     and business_date between period.period_start and period.period_end
-  order by period.period_start desc, period.period_end asc, period.id limit 1 for share;
+  order by period.period_start desc, period.period_end asc, period.id limit 1 for update;
+  select admin.* into admin_settings from public.narrative_admin_settings as admin
+  where admin.owner_id = p_owner_id for share;
+  if admin_settings.owner_id is not null then
+    if not admin_settings.automation_enabled
+      or active_provider.id is null
+      or active_provider.pricing_verified_at > public.narrative_business_date(current_timestamp)
+      or active_provider.pricing_verified_at < business_date - admin_settings.pricing_valid_days then
+      return 'risk';
+    end if;
+    warning_percent := admin_settings.warning_threshold_percent;
+    risk_percent := admin_settings.risk_threshold_percent;
+  end if;
   if active_period.id is null then return 'risk'; end if;
   select coalesce(sum(entry.amount_micros), 0) into daily_used from public.budget_entries as entry
   where entry.budget_period_id = active_period.id and entry.daily_bucket_date = business_date;
@@ -686,9 +767,6 @@ begin
   perform pg_catalog.pg_advisory_xact_lock(
     pg_catalog.hashtextextended('narrative-access:' || p_owner_id::text, 0)
   );
-  select admin.* into admin_settings from public.narrative_admin_settings as admin
-  where admin.owner_id = p_owner_id for share;
-  if admin_settings.owner_id is not null then manual_limit := admin_settings.manual_call_limit; end if;
   select candidate.* into active_job
   from public.generation_jobs as candidate
   where candidate.owner_id = p_owner_id
@@ -710,16 +788,19 @@ begin
   if last_success is not null and last_success + interval '1 hour' > p_now then
     raise exception 'access_interval_not_elapsed' using errcode = 'P0001';
   end if;
+  budget_state := narrative_private.schedule_budget_state_at(p_owner_id, p_now);
+  select admin.* into admin_settings from public.narrative_admin_settings as admin
+  where admin.owner_id = p_owner_id for share;
+  if admin_settings.owner_id is not null then manual_limit := admin_settings.manual_call_limit; end if;
   if coalesce(daily_calls, 0) >= manual_limit then
     raise exception 'daily_access_limit' using errcode = 'P0001';
   end if;
-  budget_state := narrative_private.schedule_budget_state_at(p_owner_id, p_now);
   if budget_state = 'risk' then raise exception 'budget_risk' using errcode = 'P0001'; end if;
   queued_job := narrative_private.queue_narrative_schedule_job(
     p_owner_id,
     'access:' || p_owner_id::text,
     date_trunc('minute', p_now),
-    jsonb_build_object('kind', 'short_dialogue', 'source', 'access')
+    jsonb_build_object('kind', 'short_dialogue', 'source', 'access', 'budgetPolicy', 'block_at_risk')
   );
   return queued_job;
 end;
@@ -774,6 +855,7 @@ begin
   select job.* into existing_job from public.generation_jobs as job
   where job.owner_id = p_owner_id and job.schedule_key = queue_key and job.scheduled_for = p_scheduled_for;
   if existing_job.id is not null then return existing_job; end if;
+  budget_state := narrative_private.schedule_budget_state_at(p_owner_id, p_scheduled_for);
   select admin.* into admin_settings from public.narrative_admin_settings as admin
   where admin.owner_id = p_owner_id for share;
   if admin_settings.owner_id is null or not admin_settings.automation_enabled then
@@ -782,6 +864,9 @@ begin
   select provider.* into active_provider from public.provider_settings as provider
   where provider.owner_id = p_owner_id and provider.enabled for share;
   if active_provider.id is null then raise exception 'active_provider_setting_required' using errcode = 'P0001'; end if;
+  if active_provider.pricing_verified_at > public.narrative_business_date(current_timestamp) then
+    raise exception 'invalid_provider_pricing' using errcode = 'P0001';
+  end if;
   if active_provider.pricing_verified_at < public.narrative_business_date(p_scheduled_for) - admin_settings.pricing_valid_days then
     raise exception 'stale_provider_pricing' using errcode = 'P0001';
   end if;
@@ -789,7 +874,6 @@ begin
     and locked_schedule.last_queued_at + make_interval(mins => locked_schedule.minimum_interval_minutes) > p_scheduled_for then
     raise exception 'schedule_interval_not_elapsed' using errcode = 'P0001';
   end if;
-  budget_state := narrative_private.schedule_budget_state_at(p_owner_id, p_scheduled_for);
   if budget_state = 'risk' then raise exception 'budget_risk' using errcode = 'P0001'; end if;
   if budget_state = 'warning' and locked_schedule.schedule_type = 'automatic'
     and split_part(locked_schedule.cron_expression, ' ', 5) <> '*' then
@@ -797,7 +881,16 @@ begin
   end if;
   queued_job := narrative_private.queue_narrative_schedule_job(
     p_owner_id, queue_key, p_scheduled_for,
-    jsonb_build_object('kind', locked_schedule.payload ->> 'kind', 'source', 'schedule')
+    jsonb_build_object(
+      'kind', locked_schedule.payload ->> 'kind',
+      'source', 'schedule',
+      'budgetPolicy', case
+        when locked_schedule.schedule_type = 'automatic'
+          and split_part(locked_schedule.cron_expression, ' ', 5) <> '*'
+          then 'block_at_warning'
+        else 'block_at_risk'
+      end
+    )
   );
   update public.schedules set last_queued_at = p_scheduled_for, updated_at = now()
   where id = locked_schedule.id;
@@ -819,6 +912,9 @@ declare
   locked_job public.generation_jobs;
   admin_settings public.narrative_admin_settings;
   active_provider public.provider_settings;
+  budget_state text;
+  budget_policy text;
+  job_source text;
   result jsonb;
 begin
   if auth.role() is distinct from 'service_role' then
@@ -828,6 +924,7 @@ begin
   select job.* into locked_job from public.generation_jobs as job where job.id = p_job_id for update;
   if locked_job.id is null then raise exception 'generation target not found' using errcode = 'P0002'; end if;
   if locked_job.attempt_token is distinct from p_attempt_token then raise exception 'stale_attempt' using errcode = 'P0001'; end if;
+  budget_state := narrative_private.schedule_budget_state_at(locked_job.owner_id, current_timestamp);
   select admin.* into admin_settings from public.narrative_admin_settings as admin
   where admin.owner_id = locked_job.owner_id for share;
   select provider.* into active_provider from public.provider_settings as provider
@@ -835,8 +932,18 @@ begin
   if admin_settings.owner_id is null or not admin_settings.automation_enabled or active_provider.id is null then
     raise exception 'active_provider_setting_required' using errcode = 'P0001';
   end if;
+  if active_provider.pricing_verified_at > public.narrative_business_date(current_timestamp) then
+    raise exception 'invalid_provider_pricing' using errcode = 'P0001';
+  end if;
   if active_provider.pricing_verified_at < public.narrative_business_date(current_timestamp) - admin_settings.pricing_valid_days then
     raise exception 'stale_provider_pricing' using errcode = 'P0001';
+  end if;
+  job_source := locked_job.payload ->> 'source';
+  budget_policy := locked_job.payload ->> 'budgetPolicy';
+  if job_source in ('schedule', 'access')
+    and (budget_state = 'risk' or (budget_state = 'warning' and budget_policy = 'block_at_warning')) then
+    update public.generation_jobs set attempt_token = null where id = p_job_id;
+    return jsonb_build_object('status', 'blocked', 'budgetStatus', budget_state, 'remainingMicros', 0);
   end if;
   result := public.generation_internal_reserve_start_v1(p_job_id, p_amount_micros);
   if result ->> 'status' = 'blocked' then
@@ -869,6 +976,11 @@ begin
     perform vault.create_secret(p_secret_value, secret_name, 'Cheonmu narrative server secret');
   else
     perform vault.update_secret(existing_id, p_secret_value);
+  end if;
+  if p_secret_kind in ('openai', 'anthropic') then
+    update public.provider_settings
+    set configuration = jsonb_build_object('vaultSecretName', secret_name), updated_at = now()
+    where owner_id = p_owner_id and provider_key = p_secret_kind;
   end if;
   insert into public.audit_events (owner_id, event_type, entity_type, payload)
   values (p_owner_id, 'narrative_secret_configured', 'server_secret',

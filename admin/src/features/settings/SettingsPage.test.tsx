@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import type { NarrativeApi } from '../../api/narrativeApi';
@@ -21,7 +21,32 @@ function api() {
   } as unknown as NarrativeApi;
 }
 
+function apiWithProviders(providers: Awaited<ReturnType<NarrativeApi['getSettings']>>['providers']) {
+  const client = api();
+  client.getSettings = vi.fn().mockResolvedValue({ ...(awaitedSettings as object), providers });
+  return client;
+}
+
+const awaitedSettings = {
+  automationEnabled: false,
+  pricingValidDays: 30,
+  providers: [],
+  budget: { monthlyLimitMicros: 20_000_000, dailyLimitMicros: 2_000_000, spentMicros: 0, reservedMicros: 0, manualCallLimit: 3, warningThresholdPercent: 80, riskThresholdPercent: 95, krwPerUsd: 1380.5 },
+  secrets: { openai: false, anthropic: false, github: false },
+};
+
 describe('SettingsPage', () => {
+  it.each([
+    ['zero provider rows', []],
+    ['only an OpenAI row', [{ providerKey: 'openai', enabled: false, modelKey: 'gpt-existing', maxInputTokens: 4096, maxOutputTokens: 1024, maxRevisionOutputTokens: 256, inputPriceMicrosPerMillion: 0, outputPriceMicrosPerMillion: 0, pricingVerifiedAt: '' }]],
+  ] as const)('renders editable OpenAI and Anthropic onboarding cards with %s', async (_label, providers) => {
+    render(<SettingsPage api={apiWithProviders([...providers])} />);
+
+    const openai = await screen.findByRole('group', { name: 'OpenAI' });
+    const anthropic = screen.getByRole('group', { name: 'Anthropic' });
+    expect(within(openai).getByLabelText('모델')).toBeEnabled();
+    expect(within(anthropic).getByLabelText('모델')).toBeEnabled();
+  });
   it('shows one active provider, per-million USD prices, verified date, token caps, and all budget controls', async () => {
     render(<SettingsPage api={api()} />);
 
