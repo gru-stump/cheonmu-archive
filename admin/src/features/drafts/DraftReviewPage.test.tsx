@@ -192,6 +192,17 @@ describe('DraftReviewPage', () => {
     expect(review).toHaveBeenCalledWith(expect.objectContaining({ expectedState: 'generated', action: 'reject', reason: '연속성 차단' }));
   });
 
+  it('retries the real draft detail request and recovers from an initial route error', async () => {
+    const getDraft = vi.fn().mockRejectedValueOnce(new Error('temporary failure')).mockResolvedValueOnce(detail);
+    render(<DraftReviewPage api={api({ getDraft })} draftId="draft-1" />);
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('초안을 불러오지 못했습니다.');
+    await userEvent.click(screen.getByRole('button', { name: '다시 시도' }));
+
+    expect(await screen.findByRole('heading', { name: '빗소리 아래' })).toBeInTheDocument();
+    expect(getDraft).toHaveBeenCalledTimes(2);
+  });
+
   it.each(['queued', 'generating', 'approved', 'publishing', 'published', 'archived'] as const)(
     'does not offer archive while status is %s',
     async (status) => {

@@ -1,68 +1,162 @@
 import { expect, test, type Browser, type Page } from '@playwright/test';
 import path from 'node:path';
+import { randomUUID } from 'node:crypto';
+import {
+  authenticateSeedOwner,
+  edgePost,
+  routeRealNarrativeApi,
+  seedOwnerId,
+  serviceDelete,
+  serviceGet,
+  serviceInsert,
+  servicePatch,
+  serviceRpc,
+  startFakeProviderFunctions,
+  type LocalOwnerSession,
+} from './localOwnerHarness';
 
 const screenshotRoot = path.join('..', '.superpowers', 'sdd', '2026-08-15-cheonmu-narrative-admin', 'screenshots');
 
-async function returnToJourney(page: Page) {
-  await page.evaluate(() => {
-    window.history.pushState({}, '', '/__e2e');
-    window.dispatchEvent(new PopStateEvent('popstate'));
-  });
-  await expect(page.getByRole('heading', { name: '소유자 여정' })).toBeVisible();
+async function edgeJson<T>(response: Response, expectedStatus = 200): Promise<T> {
+  const body = await response.json().catch(() => ({}));
+  expect(response.status, JSON.stringify(body)).toBe(expectedStatus);
+  return body as T;
 }
 
-test('desktop owner journey preserves reservation, private approval, rejection, schedule, and major-event order', async ({ page }) => {
-  await page.setViewportSize({ width: 1440, height: 1000 });
-  await page.goto('/__e2e');
-  await expect(page.getByLabel('상태: 소유자 세션 · E2E')).toBeVisible();
-  await expect(page.getByText('최소 생성 간격 경과')).toBeVisible();
+async function clearAccessFixture(session: LocalOwnerSession) {
+  const jobs = await serviceGet<Array<{ id: string }>>(session.config, `generation_jobs?select=id&schedule_key=eq.${encodeURIComponent(`access:${seedOwnerId}`)}`);
+  for (const job of jobs) await servicePatch(session.config, `generation_jobs?id=eq.${job.id}`, { schedule_key: `retired-access-${job.id}` });
+  await serviceDelete(session.config, 'schedules?schedule_key=eq.special-date');
+}
 
-  await page.getByRole('button', { name: '접속 생성 시작' }).click();
-  await expect(page.getByRole('status').filter({ hasText: '예산 4,200 μUSD 예약' })).toBeVisible();
-  await page.getByRole('button', { name: '생성 완료 및 정산' }).click();
-  await expect(page.getByRole('status').filter({ hasText: '실제 2,700 μUSD 정산 · 예약 1,500 μUSD 해제' })).toBeVisible();
-  await page.getByRole('link', { name: '생성된 짧은 대화 검토' }).click();
+async function openDraft(page: Page, draftId: string) {
+  await page.getByRole('link', { name: '초안' }).click();
+  await page.locator(`a[href="/drafts/${draftId}"]`).click();
+  await expect(page).toHaveURL(new RegExp(`/drafts/${draftId}$`));
+}
 
-  await page.getByRole('button', { name: '직접 수정' }).click();
-  const editor = page.getByRole('textbox', { name: '최종 본문' });
-  await editor.fill('천령은 빗소리를 듣다가 한 줄을 고쳤다.\n무영은 대답 대신 찻잔을 밀어 두었다.');
-  await page.getByRole('button', { name: '새 버전 저장' }).click();
-  await expect(page.getByRole('status').filter({ hasText: '새 버전을 저장했습니다.' })).toBeVisible();
+async function approvePrivate(page: Page, draftId: string) {
+  await openDraft(page, draftId);
   await page.getByRole('button', { name: '비공개 정사 승인' }).click();
   await expect(page.getByRole('status').filter({ hasText: '검토 결과를 저장했습니다.' })).toBeVisible();
+}
 
-  await returnToJourney(page);
-  await expect(page.getByText('게시 작업 0건')).toBeVisible();
-  await expect(page.getByText('비공개 승인 1건')).toBeVisible();
-  await page.getByRole('button', { name: '다른 초안 생성' }).click();
-  await page.getByRole('link', { name: '거절할 초안 검토' }).click();
-  await page.getByRole('button', { name: '거절' }).click();
-  await page.getByLabel('거절 사유').fill('현대식 표현이 인물의 말투와 맞지 않습니다.');
-  await page.getByRole('button', { name: '거절 확정' }).click();
-  await expect(page.getByRole('status').filter({ hasText: '검토 결과를 저장했습니다.' })).toBeVisible();
+async function createMajorJob(session: LocalOwnerSession, draftId: string, label: string) {
+  const [job] = await serviceInsert<Array<{ id: string }>>(session.config, 'generation_jobs', {
+    owner_id: seedOwnerId,
+    draft_id: draftId,
+    schedule_key: `e2e-major-${label}-${randomUUID()}`,
+    scheduled_for: new Date().toISOString(),
+    status: 'queued',
+    payload: { kind: 'major_event_proposal', source: 'e2e-owner-journey' },
+  });
+  return job!.id;
+}
 
-  await page.getByRole('link', { name: '일정' }).click();
-  await page.getByRole('button', { name: '특별일 추가' }).click();
-  await page.getByLabel('특별일').fill('2026-10-03');
-  await page.getByRole('button', { name: 'special-date 일정 저장' }).click();
-  await expect(page.getByRole('status').filter({ hasText: '일정을 저장했습니다.' })).toBeVisible();
-  await expect(page.getByLabel('특별일')).toHaveValue('2026-10-03');
+async function generateMajorStage(session: LocalOwnerSession, draftId: string, jobId: string, mode: 'new' | 'major_event_scene_plan' | 'major_event_draft') {
+  return edgeJson<{ versionId: string; continuityLevel: string }>(await edgePost(session, 'generate-draft', {
+    jobId,
+    draftId,
+    idempotencyKey: `e2e-${mode}-${randomUUID()}`,
+    mode,
+    kind: 'major_event_proposal',
+  }));
+}
 
-  await returnToJourney(page);
-  const scenePlan = page.getByRole('button', { name: '장면 계획 생성' });
-  const approvePlan = page.getByRole('button', { name: '장면 계획 승인' });
-  const generateDraft = page.getByRole('button', { name: '본문 생성' });
-  await expect(scenePlan).toBeDisabled();
-  await expect(approvePlan).toBeDisabled();
-  await expect(generateDraft).toBeDisabled();
-  await page.getByRole('button', { name: '사건 제안 승인' }).click();
-  await expect(scenePlan).toBeEnabled();
-  await scenePlan.click();
-  await expect(approvePlan).toBeEnabled();
-  await approvePlan.click();
-  await expect(generateDraft).toBeEnabled();
-  await generateDraft.click();
-  await expect(page.getByRole('status').filter({ hasText: '중대 사건 본문이 비공개 초안으로 생성되었습니다.' })).toBeVisible();
+async function reopenApprovedMajorDraft(session: LocalOwnerSession, draftId: string) {
+  await serviceRpc(session.config, 'transition_draft', { p_draft_id: draftId, p_expected: 'approved_private', p_next: 'archived' });
+  await serviceRpc(session.config, 'transition_draft', { p_draft_id: draftId, p_expected: 'archived', p_next: 'queued' });
+}
+
+test('authenticated owner journey persists budget, immutable versions, private approval, schedule, and major-event order', async ({ page }) => {
+  test.setTimeout(180_000);
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  const session = await authenticateSeedOwner(page);
+  await routeRealNarrativeApi(page, session);
+  await clearAccessFixture(session);
+  const functions = await startFakeProviderFunctions();
+  let accessJobId: string | null = null;
+  try {
+    await page.goto('/?real-owner=1');
+    await expect(page.getByRole('button', { name: '로그아웃' })).toBeVisible();
+    await expect(page.getByLabel('상태: 소유자 세션 · E2E')).toHaveCount(0);
+
+    const accessJob = await edgeJson<{ id: string }>(await edgePost(session, 'run-schedules', { action: 'access' }), 202);
+    accessJobId = accessJob.id;
+    const accessDraftId = randomUUID();
+    await serviceInsert(session.config, 'drafts', { id: accessDraftId, owner_id: seedOwnerId, kind: 'short_dialogue', status: 'queued', title: 'E2E 접속 대화' });
+    await servicePatch(session.config, `generation_jobs?id=eq.${accessJob.id}`, { draft_id: accessDraftId });
+    const [persistedJob] = await serviceGet<Array<{ id: string; draft_id: string }>>(session.config, `generation_jobs?select=id,draft_id&id=eq.${accessJob.id}`);
+    expect(persistedJob?.draft_id).toBe(accessDraftId);
+    const generated = await edgeJson<{ versionId: string; continuityLevel: string }>(await edgePost(session, 'generate-draft', {
+      jobId: accessJob.id,
+      draftId: persistedJob!.draft_id,
+      idempotencyKey: `e2e-access-${randomUUID()}`,
+      mode: 'new',
+      kind: 'short_dialogue',
+    }));
+    expect(generated.continuityLevel).toBe('review');
+
+    await openDraft(page, persistedJob!.draft_id);
+    const originalBody = await page.locator('.draft-body').textContent();
+    await page.getByRole('button', { name: '직접 수정' }).click();
+    await page.getByRole('textbox', { name: '최종 본문' }).fill('천령은 빗소리를 듣다가 한 줄을 고쳤다.\n무영은 대답 대신 찻잔을 밀어 두었다.');
+    await page.getByRole('button', { name: '새 버전 저장' }).click();
+    await expect(page.getByRole('status').filter({ hasText: '새 버전을 저장했습니다.' })).toBeVisible();
+    await page.getByRole('button', { name: '비공개 정사 승인' }).click();
+    await expect(page.getByRole('status').filter({ hasText: '검토 결과를 저장했습니다.' })).toBeVisible();
+
+    const accessDraft = await serviceGet<Array<{ status: string }>>(session.config, `drafts?select=status&id=eq.${persistedJob!.draft_id}`);
+    const accessVersions = await serviceGet<Array<{ version_number: number; content: { body: string } }>>(session.config, `draft_versions?select=version_number,content&draft_id=eq.${persistedJob!.draft_id}&order=version_number.asc`);
+    const publishJobs = await serviceGet<unknown[]>(session.config, `publish_jobs?select=id&draft_id=eq.${persistedJob!.draft_id}`);
+    const ledger = await serviceGet<Array<{ entry_type: string; amount_micros: number }>>(session.config, `budget_entries?select=entry_type,amount_micros&generation_job_id=eq.${accessJob.id}&order=created_at.asc`);
+    expect(accessDraft).toEqual([{ status: 'approved_private' }]);
+    expect(accessVersions).toHaveLength(2);
+    expect(accessVersions[0]?.content.body).toBe(originalBody);
+    expect(accessVersions[1]?.content.body).toContain('한 줄을 고쳤다');
+    expect(publishJobs).toEqual([]);
+    expect(ledger.map((entry) => entry.entry_type)).toEqual(['reservation', 'reconciliation']);
+    expect(ledger.reduce((sum, entry) => sum + Number(entry.amount_micros), 0)).toBeGreaterThan(0);
+
+    await page.getByRole('link', { name: '일정' }).click();
+    await page.getByLabel('daily-local-fixture 서울 실행 시각').fill('10:15');
+    await page.getByRole('button', { name: 'daily-local-fixture 일정 저장' }).click();
+    await expect(page.getByRole('status').filter({ hasText: '일정을 저장했습니다.' })).toBeVisible();
+    const schedule = await serviceGet<Array<{ seoul_time: string }>>(session.config, 'schedules?select=seoul_time&schedule_key=eq.daily-local-fixture');
+    expect(schedule[0]?.seoul_time).toMatch(/^10:15/);
+
+    const majorDraftId = randomUUID();
+    await serviceInsert(session.config, 'drafts', { id: majorDraftId, owner_id: seedOwnerId, kind: 'major_event_proposal', status: 'queued', title: 'E2E 중대 사건' });
+    await serviceInsert(session.config, 'major_event_workflows', { owner_id: seedOwnerId, draft_id: majorDraftId, phase: 'proposal', context: { source: 'owner-e2e' } });
+    const proposalJob = await createMajorJob(session, majorDraftId, 'proposal');
+    const earlyScenePlan = await edgePost(session, 'generate-draft', { jobId: proposalJob, draftId: majorDraftId, idempotencyKey: `early-${randomUUID()}`, mode: 'major_event_scene_plan', kind: 'major_event_proposal' });
+    const earlyBody = await earlyScenePlan.json();
+    expect(earlyScenePlan.status).toBe(409);
+    expect(earlyBody).toEqual({ error: 'workflow_phase_not_approved' });
+
+    await generateMajorStage(session, majorDraftId, proposalJob, 'new');
+    await approvePrivate(page, majorDraftId);
+    expect(await serviceGet(session.config, `major_event_workflows?select=phase&draft_id=eq.${majorDraftId}`)).toEqual([{ phase: 'proposal_approved' }]);
+
+    await reopenApprovedMajorDraft(session, majorDraftId);
+    const sceneJob = await createMajorJob(session, majorDraftId, 'scene');
+    await generateMajorStage(session, majorDraftId, sceneJob, 'major_event_scene_plan');
+    await approvePrivate(page, majorDraftId);
+    expect(await serviceGet(session.config, `major_event_workflows?select=phase&draft_id=eq.${majorDraftId}`)).toEqual([{ phase: 'scene_plan_approved' }]);
+
+    await reopenApprovedMajorDraft(session, majorDraftId);
+    const finalJob = await createMajorJob(session, majorDraftId, 'final');
+    await generateMajorStage(session, majorDraftId, finalJob, 'major_event_draft');
+    await approvePrivate(page, majorDraftId);
+    expect(await serviceGet(session.config, `major_event_workflows?select=phase&draft_id=eq.${majorDraftId}`)).toEqual([{ phase: 'final_approved' }]);
+    expect(await serviceGet(session.config, `publish_jobs?select=id&draft_id=eq.${majorDraftId}`)).toEqual([]);
+    const majorVersions = await serviceGet<Array<{ version_number: number }>>(session.config, `draft_versions?select=version_number&draft_id=eq.${majorDraftId}&order=version_number.asc`);
+    expect(majorVersions.map((version) => version.version_number)).toEqual([1, 2, 3]);
+  } finally {
+    if (accessJobId) await servicePatch(session.config, `generation_jobs?id=eq.${accessJobId}`, { schedule_key: `retired-access-${accessJobId}` }).catch(() => undefined);
+    await serviceDelete(session.config, 'schedules?schedule_key=eq.special-date').catch(() => undefined);
+    await functions.stop();
+  }
 });
 
 test('mobile review keeps actions reachable, traps/restores focus, announces changes, and does not cover prose', async ({ page }) => {
@@ -93,6 +187,53 @@ test('mobile review keeps actions reachable, traps/restores focus, announces cha
   expect(proseEnd!.y + proseEnd!.height).toBeLessThanOrEqual(actionBar!.y);
 });
 
+test('private styles stay scoped and compact toggles expose keyboard-reachable 44px targets', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.goto('/__e2e/visual/accessibility');
+  const outside = page.getByTestId('outside-admin-heading');
+  await expect(outside).toBeVisible();
+  expect(await outside.evaluate((node) => getComputedStyle(node).display)).toBe('block');
+
+  for (const target of await page.locator('.admin-shell .control-target').all()) {
+    const box = await target.boundingBox();
+    expect(box).not.toBeNull();
+    expect(box!.height).toBeGreaterThanOrEqual(44);
+  }
+  await page.getByRole('checkbox', { name: '자동화 사용' }).focus();
+  await expect(page.getByRole('checkbox', { name: '자동화 사용' })).toBeFocused();
+  const provider = page.getByRole('radio', { name: '로컬 테스트 활성 제공자' });
+  await provider.focus();
+  await expect(provider).toBeFocused();
+});
+
+test('read-only mutation controls are disabled without over-fading their labels or values', async ({ page }) => {
+  await page.goto('/__e2e/visual/read-only-settings');
+  const controls = page.locator('.settings-form :is(input, select, textarea, button)');
+  expect(await controls.count()).toBeGreaterThan(10);
+  for (const control of await controls.all()) {
+    await expect(control).toBeDisabled();
+    expect(Number(await control.evaluate((node) => getComputedStyle(node).opacity))).toBeGreaterThanOrEqual(0.55);
+  }
+});
+
+test('settings field grid is two-column on desktop and one-column on mobile', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.goto('/settings');
+  const desktopFields = await page.locator('.budget-fields .settings-field').all();
+  expect(desktopFields.length).toBeGreaterThanOrEqual(6);
+  const desktopFirst = await desktopFields[0]!.boundingBox();
+  const desktopSecond = await desktopFields[1]!.boundingBox();
+  expect(desktopFirst).not.toBeNull(); expect(desktopSecond).not.toBeNull();
+  expect(Math.abs(desktopFirst!.y - desktopSecond!.y)).toBeLessThan(4);
+  expect(desktopSecond!.x).toBeGreaterThan(desktopFirst!.x + desktopFirst!.width);
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  const mobileFirst = await desktopFields[0]!.boundingBox();
+  const mobileSecond = await desktopFields[1]!.boundingBox();
+  expect(mobileFirst).not.toBeNull(); expect(mobileSecond).not.toBeNull();
+  expect(mobileSecond!.y).toBeGreaterThan(mobileFirst!.y + mobileFirst!.height);
+});
+
 async function captureViewport(browser: Browser, width: number, height: number, suffix: string) {
   const views = [
     ['today', '/'], ['draft-index', '/drafts'], ['draft-review', '/drafts/e2e-access-draft'],
@@ -114,7 +255,29 @@ async function captureViewport(browser: Browser, width: number, height: number, 
         await document.fonts.ready;
         await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
       });
-      await page.evaluate(() => window.scrollTo(0, 0));
+      if (name === 'settings') {
+        await page.getByLabel('월간 예산 USD').evaluate((node) => {
+          node.scrollIntoView({ block: 'start' });
+          window.scrollBy(0, -140);
+        });
+        await expect(page.getByLabel('월간 예산 USD')).toBeInViewport();
+        await expect(page.getByRole('heading', { name: '비밀 연결' })).toBeInViewport();
+      } else if (name === 'schedules' && suffix === '390x844') {
+        await page.locator('.schedule-form').first().locator('dl').evaluate((node) => {
+          window.scrollTo(0, Math.max(0, node.getBoundingClientRect().top + window.scrollY - 560));
+        });
+        await expect(page.locator('.schedule-form').first().locator('dl')).toBeInViewport();
+        await expect(page.locator('.schedule-form').first().getByRole('button', { name: /일정 저장/ })).toBeInViewport();
+      } else await page.evaluate(() => window.scrollTo(0, 0));
+      if (suffix === '390x844') {
+        const rail = await page.locator('.admin-shell__rail').boundingBox();
+        const brand = await page.locator('.admin-shell__brand').boundingBox();
+        const nav = await page.locator('.admin-shell__nav').boundingBox();
+        expect(rail).not.toBeNull(); expect(brand).not.toBeNull(); expect(nav).not.toBeNull();
+        expect(rail!.height).toBeGreaterThanOrEqual(108);
+        expect(brand!.width).toBeGreaterThan(180);
+        expect(nav!.y).toBeGreaterThanOrEqual(rail!.y + 60);
+      }
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
       await page.screenshot({ animations: 'disabled' });
       await page.screenshot({ path: path.join(screenshotRoot, `${name}-${suffix}.png`), animations: 'disabled' });

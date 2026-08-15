@@ -1,37 +1,15 @@
-import { useState } from 'react';
-import { BrowserRouter, Link, Route, Routes, useParams } from 'react-router-dom';
+import { BrowserRouter, Route, Routes, useParams } from 'react-router-dom';
 import { AdminShell, PrivateAdminRoutes } from '../app/AdminApp';
 import { AdminNotice } from '../components/AdminNotice';
 import { AdminPageHeader } from '../components/AdminPageHeader';
-import { AdminSection } from '../components/AdminSection';
 import { AdminStatusBadge } from '../components/AdminStatusBadge';
+import { SettingsPage } from '../features/settings/SettingsPage';
 import { createE2EFixture } from './e2eFixtureApi';
 
 const fixture = createE2EFixture();
 
-function OwnerJourney() {
-  const [generation, setGeneration] = useState<'ready' | 'reserved' | 'reconciled'>('ready');
-  const [rejectReady, setRejectReady] = useState(fixture.store.drafts.has('e2e-reject-draft'));
-  const [majorPhase, setMajorPhase] = useState(0);
-  const phaseMessage = majorPhase === 4 ? '중대 사건 본문이 비공개 초안으로 생성되었습니다.' : null;
-  return <>
-    <AdminPageHeader eyebrow="결정 기록" title="소유자 여정" description="외부 호출 없이 승인 경계와 단계 순서를 검증하는 로컬 전용 작업대입니다." />
-    <AdminNotice><strong>소유자 세션 · E2E</strong> · 결정적 로컬 fixture</AdminNotice>
-    <AdminSection title="접속 시 짧은 대화" description="마지막 성공 뒤 최소 간격과 예산을 확인합니다.">
-      <p><AdminStatusBadge tone="green">최소 생성 간격 경과</AdminStatusBadge></p>
-      {generation === 'ready' && <button type="button" onClick={() => setGeneration('reserved')}>접속 생성 시작</button>}
-      {generation === 'reserved' && <><AdminNotice>예산 4,200 μUSD 예약</AdminNotice><button type="button" onClick={() => setGeneration('reconciled')}>생성 완료 및 정산</button></>}
-      {generation === 'reconciled' && <><AdminNotice tone="success">실제 2,700 μUSD 정산 · 예약 1,500 μUSD 해제</AdminNotice><Link to="/drafts/e2e-access-draft">생성된 짧은 대화 검토</Link></>}
-    </AdminSection>
-    <AdminSection title="검토 결과" description="비공개 승인에는 게시 작업이 뒤따르지 않습니다.">
-      <p>비공개 승인 {fixture.store.privateApprovals}건</p><p>게시 작업 {fixture.store.publishJobs}건</p>
-      {!rejectReady ? <button type="button" onClick={() => { fixture.createRejectDraft(); setRejectReady(true); }}>다른 초안 생성</button> : <Link to="/drafts/e2e-reject-draft">거절할 초안 검토</Link>}
-    </AdminSection>
-    <AdminSection title="중대 사건 단계" description="앞 단계를 승인해야 다음 단계가 열립니다.">
-      <ol className="phase-list"><li><button type="button" disabled={majorPhase !== 0} onClick={() => setMajorPhase(1)}>사건 제안 승인</button></li><li><button type="button" disabled={majorPhase !== 1} onClick={() => setMajorPhase(2)}>장면 계획 생성</button></li><li><button type="button" disabled={majorPhase !== 2} onClick={() => setMajorPhase(3)}>장면 계획 승인</button></li><li><button type="button" disabled={majorPhase !== 3} onClick={() => setMajorPhase(4)}>본문 생성</button></li></ol>
-      {phaseMessage && <AdminNotice tone="success">{phaseMessage}</AdminNotice>}
-    </AdminSection>
-  </>;
+function FixtureLanding() {
+  return <><AdminPageHeader eyebrow="시각 검증" title="결정적 화면 표본" description="실제 소유자 여정은 로컬 Supabase 인증과 영속 상태를 별도 E2E에서 검증합니다." /><AdminNotice>시각 회귀 fixture가 준비되었습니다.</AdminNotice></>;
 }
 
 function VisualState() {
@@ -54,9 +32,22 @@ function VisualStateShell() {
   return <AdminShell utility={readOnly ? <AdminStatusBadge tone="warning">로컬 둘러보기</AdminStatusBadge> : undefined} notice={readOnly ? <AdminNotice tone="readonly">로컬 둘러보기 · 저장되지 않음</AdminNotice> : undefined}><VisualState /></AdminShell>;
 }
 
+function AccessibilityFixture() {
+  return <>
+    <div className="admin-page-header" data-testid="outside-admin-heading">관리자 셸 밖의 문서 제목</div>
+    <AdminShell><SettingsPage api={fixture.api} /></AdminShell>
+  </>;
+}
+
+function ReadOnlySettingsFixture() {
+  return <AdminShell utility={<AdminStatusBadge tone="warning">로컬 둘러보기</AdminStatusBadge>} notice={<AdminNotice tone="readonly">로컬 둘러보기 · 저장되지 않음</AdminNotice>}><SettingsPage api={fixture.api} readOnly /></AdminShell>;
+}
+
 export function E2EFixtureApp() {
   return <BrowserRouter><Routes>
-    <Route path="/__e2e" element={<AdminShell utility={<AdminStatusBadge tone="plum">소유자 세션 · E2E</AdminStatusBadge>}><OwnerJourney /></AdminShell>} />
+    <Route path="/__e2e" element={<AdminShell utility={<AdminStatusBadge tone="plum">시각 표본 · E2E</AdminStatusBadge>}><FixtureLanding /></AdminShell>} />
+    <Route path="/__e2e/visual/accessibility" element={<AccessibilityFixture />} />
+    <Route path="/__e2e/visual/read-only-settings" element={<ReadOnlySettingsFixture />} />
     <Route path="/__e2e/visual/:state" element={<VisualStateShell />} />
     <Route path="*" element={<PrivateAdminRoutes api={fixture.api} />} />
   </Routes></BrowserRouter>;

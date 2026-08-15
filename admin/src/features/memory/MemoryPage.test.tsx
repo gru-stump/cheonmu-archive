@@ -64,4 +64,16 @@ describe('MemoryPage', () => {
     expect(await screen.findByRole('status')).toHaveTextContent('저장했지만 최신 기억을 불러오지 못했습니다');
     expect(screen.queryByText('기억 사용 상태를 저장하지 못했습니다.')).not.toBeInTheDocument();
   });
+
+  it('retries the real memory request and recovers from an initial route error', async () => {
+    const client = api();
+    client.getMemory = vi.fn().mockRejectedValueOnce(new Error('temporary failure')).mockResolvedValueOnce(memory);
+    render(<MemoryPage api={client} />);
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('기억을 불러오지 못했습니다.');
+    await userEvent.click(screen.getByRole('button', { name: '다시 시도' }));
+
+    expect(await screen.findByText('치료실의 약속')).toBeInTheDocument();
+    expect(client.getMemory).toHaveBeenCalledTimes(2);
+  });
 });

@@ -126,4 +126,23 @@ describe('SettingsPage', () => {
     expect(screen.getByText('OpenAI: 연결됨')).toBeInTheDocument();
     expect(screen.queryByDisplayValue('entered-only-in-this-test')).not.toBeInTheDocument();
   });
+
+  it('disables every settings mutation control in read-only preview', async () => {
+    const { container } = render(<SettingsPage api={api()} readOnly />);
+    await screen.findByRole('heading', { name: '설정' });
+
+    for (const control of container.querySelectorAll('input, select, textarea, button')) expect(control).toBeDisabled();
+  });
+
+  it('retries the real settings request and recovers from an initial route error', async () => {
+    const client = api();
+    client.getSettings = vi.fn().mockRejectedValueOnce(new Error('temporary failure')).mockResolvedValueOnce(await api().getSettings());
+    render(<SettingsPage api={client} />);
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('설정을 불러오지 못했습니다.');
+    await userEvent.click(screen.getByRole('button', { name: '다시 시도' }));
+
+    expect(await screen.findByLabelText('월간 예산 USD')).toHaveValue(20);
+    expect(client.getSettings).toHaveBeenCalledTimes(2);
+  });
 });

@@ -51,4 +51,23 @@ describe('SchedulesPage', () => {
     expect(await screen.findByRole('status')).toHaveTextContent('저장했지만 최신 일정을 불러오지 못했습니다');
     expect(screen.queryByText(/일정을 저장하지 못했습니다/)).not.toBeInTheDocument();
   });
+
+  it('disables every schedule mutation control in read-only preview', async () => {
+    const { container } = render(<SchedulesPage api={api()} readOnly />);
+    await screen.findByDisplayValue('09:00');
+
+    for (const control of container.querySelectorAll('input, select, button')) expect(control).toBeDisabled();
+  });
+
+  it('retries the real schedules request and recovers from an initial route error', async () => {
+    const client = api();
+    client.getSchedules = vi.fn().mockRejectedValueOnce(new Error('temporary failure')).mockResolvedValueOnce(await api().getSchedules());
+    render(<SchedulesPage api={client} />);
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('일정을 불러오지 못했습니다.');
+    await userEvent.click(screen.getByRole('button', { name: '다시 시도' }));
+
+    expect(await screen.findByDisplayValue('09:00')).toBeInTheDocument();
+    expect(client.getSchedules).toHaveBeenCalledTimes(2);
+  });
 });

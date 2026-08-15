@@ -52,13 +52,13 @@ export function DraftReviewPage({ api, draftId, readOnly = false }: { api: Narra
   const [stale, setStale] = useState(false);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
 
-  const load = async () => { setLoadError(false); const value = await api.getDraft(draftId); setDetail(value); setManualText(value.latestVersion.content.body); setStale(false); setMessage(null); setConfirmedRevisionSignature(null); };
+  const load = async () => { setLoadError(false); try { const value = await api.getDraft(draftId); setDetail(value); setManualText(value.latestVersion.content.body); setStale(false); setMessage(null); setConfirmedRevisionSignature(null); } catch { setLoadError(true); } };
   useEffect(() => { let active = true; void api.getDraft(draftId).then((value) => { if (active) { setDetail(value); setManualText(value.latestVersion.content.body); } }).catch(() => { if (active) setLoadError(true); }); return () => { active = false; }; }, [api, draftId]);
   const closeDialog = (preserveMessage = false) => { setDialog(null); setConfirmedRevisionSignature(null); setStale(false); if (!preserveMessage) setMessage(null); queueMicrotask(() => triggerRef.current?.focus()); };
   const openDialog = (kind: Exclude<DialogKind, null>, event: React.MouseEvent<HTMLButtonElement>) => { triggerRef.current = event.currentTarget; setDialog(kind); setMessage(null); setStale(false); setConfirmedRevisionSignature(null); };
   const handleConflict = (error: unknown) => { if (error instanceof NarrativeApiError && error.status === 409) { setStale(true); setMessage('새 버전이 있습니다. 로컬 수정 내용은 유지됩니다. 새로 불러오세요.'); return true; } return false; };
 
-  if (loadError) return <section><AdminPageHeader eyebrow="초안함" title="초안 검토" description="본문과 연속성 근거를 함께 검토합니다." /><AdminNotice tone="danger">초안을 불러오지 못했습니다.</AdminNotice></section>;
+  if (loadError) return <section><AdminPageHeader eyebrow="초안함" title="초안 검토" description="본문과 연속성 근거를 함께 검토합니다." /><AdminNotice tone="danger" action={<button type="button" onClick={() => void load()}>다시 시도</button>}>초안을 불러오지 못했습니다.</AdminNotice></section>;
   if (!detail) return <section><AdminPageHeader eyebrow="초안함" title="초안 검토" description="본문과 연속성 근거를 함께 검토합니다." /><AdminNotice>초안을 불러오는 중입니다.</AdminNotice></section>;
   const version = detail.latestVersion;
   const blocked = version.continuityLevel === 'block';

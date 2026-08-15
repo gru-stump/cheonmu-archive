@@ -376,7 +376,7 @@ function safeInteger(value: unknown, minimum: number): number {
 
 function policyFromRecord(value: Record<string, unknown>): GenerationPolicyValues {
   const parsed: GenerationPolicyValues = {
-    providerSettingId: String(value.id ?? value.provider_setting_id ?? ''), modelKey: String(value.model_key ?? ''),
+    providerSettingId: String(value.provider_setting_id ?? value.id ?? ''), modelKey: String(value.model_key ?? ''),
     maxInputTokens: safeInteger(value.max_input_tokens, 1), maxOutputTokens: safeInteger(value.max_output_tokens, 1),
     maxRevisionOutputTokens: safeInteger(value.max_revision_output_tokens, 1),
     inputCostMicrosPerMillion: safeInteger(value.input_cost_micros_per_million, 0),
