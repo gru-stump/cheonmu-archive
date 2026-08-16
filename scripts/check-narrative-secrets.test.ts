@@ -105,6 +105,8 @@ describe('scanNarrativeSecrets', () => {
       ['Authorization: Bearer ', ['s', 'k', '-example-not-a-real-key'].join('')].join(''),
       'ghp_...',
       'rawPrompt: undefined',
+      [['user', 'Prompt'].join(''), ': ""'].join(''),
+      [['raw', 'Prompt'].join(''), ': `   `'].join(''),
       'fixture-github-token',
     ].join('\n'));
 
@@ -120,24 +122,34 @@ describe('scanNarrativeSecrets', () => {
   it('detects quoted authorization keys, opaque bearer values, mixed percent text, and multiline prompt literals', async () => {
     // JSON quoting, low-variety opaque credentials, or an unrelated malformed percent must not hide a leak.
     const root = repository();
-    const opaqueCredential = 'Q'.repeat(32);
+    const opaqueCredential = 'Q'.repeat(20);
     const jsonAuthorization = JSON.stringify({ [['Author', 'ization'].join('')]: ['Bearer ', opaqueCredential].join('') });
     const encodedGitHub = [...githubToken('H')].map((character) => `%${character.charCodeAt(0).toString(16)}`).join('');
+    const suffixEncodedGitHub = [...githubToken('I')].map((character) => `%${character.charCodeAt(0).toString(16)}`).join('');
+    const interleavedParts = [...githubToken('N')].map((character) => `%${character.charCodeAt(0).toString(16)}`);
+    interleavedParts.splice(10, 0, '%ff');
     const promptKey = ['raw', 'Prompt'].join('');
     const multilinePrompt = [promptKey, ': `private fixture line one\nline two`'].join('');
     const longPrompt = [promptKey, ': "', 'private fixture '.repeat(400), '"'].join('');
     writeFileSync(join(root, 'quoted.json'), jsonAuthorization);
-    writeFileSync(join(root, 'mixed-percent.txt'), `progress is 100%\n${encodedGitHub}`);
+    writeFileSync(join(root, 'mixed-percent.txt'), `progress is 100%\ninvalid byte %ff${encodedGitHub}`);
+    writeFileSync(join(root, 'malformed-suffix.txt'), `${suffixEncodedGitHub}%ff`);
+    writeFileSync(join(root, 'malformed-interleaved.txt'), interleavedParts.join(''));
     writeFileSync(join(root, 'multiline.ts'), multilinePrompt);
     writeFileSync(join(root, 'long-prompt.ts'), longPrompt);
 
     const findings = await scanNarrativeSecrets({
       repoRoot: root,
-      trackedFiles: ['quoted.json', 'mixed-percent.txt', 'multiline.ts', 'long-prompt.ts'],
+      trackedFiles: [
+        'quoted.json', 'mixed-percent.txt', 'malformed-suffix.txt',
+        'malformed-interleaved.txt', 'multiline.ts', 'long-prompt.ts',
+      ],
     });
 
     expect(findings).toEqual([
       { file: 'long-prompt.ts', rule: 'raw-prompt-field' },
+      { file: 'malformed-interleaved.txt', rule: 'github-token' },
+      { file: 'malformed-suffix.txt', rule: 'github-token' },
       { file: 'mixed-percent.txt', rule: 'github-token' },
       { file: 'multiline.ts', rule: 'raw-prompt-field' },
       { file: 'quoted.json', rule: 'authorization-header' },

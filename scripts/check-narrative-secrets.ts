@@ -102,12 +102,9 @@ function decodePercent(value: string): string | null {
   if (!/%[0-9a-f]{2}/iu.test(value)) return null;
   let decoded = value;
   for (let pass = 0; pass < 2; pass += 1) {
-    const next = decoded.replace(/(?:%[0-9a-f]{2})+/giu, (encoded) => {
-      try {
-        return decodeURIComponent(encoded);
-      } catch {
-        return encoded;
-      }
+    const next = decoded.replace(/%([0-9a-f]{2})/giu, (_encoded, hex: string) => {
+      const byte = Number.parseInt(hex, 16);
+      return byte >= 0x20 && byte <= 0x7e ? String.fromCharCode(byte) : '';
     });
     if (next === decoded) break;
     decoded = next;
@@ -166,7 +163,7 @@ function isServiceRoleJwt(candidate: string): boolean {
 
 function isCredentialLike(candidate: string): boolean {
   if (/^(?:token|invalid-token|owner-token|visitor-token|expired-token|user-token|service-(?:role-)?(?:value|secret|credential)|fixture-[a-z0-9-]+)$/iu.test(candidate)) return false;
-  if (candidate.includes('${') || candidate.length < 24 || isObviousPlaceholder(candidate)) return false;
+  if (candidate.includes('${') || candidate.length < 16 || isObviousPlaceholder(candidate)) return false;
   return true;
 }
 
@@ -201,7 +198,8 @@ function matches(source: string): RuleMatch[] {
     }
   }
   for (const match of source.matchAll(rawPromptPattern)) {
-    found.push({ rule: 'raw-prompt-field', value: match[1] ?? match[2] ?? match[3] ?? '' });
+    const value = match[1] ?? match[2] ?? match[3] ?? '';
+    if (value.trim().length > 0) found.push({ rule: 'raw-prompt-field', value });
   }
   return found;
 }

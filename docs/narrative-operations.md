@@ -294,7 +294,9 @@ project ref와 연결 상태를 먼저 확인합니다.
 
 외부 작업 승인 뒤, 게시 전에 먼저 branch 안전 장치를 설정합니다.
 
-1. 현재 production target을 조회해 `<PRODUCTION_BRANCH>`와 기준 commit SHA를 기록합니다.
+1. 현재 production target을 조회해 `<PRODUCTION_BRANCH>`를 기록합니다. GitHub 저장소의
+   **Code** 화면에서 그 branch를 선택하고 최신 commit의 40자리 SHA를 복사해 기준
+   SHA로 기록합니다. branch 이름과 SHA가 예상값이 아니면 중단합니다.
 
 ```sql
 select github_repository_owner, github_repository_name, github_branch
@@ -302,12 +304,22 @@ from public.narrative_admin_settings
 where owner_id = '<OWNER_UUID>'::uuid;
 ```
 
-2. GitHub UI에서 그 기준 SHA로 `<CANARY_BRANCH>`를 새로 만듭니다. 현재 production
+2. 진행 중인 게시가 0건인지 확인합니다. 1건이라도 있으면 global branch target을
+   바꾸지 말고 그 job이 terminal 상태가 될 때까지 기다립니다.
+
+```sql
+select count(*) as active_publication_jobs
+from public.publish_jobs
+where owner_id = '<OWNER_UUID>'::uuid
+  and status in ('queued', 'publishing');
+```
+
+3. GitHub UI에서 그 기준 SHA로 `<CANARY_BRANCH>`를 새로 만듭니다. 현재 production
    branch와 다른 이름인지 확인합니다. 이 단계는 이 문서 작성 작업에서는 실행하지 않았습니다.
-3. `pages: write`와 `deploy-pages`가 없는 별도 canary CI/artifact preview 또는 production과
+4. `pages: write`와 `deploy-pages`가 없는 별도 canary CI/artifact preview 또는 production과
    분리된 preview 환경을 준비합니다. 현재 `.github/workflows/deploy.yml`의
    `workflow_dispatch`를 `<CANARY_BRANCH>`에서 실행하지 않습니다.
-4. 백업 후 서버 target만 캐너리 branch로 바꾸고 즉시 다시 조회합니다.
+5. 백업 후 서버 target만 캐너리 branch로 바꾸고 즉시 다시 조회합니다.
 
 ```sql
 update public.narrative_admin_settings
@@ -354,7 +366,8 @@ limit 1;
 ```sql
 update public.narrative_admin_settings
 set github_branch = '<PRODUCTION_BRANCH>', updated_at = now()
-where owner_id = '<OWNER_UUID>'::uuid;
+where owner_id = '<OWNER_UUID>'::uuid
+returning github_repository_owner, github_repository_name, github_branch;
 ```
 
 12. 해당 canary publish job이 `publishing`에 남지 않았고 증거가 보존됐는지 확인한 뒤
