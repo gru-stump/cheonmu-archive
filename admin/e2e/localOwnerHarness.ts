@@ -117,6 +117,7 @@ export async function edgePost(session: LocalOwnerSession, functionName: string,
       origin: adminOrigin,
       apikey: session.config.anonKey,
       authorization: `Bearer ${session.accessToken}`,
+      connection: 'close',
       'content-type': 'application/json',
     },
     body: JSON.stringify(value),
@@ -128,6 +129,7 @@ export async function dispatchGenerationWorker(session: LocalOwnerSession): Prom
     method: 'POST',
     headers: {
       apikey: session.config.anonKey,
+      connection: 'close',
       'content-type': 'application/json',
       'x-schedule-dispatch-token': localDispatchToken,
     },
@@ -163,9 +165,20 @@ export async function startFakeProviderFunctions(): Promise<{ stop(): Promise<vo
   let ready = false;
   while (Date.now() < deadline) {
     if (child.exitCode !== null) throw new Error(`Local functions exited early (${child.exitCode}): ${logs.slice(-1000)}`);
+    if (!logs.includes('Serving functions on')) {
+      await new Promise((resolve) => setTimeout(resolve, 25));
+      continue;
+    }
     try {
-      const response = await fetch(`${gatewayUrl}/functions/v1/run-schedules`, { method: 'OPTIONS' });
-      if (response.status !== 502 && response.status !== 503) {
+      const beforeProbe = logs.length;
+      const response = await fetch(`${gatewayUrl}/functions/v1/run-generation-worker`, { headers: { connection: 'close' } });
+      const probeDeadline = Date.now() + 500;
+      while (Date.now() < probeDeadline
+        && !logs.slice(beforeProbe).includes('serving the request with supabase/functions/run-generation-worker')) {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      if (response.status === 405
+        && logs.slice(beforeProbe).includes('serving the request with supabase/functions/run-generation-worker')) {
         ready = true;
         break;
       }
