@@ -75,10 +75,11 @@ update public.generation_jobs set idempotency_key = case id
     else 'b0250000-0000-4000-8000-000000000003'::uuid end,
   context_version_ids = array['upgrade-context'], context_snapshot = '[{"versionId":"upgrade-context","memoryType":"canon","content":"frozen","tokenCount":1}]',
   model_key = 'upgrade-model', max_input_tokens = 4096, max_output_tokens = 1024, max_revision_output_tokens = 256,
-  input_cost_micros_per_million = 0, output_cost_micros_per_million = 0, fixed_cost_micros = 0, worst_case_cost_micros = 0
+  input_cost_micros_per_million = 0, output_cost_micros_per_million = 0, fixed_cost_micros = 0,
+  worst_case_cost_micros = case when id = 'b0240000-0000-0000-0000-000000000003' then 321 else 0 end
 where id in ('b0240000-0000-0000-0000-000000000002', 'b0240000-0000-0000-0000-000000000003');
 insert into public.budget_entries (owner_id, budget_period_id, generation_job_id, amount_micros, entry_type, daily_bucket_date, description)
-values ('${owner}', 'b0220000-0000-0000-0000-000000000001', 'b0240000-0000-0000-0000-000000000003', 0, 'reservation', public.narrative_business_date(current_timestamp), 'upgrade running reservation');
+values ('${owner}', 'b0220000-0000-0000-0000-000000000001', 'b0240000-0000-0000-0000-000000000003', 321, 'reservation', public.narrative_business_date(current_timestamp), 'upgrade running reservation');
 `);
 
   await run('npx', ['supabase', 'migration', 'up', '--local']);
@@ -92,15 +93,18 @@ from public.generation_jobs where id in (
   'b0240000-0000-0000-0000-000000000005'
 ) order by id;
 select count(*) from public.generation_jobs where provider_dispatch_recorded_at is not null;
+select concat(count(*) filter (where entry_type = 'reservation'), '|', count(*) filter (where entry_type = 'failure'), '|', sum(amount_micros))
+from public.budget_entries where generation_job_id = 'b0240000-0000-0000-0000-000000000003';
 `);
   const lines = result.trim().split(/\r?\n/);
-  if (lines.length !== 6
+  if (lines.length !== 7
     || lines[0] !== 'queued||t|0'
     || lines[1] !== 'failed|worker_legacy_frozen|t|0'
     || lines[2] !== 'failed|worker_legacy_running|t|0'
     || lines[3] !== 'completed||t|0'
     || lines[4] !== 'failed||t|0'
-    || lines[5] !== '0') {
+    || lines[5] !== '0'
+    || lines[6] !== '1|1|321') {
     throw new Error(`019→020 did not migrate legacy states fail-closed without side-effect evidence\n${result}`);
   }
   for (const [name, hash] of before) {

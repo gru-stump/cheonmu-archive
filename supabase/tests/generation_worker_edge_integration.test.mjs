@@ -66,7 +66,7 @@ function insertJob(id, source, kind) {
       '{"source":"${source}","kind":"${kind}","budgetPolicy":"${budgetPolicy}"}');`);
 }
 
-function assertExactlyOnce(jobId, label) {
+function assertExactlyOnce(jobId, label, expectedAttempts) {
   const value = psql(`select concat_ws('|', job.status,
       (select count(*) from public.draft_versions as version where version.generation_job_id = job.id),
       (select count(*) from public.draft_versions as version where version.generation_job_id = job.id and version.provider_response_id is not null),
@@ -74,7 +74,20 @@ function assertExactlyOnce(jobId, label) {
       (select count(*) from public.budget_entries as entry where entry.generation_job_id = job.id and entry.entry_type = 'reconciliation'),
       job.worker_attempt_count)
     from public.generation_jobs as job where job.id = '${jobId}';`);
-  assert(value === 'completed|1|1|1|1|1' || value === 'completed|1|1|1|1|2', `${label} did not settle exactly once: ${value}`);
+  assert(value === `completed|1|1|1|1|${expectedAttempts}`, `${label} did not settle exactly once in ${expectedAttempts} worker attempt(s): ${value}`);
+}
+
+function invocationCount(logs, kind) {
+  return [...logs.value.matchAll(new RegExp(`FAKE_LOCAL_PROVIDER_INVOKED:${kind}`, 'g'))].length;
+}
+
+async function waitForInvocationCount(logs, kind, expected) {
+  const deadline = Date.now() + 5_000;
+  while (Date.now() < deadline && invocationCount(logs, kind) < expected) {
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  assert(invocationCount(logs, kind) === expected,
+    `expected exactly ${expected} ${kind} fake-provider invocation(s), got ${invocationCount(logs, kind)}\n${logs.value}`);
 }
 
 function stopServer(child) {
@@ -111,7 +124,8 @@ try {
 
   const [first, concurrent] = await Promise.all([dispatch(anon, logs), dispatch(anon, logs)]);
   assert([first.outcome, concurrent.outcome].sort().join('|') === 'completed|idle', `concurrent dispatch did not serialize: ${JSON.stringify([first, concurrent])}`);
-  assertExactlyOnce(scheduleJob, 'schedule dispatch');
+  assertExactlyOnce(scheduleJob, 'schedule dispatch', 1);
+  await waitForInvocationCount(logs, 'daily_event', 1);
 
   insertJob(accessJob, 'access', 'short_dialogue');
   const lostClaim = psql(service(`select public.claim_generation_worker_job('${lostClaimToken}') ->> 'outcome';`));
@@ -122,9 +136,12 @@ try {
   psql(`update public.generation_jobs set worker_retry_at = clock_timestamp() - interval '1 second' where id = '${accessJob}';`);
   const replacement = await dispatch(anon, logs);
   assert(replacement.outcome === 'completed' && replacement.jobId === accessJob, `replacement attempt did not complete: ${JSON.stringify(replacement)}`);
-  assertExactlyOnce(accessJob, 'lost-claim replacement dispatch');
+  assertExactlyOnce(accessJob, 'lost-claim replacement dispatch', 2);
+  await waitForInvocationCount(logs, 'short_dialogue', 1);
+  assert(invocationCount(logs, 'daily_event') === 1 && invocationCount(logs, 'short_dialogue') === 1,
+    `served fake-provider invocation count changed after settlement\n${logs.value}`);
 
-  console.log('PASS: served fake-local generation worker serialized concurrent schedule dispatch and safely replaced a lost pre-provider access claim with one version and one settlement.');
+  console.log('PASS: served fake-local generation worker made exactly one counted provider call per scenario, serialized concurrent schedule dispatch, and safely replaced a lost pre-provider access claim.');
 } finally {
   stopServer(child);
   await rm(temp, { recursive: true, force: true });
