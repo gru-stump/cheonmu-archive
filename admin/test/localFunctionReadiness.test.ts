@@ -1,7 +1,7 @@
 /** @vitest-environment node */
 
 import { afterEach, describe, expect, it } from 'vitest';
-import { startFakeProviderFunctions } from '../../e2e/localOwnerHarness';
+import { startFakeProviderFunctions } from '../e2e/localOwnerHarness';
 
 const realFetch = globalThis.fetch;
 
