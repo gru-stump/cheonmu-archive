@@ -94,9 +94,8 @@ describe('AdminApp local preview composition', () => {
     await user.click(screen.getByRole('link', { name: '설정' }));
     const settings = await screen.findByRole('heading', { name: '설정' });
     expect(settings).toBeInTheDocument();
-    for (const name of ['설정 저장', 'OpenAI 비밀 저장', 'Anthropic 비밀 저장', 'GitHub 비밀 저장']) {
-      expect(screen.getByRole('button', { name })).toBeDisabled();
-    }
+    expect(screen.getByRole('button', { name: '설정 저장' })).toBeDisabled();
+    for (const button of screen.getAllByRole('button', { name: '키 저장' })) expect(button).toBeDisabled();
     expect(screen.getByText('로컬 둘러보기 · 저장되지 않음')).toBeInTheDocument();
     expect(fetchSpy).not.toHaveBeenCalled();
   });

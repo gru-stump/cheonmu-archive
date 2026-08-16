@@ -147,6 +147,24 @@ body { margin: 0; min-width: 320px; background: var(--admin-paper); font-family:
 .admin-shell .settings-card legend{ padding: 0 .4rem; font-weight: 750; }
 .admin-shell .secret-form{ grid-template-columns: minmax(8rem, .5fr) minmax(12rem, 1fr) auto; align-items: end; padding: 1rem 0; border-top: 1px solid var(--admin-rule); }
 .admin-shell .secret-form p{ margin: 0; align-self: center; }
+.admin-shell .simple-settings > fieldset{ border-radius: 4px; box-shadow: 0 .35rem 1.4rem rgb(36 32 29 / 5%); }
+.admin-shell .simple-settings select{ width: 100%; }
+.admin-shell .settings-help{ margin: 0; color: var(--admin-muted); font-size: .86rem; line-height: 1.65; }
+.admin-shell .connection-state{ width: fit-content; margin: 0 0 .25rem; padding: .25rem .55rem; border-radius: 999px; background: var(--admin-red-wash); color: var(--admin-red); font-size: .76rem; font-weight: 750; }
+.admin-shell .connection-state--on{ background: var(--admin-green-wash); color: var(--admin-green); }
+.admin-shell .budget-presets{ display: flex; flex-wrap: wrap; gap: .5rem; margin: .75rem 0; }
+.admin-shell .budget-presets button{ min-width: 5.5rem; }
+.admin-shell .won-input{ display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; overflow: hidden; border: 1px solid var(--admin-rule); border-radius: 3px; background: var(--admin-surface); }
+.admin-shell .won-input:focus-within{ outline: 2px solid var(--admin-plum); outline-offset: 2px; }
+.admin-shell .won-input input{ width: 100%; border: 0; outline: 0; text-align: right; }
+.admin-shell .won-input span{ padding: 0 .8rem; color: var(--admin-muted); font-weight: 750; }
+.admin-shell .advanced-settings{ padding: 1rem; border: 1px dashed var(--admin-rule); background: rgb(255 253 248 / 45%); }
+.admin-shell .advanced-settings__body{ display: grid; grid-template-columns: minmax(10rem, .35fr) minmax(12rem, 1fr); gap: .55rem 1rem; margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--admin-rule); }
+.admin-shell .advanced-settings__body > p, .admin-shell .advanced-settings__body > .advanced-provider{ grid-column: 1 / -1; }
+.admin-shell .advanced-provider{ display: grid; grid-template-columns: minmax(10rem, .35fr) minmax(12rem, 1fr); gap: .55rem 1rem; }
+.admin-shell .advanced-provider h3{ grid-column: 1 / -1; margin: .75rem 0 0; }
+.admin-shell .button-danger{ border-color: var(--admin-red); color: var(--admin-red); }
+.admin-shell .publishing-secret{ margin-top: 1.5rem; }
 
 .admin-shell .phase-list{ display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .5rem; counter-reset: phase; }
 .admin-shell .phase-list li{ display: grid; gap: .4rem; counter-increment: phase; }
@@ -207,6 +225,8 @@ body { margin: 0; min-width: 320px; background: var(--admin-paper); font-family:
   .admin-shell .review-actions__secondary{ position: absolute; right: 0; bottom: calc(100% + .75rem); display: grid !important; width: min(20rem, calc(100vw - 2rem)); padding: .75rem; border: 1px solid var(--admin-rule); border-radius: 3px; background: var(--admin-surface); box-shadow: 0 .5rem 2rem rgb(36 32 29 / 18%); }
   .admin-shell .review-actions__secondary button{ width: 100%; margin: 0; text-align: left; }
   .admin-shell .schedule-form, .admin-shell .settings-grid, .admin-shell .budget-fields, .admin-shell .secret-form, .admin-shell .phase-list{ grid-template-columns: minmax(0, 1fr); }
+  .admin-shell .advanced-settings__body, .admin-shell .advanced-provider{ grid-template-columns: minmax(0, 1fr); }
+  .admin-shell .advanced-settings__body > p, .admin-shell .advanced-settings__body > .advanced-provider, .admin-shell .advanced-provider h3{ grid-column: 1; }
   .admin-shell .schedule-form dl{ grid-template-columns: minmax(0, 1fr) auto; }
   .admin-shell .schedule-form button[type='submit'], .admin-shell .secret-form button{ grid-column: 1; width: 100%; }
   .admin-shell .settings-form > fieldset{ padding: 1rem; }
