@@ -57,14 +57,16 @@ export function createManageSettingsHandler(deps: ManageSettingsDependencies, co
     try {
       const token = bearerToken(request);
       if (!token) throw new ManageSettingsError(401, 'authentication_required');
+      const owner = await deps.authenticateOwner(token);
       let value: unknown;
       try { value = await request.json(); } catch { throw new ManageSettingsError(400, 'invalid_command'); }
       const parsed = commandSchema.safeParse(value);
       if (!parsed.success) throw new ManageSettingsError(400, 'invalid_command');
       if (parsed.data.action === 'write-secret') {
-        return respond(Response.json(await applySecretWrite(deps, { authToken: token, kind: parsed.data.kind, value: parsed.data.value })));
+        const configured = await deps.storeSecret({ ownerId: owner.ownerId, kind: parsed.data.kind, value: parsed.data.value });
+        if (configured !== true) throw new ManageSettingsError(500, 'internal_error');
+        return respond(Response.json({ configured: true }));
       }
-      const owner = await deps.authenticateOwner(token);
       if (parsed.data.action === 'list-models') {
         return respond(Response.json(await deps.listModels({ ownerId: owner.ownerId, providerKey: parsed.data.providerKey })));
       }

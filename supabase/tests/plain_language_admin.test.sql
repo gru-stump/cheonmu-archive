@@ -1,6 +1,6 @@
 begin;
 
-select plan(34);
+select plan(35);
 
 select has_function('public', 'delete_narrative_secret', array['uuid', 'text'], 'server can delete one owner secret safely');
 select has_function('public', 'cancel_queued_generation_job', array['uuid'], 'owner can cancel an eligible queued job');
@@ -166,6 +166,7 @@ select set_config('request.jwt.claim.role', 'authenticated', true);
 select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000001', true);
 set local role authenticated;
 select ok(((public.get_narrative_dashboard() -> 'queue' -> 0) ? 'createdAt'), 'dashboard queue includes creation time');
+select is((public.get_narrative_dashboard() ->> 'krwPerUsd')::integer, 1380, 'dashboard includes the owner exchange rate for plain KRW display');
 select ok(exists(
   select 1 from jsonb_array_elements(public.get_narrative_dashboard() -> 'queue') item
   where item ->> 'id' = 'a2200000-0000-0000-0000-000000000002' and item ->> 'completedAt' is not null

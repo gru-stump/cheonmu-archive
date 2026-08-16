@@ -73,8 +73,8 @@ export async function runSchedules(deps: ScheduleDependencies): Promise<QueuedJo
   return jobs;
 }
 
-export async function evaluateAccessTrigger(deps: ScheduleDependencies, authToken: string, confirmedMaximumCostMicros: number): Promise<QueuedJob & { dispatchState: 'started' | 'delayed' }> {
-  const owner = await deps.authenticate(authToken); if (!owner) throw new ScheduleError('authentication_required');
+export async function evaluateAccessTrigger(deps: ScheduleDependencies, authToken: string, confirmedMaximumCostMicros: number, authenticatedOwner?: { ownerId: string }): Promise<QueuedJob & { dispatchState: 'started' | 'delayed' }> {
+  const owner = authenticatedOwner ?? await deps.authenticate(authToken); if (!owner) throw new ScheduleError('authentication_required');
   const job = await deps.queueAccessJob(owner.ownerId, deps.now(), confirmedMaximumCostMicros);
   let started = false;
   try { started = await deps.wakeGenerationWorker?.(job) === true; } catch { started = false; }
@@ -101,12 +101,16 @@ export function createScheduleHandler(deps: ScheduleDependencies, dispatchToken?
     if (body.action !== 'access') return respond(Response.json({ error: 'invalid_command' }, { status: 400 }));
     const token = bearerToken(request);
     if (!token) return respond(Response.json({ error: 'authentication_required' }, { status: 401 }));
+    let authenticatedOwner: { ownerId: string } | null;
+    try { authenticatedOwner = await deps.authenticate(token); }
+    catch { return respond(Response.json({ error: 'authentication_required' }, { status: 401 })); }
+    if (!authenticatedOwner) return respond(Response.json({ error: 'authentication_required' }, { status: 401 }));
     if (Object.keys(body).sort().join(',') !== 'action,confirmedMaximumCostMicros,maximumCostConfirmed'
       || body.maximumCostConfirmed !== true || typeof body.confirmedMaximumCostMicros !== 'number'
       || !Number.isSafeInteger(body.confirmedMaximumCostMicros) || body.confirmedMaximumCostMicros < 0) {
       return respond(Response.json({ error: 'invalid_command' }, { status: 400 }));
     }
-    try { return respond(Response.json(await evaluateAccessTrigger(deps, token, body.confirmedMaximumCostMicros), { status: 202 })); }
+    try { return respond(Response.json(await evaluateAccessTrigger(deps, token, body.confirmedMaximumCostMicros, authenticatedOwner), { status: 202 })); }
     catch (error) {
       const code = error instanceof ScheduleError ? error.code : 'internal_error';
       const status = code === 'authentication_required' ? 401 : ['access_interval_not_elapsed', 'daily_access_limit', 'budget_risk', 'schedule_automation_disabled', 'stale_cost_confirmation'].includes(code) ? 409 : 500;
@@ -115,7 +119,10 @@ export function createScheduleHandler(deps: ScheduleDependencies, dispatchToken?
   };
 }
 
-export interface SupabaseScheduleConfig { url: string; anonKey: string; serviceRoleKey: string; dispatchToken?: string; fetch?: typeof globalThis.fetch }
+export interface SupabaseScheduleConfig {
+  url: string; anonKey: string; serviceRoleKey: string; dispatchToken?: string; fetch?: typeof globalThis.fetch;
+  waitUntil?: (promise: Promise<unknown>) => void;
+}
 export function createSupabaseScheduleDependencies(config: SupabaseScheduleConfig, authToken: string): ScheduleDependencies {
   const request = config.fetch ?? globalThis.fetch;
   const userHeaders = { apikey: config.anonKey, authorization: `Bearer ${authToken}`, 'content-type': 'application/json' };
@@ -169,11 +176,16 @@ export function createSupabaseScheduleDependencies(config: SupabaseScheduleConfi
     queueAccessJob: async (ownerId, now, confirmedMaximumCostMicros) => queuedJob(await rpc('queue_narrative_access_job', { p_owner_id: ownerId, p_now: now.toISOString(), p_confirmed_maximum_cost_micros: confirmedMaximumCostMicros }), ownerId),
     wakeGenerationWorker: async () => {
       if (!config.dispatchToken) return false;
+      const workerRequest = request(`${config.url}/functions/v1/run-generation-worker`, {
+        method: 'POST', headers: { 'content-type': 'application/json', 'x-schedule-dispatch-token': config.dispatchToken, connection: 'close' },
+        body: JSON.stringify({ action: 'dispatch' }),
+      });
+      if (config.waitUntil) {
+        config.waitUntil(workerRequest.then(() => undefined).catch(() => undefined));
+        return true;
+      }
       try {
-        const response = await request(`${config.url}/functions/v1/run-generation-worker`, {
-          method: 'POST', headers: { 'content-type': 'application/json', 'x-schedule-dispatch-token': config.dispatchToken, connection: 'close' },
-          body: JSON.stringify({ action: 'dispatch' }),
-        });
+        const response = await workerRequest;
         return response.status === 202;
       } catch { return false; }
     },
@@ -182,12 +194,16 @@ export function createSupabaseScheduleDependencies(config: SupabaseScheduleConfi
 
 interface DenoRuntime { env: { get(name: string): string | undefined }; serve(handler: (request: Request) => Response | Promise<Response>): void }
 declare const Deno: DenoRuntime;
+declare const EdgeRuntime: { waitUntil(promise: Promise<unknown>): void } | undefined;
 if (typeof Deno !== 'undefined' && (import.meta as ImportMeta & { main?: boolean }).main) {
   const url = Deno.env.get('SUPABASE_URL'); const anonKey = Deno.env.get('SUPABASE_ANON_KEY'); const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'); const dispatchToken = Deno.env.get('NARRATIVE_SCHEDULE_DISPATCH_TOKEN');
   if (!url || !anonKey || !serviceRoleKey || !dispatchToken) throw new Error('schedule runtime settings are required');
   const cors = corsPolicyFromEnvironment(Deno.env.get('NARRATIVE_ADMIN_ORIGINS'));
   Deno.serve((request) => {
     const token = bearerToken(request) ?? '';
-    return createScheduleHandler(createSupabaseScheduleDependencies({ url, anonKey, serviceRoleKey, dispatchToken }, token), dispatchToken, cors)(request);
+    return createScheduleHandler(createSupabaseScheduleDependencies({
+      url, anonKey, serviceRoleKey, dispatchToken,
+      waitUntil: typeof EdgeRuntime !== 'undefined' ? (promise) => EdgeRuntime.waitUntil(promise) : undefined,
+    }, token), dispatchToken, cors)(request);
   });
 }

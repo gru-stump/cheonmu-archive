@@ -112,7 +112,7 @@ commit;
 
   await success('migration 019 failed over migration 018 data', runProcess(npx, ['supabase', 'migration', 'up', '--local', '--yes']));
   headApplied = true;
-  assert.equal(await scalar('select max(version) from supabase_migrations.schema_migrations;'), '202608140021');
+  assert.equal(await scalar('select max(version) from supabase_migrations.schema_migrations;'), '202608140022');
   assert.equal(
     await scalar(`select string_agg(concat(automation_enabled, '|', manual_generation_enabled, '|', schedule_automation_enabled), ',' order by owner_id)
       from public.narrative_admin_settings where owner_id in ('${trueOwner}', '${falseOwner}');`),

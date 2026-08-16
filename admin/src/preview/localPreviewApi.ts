@@ -28,6 +28,7 @@ const readOnly = async (): Promise<never> => { throw new Error('local_preview_re
 
 export const localPreviewApi: NarrativeApi = {
   getDashboard: async () => ({
+    krwPerUsd: 1_380,
     budget: { dailySpentMicros: 1_200, monthlySpentMicros: 8_400, reservedMicros: 300, dailyRemainingMicros: 18_800, monthlyRemainingMicros: 91_600 },
     nextScheduleAt: '2026-08-16T00:00:00.000Z',
     lastSuccessAt: '2026-08-15T03:00:00.000Z',

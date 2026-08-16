@@ -119,8 +119,8 @@ insert into public.provider_settings (
   headApplied = true;
   assert.equal(
     await scalar('select max(version) from supabase_migrations.schema_migrations;'),
-    '202608140021',
-    'upgrade fixture must apply migrations 011 through the generation worker at current head',
+    '202608140022',
+    'upgrade fixture must apply migrations 011 through the plain-language admin at current head',
   );
   assert.equal(
     await scalar("select concat(to_regprocedure('public.submit_draft_for_review(uuid,uuid,text)') is not null, '|', has_function_privilege('authenticated', 'public.submit_draft_for_review(uuid,uuid,text)', 'EXECUTE'), '|', not has_function_privilege('anon', 'public.submit_draft_for_review(uuid,uuid,text)', 'EXECUTE'));"),

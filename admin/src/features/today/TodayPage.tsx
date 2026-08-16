@@ -3,9 +3,9 @@ import { NarrativeApiError, type AccessEstimate, type DashboardData, type Narrat
 import { AdminNotice } from '../../components/AdminNotice';
 import { AdminPageHeader } from '../../components/AdminPageHeader';
 import { AdminSection } from '../../components/AdminSection';
-import { formatKrw, formatSeoulTimestamp, generationStatusCopy } from '../../lib/narrativeDisplay';
+import { formatKrw, formatSeoulTimestamp, generationStatusCopy, microsToKrw } from '../../lib/narrativeDisplay';
 
-const internalCost = (value: number) => `${new Intl.NumberFormat('ko-KR').format(value)} 비용 단위`;
+const displayCost = (value: number, krwPerUsd: number) => formatKrw(microsToKrw(value, krwPerUsd));
 const failureCopy: Record<string, string> = {
   provider_timeout: 'AI 응답이 늦어 작업이 중단됐습니다.',
   provider_outcome_unknown: 'AI 요청 결과를 확인하지 못해 안전하게 중단했습니다.',
@@ -83,9 +83,9 @@ export function TodayPage({ api, readOnly = false, now = () => new Date() }: { a
   return <section>
     {header}
     <div className="dashboard-grid">
-      <AdminSection title="오늘 사용"><dl><dt>사용</dt><dd>{internalCost(data.budget.dailySpentMicros)}</dd><dt>남은 한도</dt><dd>{internalCost(data.budget.dailyRemainingMicros)}</dd></dl></AdminSection>
-      <AdminSection title="이번 달 사용"><dl><dt>사용</dt><dd>{internalCost(data.budget.monthlySpentMicros)}</dd><dt>남은 한도</dt><dd>{internalCost(data.budget.monthlyRemainingMicros)}</dd></dl></AdminSection>
-      <AdminSection title="처리 중인 예상 비용"><p className="metric-value">{internalCost(data.budget.reservedMicros)}</p></AdminSection>
+      <AdminSection title="오늘 사용"><dl><dt>사용</dt><dd>{displayCost(data.budget.dailySpentMicros, data.krwPerUsd)}</dd><dt>남은 한도</dt><dd>{displayCost(data.budget.dailyRemainingMicros, data.krwPerUsd)}</dd></dl></AdminSection>
+      <AdminSection title="이번 달 사용"><dl><dt>사용</dt><dd>{displayCost(data.budget.monthlySpentMicros, data.krwPerUsd)}</dd><dt>남은 한도</dt><dd>{displayCost(data.budget.monthlyRemainingMicros, data.krwPerUsd)}</dd></dl></AdminSection>
+      <AdminSection title="처리 중인 예상 비용"><p className="metric-value">{displayCost(data.budget.reservedMicros, data.krwPerUsd)}</p></AdminSection>
       <AdminSection title="일정"><dl><dt>다음 예약</dt><dd>{data.nextScheduleAt ? formatSeoulTimestamp(data.nextScheduleAt, now()).relative : '예정 없음'}</dd><dt>마지막 성공</dt><dd>{data.lastSuccessAt ? formatSeoulTimestamp(data.lastSuccessAt, now()).relative : '아직 없음'}</dd></dl></AdminSection>
     </div>
 

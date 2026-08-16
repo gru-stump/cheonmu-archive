@@ -57,6 +57,7 @@ export interface DraftDetail extends Omit<DraftSummary, 'updatedAt' | 'continuit
 }
 
 export interface DashboardData {
+  krwPerUsd: number;
   budget: {
     dailySpentMicros: number;
     monthlySpentMicros: number;

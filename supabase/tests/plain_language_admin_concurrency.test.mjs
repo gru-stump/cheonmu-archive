@@ -65,7 +65,7 @@ insert into public.narrative_admin_settings (
 ) values ('${ownerId}', true, true);
 select vault.create_secret('fixture-value', 'narrative_${ownerId}_openai', 'plain language race fixture');
 insert into public.generation_jobs (id, owner_id, schedule_key, scheduled_for, payload)
-values ('${deleteRaceJobId}', '${ownerId}', 'plain-language-delete-race', clock_timestamp() - interval '1 minute',
+values ('${deleteRaceJobId}', '${ownerId}', 'plain-language-delete-race', '1970-01-01T00:00:00Z',
   '{"source":"schedule","kind":"daily_event","budgetPolicy":"block_at_risk"}');
 `);
 assertSuccess(setup, 'plain-language race setup failed');
@@ -121,7 +121,7 @@ update public.provider_settings set enabled = true where id = '${providerId}';
 update public.narrative_admin_settings set manual_generation_enabled = true, schedule_automation_enabled = true
 where owner_id = '${ownerId}';
 insert into public.generation_jobs (id, owner_id, schedule_key, scheduled_for, payload)
-values ('${cancelRaceJobId}', '${ownerId}', 'plain-language-cancel-race', clock_timestamp() - interval '1 minute',
+values ('${cancelRaceJobId}', '${ownerId}', 'plain-language-cancel-race', '1970-01-01T00:00:01Z',
   '{"source":"schedule","kind":"daily_event","budgetPolicy":"block_at_risk"}');
 `);
 assertSuccess(resetForCancel, 'cancel race setup failed');

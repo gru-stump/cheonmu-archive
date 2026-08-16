@@ -260,9 +260,15 @@ as $$
 declare
   base jsonb;
   recent_queue jsonb;
+  exchange_rate integer;
 begin
   perform narrative_private.require_narrative_owner();
   base := public.get_narrative_dashboard_v2();
+  select coalesce((
+    select settings.krw_per_usd
+    from public.narrative_admin_settings as settings
+    where settings.owner_id = auth.uid()
+  ), 1380) into exchange_rate;
   select coalesce(jsonb_agg(jsonb_build_object(
     'id', item.id,
     'source', case when item.payload ->> 'source' in ('manual', 'schedule', 'access')
@@ -290,7 +296,7 @@ begin
     where job.owner_id = auth.uid()
     order by job.created_at desc, job.id desc limit 25
   ) as item;
-  return (coalesce(base, '{}'::jsonb) - 'queue') || jsonb_build_object('queue', recent_queue);
+  return (coalesce(base, '{}'::jsonb) - 'queue') || jsonb_build_object('queue', recent_queue, 'krwPerUsd', exchange_rate);
 end;
 $$;
 

@@ -57,7 +57,7 @@ export function createE2EFixture() {
     secrets: { openai: false, anthropic: false, github: false },
   };
   const api: NarrativeApi = {
-    getDashboard: async () => ({ budget: { dailySpentMicros: 2_700, monthlySpentMicros: 18_400, reservedMicros: 0, dailyRemainingMicros: 19_997_300, monthlyRemainingMicros: 99_981_600 }, nextScheduleAt: '2026-08-16T00:00:00.000Z', lastSuccessAt: createdAt, failures: [], queue: [] }),
+    getDashboard: async () => ({ krwPerUsd: 1_380, budget: { dailySpentMicros: 2_700, monthlySpentMicros: 18_400, reservedMicros: 0, dailyRemainingMicros: 19_997_300, monthlyRemainingMicros: 99_981_600 }, nextScheduleAt: '2026-08-16T00:00:00.000Z', lastSuccessAt: createdAt, failures: [], queue: [] }),
     estimateAccess: async () => ({ maximumCostMicros: 4_200, maximumCostKrw: 6, modelLabel: '테스트 모델' }),
     triggerAccess: async () => ({ id: 'e2e-access-job', scheduledFor: createdAt, dispatchState: 'started' }),
     cancelGenerationJob: async () => ({ status: 'cancelled' }),

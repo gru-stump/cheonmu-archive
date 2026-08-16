@@ -41,7 +41,7 @@ function previewApi(): NarrativeApi {
   };
   const forbidden = vi.fn().mockRejectedValue(new Error('local_preview_read_only'));
   return {
-    getDashboard: vi.fn().mockResolvedValue({ budget: { dailySpentMicros: 1200, monthlySpentMicros: 8400, reservedMicros: 300, dailyRemainingMicros: 18800, monthlyRemainingMicros: 91600 }, nextScheduleAt: '2026-08-16T00:00:00Z', lastSuccessAt: '2026-08-15T03:00:00Z', failures: [], queue: [] }),
+    getDashboard: vi.fn().mockResolvedValue({ krwPerUsd: 1380, budget: { dailySpentMicros: 1200, monthlySpentMicros: 8400, reservedMicros: 300, dailyRemainingMicros: 18800, monthlyRemainingMicros: 91600 }, nextScheduleAt: '2026-08-16T00:00:00Z', lastSuccessAt: '2026-08-15T03:00:00Z', failures: [], queue: [] }),
     listDrafts: vi.fn().mockResolvedValue([{ id: previewDraftId, kind: 'short_dialogue', status: 'generated', title: '비 갠 뒤의 약속', updatedAt: '2026-08-15T03:00:00Z', latestVersionId: version.id, continuityLevel: 'pass' }]),
     getDraft: vi.fn().mockResolvedValue({ id: previewDraftId, kind: 'short_dialogue', status: 'generated', title: '비 갠 뒤의 약속', latestVersionId: version.id, latestVersion: version, versions: [version] }),
     getMemory: vi.fn().mockResolvedValue({ fixedCanon: [{ id: 'local-preview-canon', memoryType: 'canon', content: '천령과 무영의 유대는 비공개다.', enabled: true, createdAt: '2026-08-01T00:00:00Z', correctionHistory: [] }], continuity: [{ id: 'local-preview-continuity', memoryType: 'continuity', content: '비 오는 날 다시 만나기로 약속했다.', enabled: true, createdAt: '2026-08-14T00:00:00Z', correctionHistory: [] }], recent: [], feedback: [], unresolved: [] }),

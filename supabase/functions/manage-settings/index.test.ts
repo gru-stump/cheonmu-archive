@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { applySecretWrite, createManageSettingsHandler, createSupabaseManageSettingsDependencies, type ManageSettingsDependencies } from './index.ts';
+import { applySecretWrite, createManageSettingsHandler, createSupabaseManageSettingsDependencies, ManageSettingsError, type ManageSettingsDependencies } from './index.ts';
 
 function harness(overrides: Partial<ManageSettingsDependencies> = {}) {
   const stored: unknown[] = [];
@@ -94,6 +94,16 @@ describe('manage-settings model and deletion boundary', () => {
     });
   });
 
+  it('rejects an invalid owner token before revealing command validation', async () => {
+    const h = harness({ authenticateOwner: async () => { throw new ManageSettingsError(401, 'authentication_required'); } });
+    const response = await createManageSettingsHandler(h.deps)(new Request('http://local/manage-settings', {
+      method: 'POST', headers: { authorization: 'Bearer x', 'content-type': 'application/json' },
+      body: JSON.stringify({ kind: 'github', value: 'x' }),
+    }));
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toEqual({ error: 'authentication_required' });
+  });
+
   it('deletes only an allowlisted secret kind and returns safe state', async () => {
     const deleted: unknown[] = [];
     const h = harness({
@@ -127,7 +137,7 @@ describe('manage-settings model and deletion boundary', () => {
       const path = new URL(url).pathname;
       if (path === '/auth/v1/user') return Response.json({ id: 'owner-1' });
       if (path === '/rest/v1/owner_profiles') return Response.json([{ owner_id: 'owner-1' }]);
-      if (path === '/rest/v1/rpc/read_narrative_secret') return Response.json('server-only-openai-key');
+      if (path === '/rest/v1/rpc/read_narrative_secret') return Response.json('fixture-openai-key');
       return Response.json({ data: [{ id: 'gpt-5-mini' }, { id: 'whisper-1' }] });
     });
     const deps = createSupabaseManageSettingsDependencies({
@@ -141,8 +151,8 @@ describe('manage-settings model and deletion boundary', () => {
 
     expect(response.status).toBe(200);
     expect(value.models.map((model: { id: string }) => model.id)).toEqual(['gpt-5-mini']);
-    expect(JSON.stringify(value)).not.toContain('server-only-openai-key');
-    expect(calls.at(-1)).toEqual({ url: 'https://api.openai.com/v1/models', authorization: 'Bearer server-only-openai-key' });
+    expect(JSON.stringify(value)).not.toContain('fixture-openai-key');
+    expect(calls.at(-1)).toEqual({ url: 'https://api.openai.com/v1/models', authorization: 'Bearer fixture-openai-key' });
   });
 
   it('uses Anthropic model-list headers without returning the key', async () => {

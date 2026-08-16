@@ -5,6 +5,7 @@ import { TodayPage } from './TodayPage';
 import type { DashboardData, NarrativeApi } from '../../api/narrativeApi';
 
 const baseDashboard: DashboardData = {
+  krwPerUsd: 1380,
   budget: { dailySpentMicros: 1200, monthlySpentMicros: 8400, reservedMicros: 700, dailyRemainingMicros: 18100, monthlyRemainingMicros: 90900 },
   nextScheduleAt: '2026-08-16T00:30:00.000Z',
   lastSuccessAt: '2026-08-15T05:10:00.000Z',
@@ -30,6 +31,8 @@ describe('TodayPage plain-language owner flow', () => {
     expect(screen.getByText('예약 이야기 생성 중단')).toBeInTheDocument();
     expect(screen.getAllByText('2026.08.16 22:14').length).toBeGreaterThan(0);
     expect(screen.queryByText(/Generation queue|access · queued|provider_outcome_unknown|worker_retry_scheduled/)).not.toBeInTheDocument();
+    expect(screen.getByRole('region', { name: '오늘 사용' })).toHaveTextContent('2원');
+    expect(screen.queryByText(/비용 단위|μUSD/)).not.toBeInTheDocument();
 
     const queued = screen.getByText('접속 이야기 생성 대기 중').closest('li')!;
     expect(within(queued).getByRole('button', { name: '대기 취소' })).toBeInTheDocument();

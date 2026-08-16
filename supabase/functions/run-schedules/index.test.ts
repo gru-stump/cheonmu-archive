@@ -192,6 +192,15 @@ describe('evaluateAccessTrigger', () => {
     await expect(response.json()).resolves.toEqual({ error: 'authentication_required' });
   });
 
+  it('checks an invalid bearer before revealing whether the access command body is valid', async () => {
+    const deps = createSupabaseScheduleDependencies({ url: 'http://supabase', anonKey: 'anon', serviceRoleKey: 'service-secret', fetch: async () => Response.json({ message: 'invalid JWT' }, { status: 401 }) }, 'expired-token');
+    const response = await createScheduleHandler(deps)(new Request('http://local/run-schedules', {
+      method: 'POST', headers: { authorization: 'Bearer expired-token', 'content-type': 'application/json' }, body: JSON.stringify({ action: 'access' }),
+    }));
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toEqual({ error: 'authentication_required' });
+  });
+
   it('authenticates once, then delegates repeated access loads to one atomic queue operation', async () => {
     const h = harness();
     await expect(evaluateAccessTrigger(h.deps, 'token', 4200)).resolves.toMatchObject({ scheduleKey: 'access:owner-1', payload: { kind: 'short_dialogue', source: 'access' } });
@@ -250,6 +259,28 @@ describe('evaluateAccessTrigger', () => {
     expect(response.status).toBe(202);
     await expect(response.json()).resolves.toMatchObject({ id: 'same-job', dispatchState: 'delayed' });
     expect(queueCalls).toBe(1);
+  });
+
+  it('returns immediately after handing the worker request to the Edge background runtime', async () => {
+    let releaseWorker!: (response: Response) => void;
+    const workerResponse = new Promise<Response>((resolve) => { releaseWorker = resolve; });
+    const background: Promise<unknown>[] = [];
+    const fetch: typeof globalThis.fetch = async (input) => {
+      const path = new URL(String(input)).pathname;
+      if (path === '/auth/v1/user') return Response.json({ id: 'owner-1' });
+      if (path === '/rest/v1/rpc/queue_narrative_access_job') return Response.json({ id: 'job-1', owner_id: 'owner-1', schedule_key: 'access:owner-1', scheduled_for: '2026-08-16T00:00:00Z', payload: { kind: 'short_dialogue', source: 'access' } });
+      if (path === '/functions/v1/run-generation-worker') return workerResponse;
+      return Response.json({}, { status: 500 });
+    };
+    const deps = createSupabaseScheduleDependencies({
+      url: 'http://supabase', anonKey: 'anon', serviceRoleKey: 'service', dispatchToken: 'dispatch', fetch,
+      waitUntil: (promise) => { background.push(promise); },
+    }, 'owner-token');
+
+    await expect(evaluateAccessTrigger(deps, 'owner-token', 4200)).resolves.toMatchObject({ id: 'job-1', dispatchState: 'started' });
+    expect(background).toHaveLength(1);
+    releaseWorker(Response.json({ outcome: 'completed' }, { status: 202 }));
+    await Promise.all(background);
   });
 
   it('uses the user token only for identity and the service role only for the atomic access RPC', async () => {

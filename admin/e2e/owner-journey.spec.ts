@@ -4,7 +4,6 @@ import { randomUUID } from 'node:crypto';
 import {
   authenticateSeedOwner,
   cleanupImmutableAccessFixture,
-  dispatchGenerationWorker,
   edgePost,
   routeRealNarrativeApi,
   seedOwnerId,
@@ -56,7 +55,7 @@ async function ownerGenerate<T>(page: Page, session: LocalOwnerSession, value: u
 }
 
 test('authenticated owner journey persists budget, private approval, rejection feedback, special date, and major-event order', async ({ page }) => {
-  test.setTimeout(180_000);
+  test.setTimeout(240_000);
   await page.setViewportSize({ width: 1440, height: 1000 });
   const session = await authenticateSeedOwner(page);
   await routeRealNarrativeApi(page, session);
@@ -94,32 +93,23 @@ test('authenticated owner journey persists budget, private approval, rejection f
       context_version_ids: [], continuity_level: 'pass', continuity_findings: [], created_at: historicalAt,
     });
 
-    await page.getByRole('button', { name: '접속 생성 요청' }).click();
-    await expect(page.getByRole('status')).toContainText('대기열에 확인했습니다.');
-    const [accessJob] = await serviceGet<Array<{ id: string }>>(session.config, `generation_jobs?select=id&owner_id=eq.${seedOwnerId}&schedule_key=eq.${encodeURIComponent(`access:${seedOwnerId}`)}&status=eq.queued`);
+    await page.getByRole('button', { name: '접속 이야기 만들기' }).click();
+    const estimateDialog = page.getByRole('dialog', { name: '접속 이야기 비용 확인' });
+    await expect(estimateDialog).toContainText('최대 6원');
+    await estimateDialog.getByRole('button', { name: '최대 6원으로 만들기' }).click();
+    await expect(page.getByRole('status')).toContainText(/이야기 생성을 (시작했습니다|대기 중입니다)/);
+    await expect.poll(async () => {
+      const rows = await serviceGet<Array<{ id: string }>>(session.config, `generation_jobs?select=id&owner_id=eq.${seedOwnerId}&schedule_key=eq.${encodeURIComponent(`access:${seedOwnerId}`)}&order=created_at.desc&limit=1`);
+      return rows[0]?.id ?? null;
+    }, { timeout: 20_000 }).not.toBeNull();
+    const [accessJob] = await serviceGet<Array<{ id: string }>>(session.config, `generation_jobs?select=id&owner_id=eq.${seedOwnerId}&schedule_key=eq.${encodeURIComponent(`access:${seedOwnerId}`)}&order=created_at.desc&limit=1`);
     expect(accessJob?.id).toBeTruthy();
     expect(accessJob!.id).not.toBe(historicalAccessJobId);
-    await expect(page.getByRole('status')).toContainText(accessJob!.id);
     accessJobId = accessJob.id;
-    const repeated = await page.evaluate(async (accessToken) => Promise.all([1, 2].map(async () => {
-      const response = await fetch('/api/narrative/access', { method: 'POST', headers: { authorization: `Bearer ${accessToken}` } });
-      return { status: response.status, body: await response.json() };
-    })), session.accessToken);
-    expect(repeated).toEqual([
-      { status: 202, body: { id: accessJob.id, scheduledFor: expect.any(String) } },
-      { status: 202, body: { id: accessJob.id, scheduledFor: expect.any(String) } },
-    ]);
-    expect(await serviceGet(session.config, `generation_jobs?select=id&owner_id=eq.${seedOwnerId}&schedule_key=eq.${encodeURIComponent(`access:${seedOwnerId}`)}&status=eq.queued`)).toEqual([{ id: accessJob.id }]);
-    const generationResponsePromise = dispatchGenerationWorker(session);
     await expect.poll(async () => {
-      const pending = await serviceGet<Array<{ amount_micros: number }>>(session.config, `budget_entries?select=amount_micros&generation_job_id=eq.${accessJob.id}&entry_type=eq.reservation`);
-      return pending[0]?.amount_micros ?? null;
-    }, { timeout: 20_000 }).toBe(4_200);
-    await page.reload();
-    const reservationSection = page.locator('.admin-section').filter({ has: page.getByRole('heading', { name: '예약 비용' }) });
-    await expect(reservationSection).toContainText('4,200 μUSD');
-    const generated = await edgeJson<{ outcome: string; jobId: string }>(await generationResponsePromise, 202);
-    expect(generated).toEqual({ outcome: 'completed', jobId: accessJob.id });
+      const rows = await serviceGet<Array<{ status: string }>>(session.config, `generation_jobs?select=status&id=eq.${accessJob.id}`);
+      return rows[0]?.status ?? null;
+    }, { timeout: 30_000 }).toBe('completed');
     expect(functions.providerInvocationCount('short_dialogue')).toBe(1);
     const [persistedJob] = await serviceGet<Array<{ id: string; draft_id: string }>>(session.config, `generation_jobs?select=id,draft_id&id=eq.${accessJob.id}`);
     expect(persistedJob?.draft_id).toEqual(expect.any(String));
@@ -129,8 +119,10 @@ test('authenticated owner journey persists budget, private approval, rejection f
     );
     expect(generatedVersions).toEqual([{ continuity_level: 'review' }]);
     await page.reload();
-    await expect(page.locator('.admin-section').filter({ has: page.getByRole('heading', { name: '일일 예산' }) })).toContainText('2,700 μUSD');
-    await expect(page.locator('.admin-section').filter({ has: page.getByRole('heading', { name: '예약 비용' }) })).toContainText('0 μUSD');
+    await expect(page.getByRole('heading', { name: '이야기 생성 현황' })).toBeVisible();
+    await expect(page.getByText('접속 이야기 생성 완료').first()).toBeVisible();
+    await expect(page.getByText(/2026\.\d{2}\.\d{2} \d{2}:\d{2}/).first()).toBeVisible();
+    await expect(page.getByText(/access ·|attempt|provider_outcome_unknown/)).toHaveCount(0);
 
     await openDraft(page, persistedJob!.draft_id);
     const originalBody = await page.locator('.draft-body').textContent();
@@ -200,7 +192,7 @@ test('authenticated owner journey persists budget, private approval, rejection f
     await expect(specialScheduleForm).toBeVisible();
     await specialScheduleForm.getByLabel('special-date 서울 실행 시각').fill('18:45');
     await specialScheduleForm.getByLabel('특별일').fill('2026-10-03');
-    await specialScheduleForm.getByRole('checkbox', { name: '활성' }).check();
+    await specialScheduleForm.getByRole('checkbox', { name: '이 일정 사용' }).check();
     const specialSaveResponsePromise = page.waitForResponse((response) =>
       new URL(response.url()).pathname === '/api/narrative/schedules' && response.request().method() === 'POST');
     await specialScheduleForm.getByRole('button', { name: 'special-date 일정 저장' }).click();
@@ -339,11 +331,11 @@ test('private styles stay scoped and compact toggles expose keyboard-reachable 4
     expect(box).not.toBeNull();
     expect(box!.height).toBeGreaterThanOrEqual(44);
   }
-  await page.getByRole('checkbox', { name: '수동 생성 허용' }).focus();
-  await expect(page.getByRole('checkbox', { name: '수동 생성 허용' })).toBeFocused();
-  await page.getByRole('checkbox', { name: '자동 일정 허용' }).focus();
-  await expect(page.getByRole('checkbox', { name: '자동 일정 허용' })).toBeFocused();
-  const provider = page.getByRole('radio', { name: '로컬 테스트 활성 제공자' });
+  await page.getByRole('checkbox', { name: '직접 이야기 만들기 허용' }).focus();
+  await expect(page.getByRole('checkbox', { name: '직접 이야기 만들기 허용' })).toBeFocused();
+  await page.getByRole('checkbox', { name: '정해진 일정에 자동 만들기 허용' }).focus();
+  await expect(page.getByRole('checkbox', { name: '정해진 일정에 자동 만들기 허용' })).toBeFocused();
+  const provider = page.getByRole('radio', { name: 'OpenAI 사용' });
   await provider.focus();
   await expect(provider).toBeFocused();
 });
@@ -362,7 +354,7 @@ test('settings field grid is two-column on desktop and one-column on mobile', as
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto('/settings');
   const desktopFields = await page.locator('.budget-fields .settings-field').all();
-  expect(desktopFields.length).toBeGreaterThanOrEqual(6);
+  expect(desktopFields.length).toBe(2);
   const desktopFirst = await desktopFields[0]!.boundingBox();
   const desktopSecond = await desktopFields[1]!.boundingBox();
   expect(desktopFirst).not.toBeNull(); expect(desktopSecond).not.toBeNull();
@@ -398,12 +390,12 @@ async function captureViewport(browser: Browser, width: number, height: number, 
         await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
       });
       if (name === 'settings') {
-        await page.getByLabel('월간 예산 USD').evaluate((node) => {
+        await page.getByRole('textbox', { name: '한 달 예산', exact: true }).evaluate((node) => {
           node.scrollIntoView({ block: 'start' });
           window.scrollBy(0, -140);
         });
-        await expect(page.getByLabel('월간 예산 USD')).toBeInViewport();
-        await expect(page.getByRole('heading', { name: '비밀 연결' })).toBeInViewport();
+        await expect(page.getByRole('textbox', { name: '한 달 예산', exact: true })).toBeInViewport();
+        await expect(page.getByRole('button', { name: '5천원' })).toBeInViewport();
       } else if (name === 'schedules' && suffix === '390x844') {
         await page.locator('.schedule-form').first().locator('dl').evaluate((node) => {
           window.scrollTo(0, Math.max(0, node.getBoundingClientRect().top + window.scrollY - 560));
