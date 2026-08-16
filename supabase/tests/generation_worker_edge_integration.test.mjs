@@ -39,9 +39,20 @@ async function waitForGateway(child, logs) {
   const deadline = Date.now() + 30_000;
   while (Date.now() < deadline) {
     if (child.exitCode !== null) throw new Error(`Supabase functions server exited early (${child.exitCode})\n${logs.value}`);
+    if (!logs.value.includes('Serving functions on')) {
+      await new Promise((resolve) => setTimeout(resolve, 25));
+      continue;
+    }
     try {
-      const response = await fetch(gatewayUrl);
-      if (response.status === 405) return;
+      const beforeProbe = logs.value.length;
+      const response = await fetch(gatewayUrl, { headers: { connection: 'close' } });
+      const probeDeadline = Date.now() + 500;
+      while (Date.now() < probeDeadline
+        && !logs.value.slice(beforeProbe).includes('serving the request with supabase/functions/run-generation-worker')) {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      if (response.status === 405
+        && logs.value.slice(beforeProbe).includes('serving the request with supabase/functions/run-generation-worker')) return;
     } catch { /* startup probe */ }
     await new Promise((resolve) => setTimeout(resolve, 250));
   }
@@ -51,7 +62,7 @@ async function waitForGateway(child, logs) {
 async function dispatch(anonKey, logs) {
   const response = await fetch(gatewayUrl, {
     method: 'POST',
-    headers: { apikey: anonKey, 'content-type': 'application/json', 'x-schedule-dispatch-token': dispatchToken },
+    headers: { apikey: anonKey, connection: 'close', 'content-type': 'application/json', 'x-schedule-dispatch-token': dispatchToken },
     body: JSON.stringify({ action: 'dispatch' }),
   });
   const body = await response.json().catch(() => null);

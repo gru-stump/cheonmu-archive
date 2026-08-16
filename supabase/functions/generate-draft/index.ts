@@ -708,10 +708,14 @@ export function createSupabaseGenerationDependencies(
 interface DenoRuntime { env: { get(name: string): string | undefined }; serve(handler: (request: Request) => Response | Promise<Response>): void }
 declare const Deno: DenoRuntime;
 const defaultFakeResult: GenerationResult = { title: '로컬 생성 초안', kind: 'short_dialogue', setting: { time: '저녁', place: '처마 아래' }, body: '천령과 무영은 빗소리 사이에서 잠시 말을 멈추었다.', emotionalStart: '고요함', emotionalEnd: '잔잔한 안도', continuityUsed: [], continuityCandidates: [], canonChangeCandidates: [], unresolvedCallbacks: [], riskFlags: [] };
-export function createLocalFixtureProvider(sleep: (milliseconds: number) => Promise<unknown> = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds))): NarrativeProvider {
+export function createLocalFixtureProvider(
+  sleep: (milliseconds: number) => Promise<unknown> = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)),
+  onInvocation?: (kind: DraftKind) => void,
+): NarrativeProvider {
   return {
     generate: async (providerRequest, signal) => {
       if (signal?.aborted) throw new DOMException('aborted', 'AbortError');
+      onInvocation?.(providerRequest.kind);
       let rejectAbort: ((reason?: unknown) => void) | undefined;
       const aborted = new Promise<never>((_resolve, reject) => { rejectAbort = reject; });
       const abort = () => rejectAbort?.(new DOMException('aborted', 'AbortError'));
