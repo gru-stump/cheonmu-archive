@@ -1,0 +1,43 @@
+project_id = "cheonmu-narrative"
+
+[auth]
+site_url = "http://127.0.0.1:4174"
+additional_redirect_urls = ["http://127.0.0.1:4174"]
+# This disables signup in the local auth emulator. Hosted projects must also
+# disable "Enable signups" in the Supabase Dashboard; no hosted credentials
+# or project secrets belong in this repository.
+enable_signup = false
+
+[functions.generate-draft]
+# Runtime JWT verification would intercept authentication failures before the
+# exact-origin handler can apply its fail-closed browser policy.
+verify_jwt = false
+
+[functions.review-draft]
+# The function validates the bearer token against Supabase Auth itself.
+verify_jwt = false
+
+[functions.publish-draft]
+# The function validates the bearer token against Supabase Auth itself before
+# any service-role publication mutation or GitHub request is attempted.
+verify_jwt = false
+
+[functions.check-publication]
+# Scheduled dispatch uses a server-only header and the handler performs the
+# exact check before any service-role RPC or GitHub observation.
+verify_jwt = false
+
+[functions.run-schedules]
+# Cron authenticates with the dispatch secret; browser access is authenticated
+# explicitly by the handler before it evaluates or queues anything.
+verify_jwt = false
+
+[functions.run-generation-worker]
+# Cron authenticates with the server-only dispatch secret; no browser/JWT
+# request can invoke the service-role generation lifecycle.
+verify_jwt = false
+
+[functions.manage-settings]
+# Secret writes authenticate the owner inside the function before the
+# service-only Vault RPC is invoked.
+verify_jwt = false

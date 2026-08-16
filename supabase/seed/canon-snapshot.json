@@ -1,0 +1,3864 @@
+{
+  "schemaVersion": 2,
+  "sourcePriority": [
+    {
+      "id": "root-character-profile",
+      "priority": 1
+    },
+    {
+      "id": "profiles-and-documents",
+      "priority": 2
+    },
+    {
+      "id": "records-and-world",
+      "priority": 3
+    },
+    {
+      "id": "story-references",
+      "priority": 4
+    },
+    {
+      "id": "request-only",
+      "priority": 5
+    }
+  ],
+  "currentRelationshipStage": 7,
+  "profiles": [
+    {
+      "id": "cheonryeong",
+      "path": "src/content/profiles/_hidden/cheonryeong-full.md",
+      "visibility": "private",
+      "metadata": {
+        "height": "186cm",
+        "id": "cheonryeong",
+        "title": "천령 (天靈 | Cheonryeong)"
+      }
+    },
+    {
+      "id": "cheonryeong",
+      "path": "src/content/profiles/cheonryeong.md",
+      "visibility": "public",
+      "metadata": {
+        "height": "186cm",
+        "id": "cheonryeong",
+        "title": "천령 (天靈 | Cheonryeong)"
+      }
+    },
+    {
+      "id": "muyeong",
+      "path": "src/content/profiles/muyeong.md",
+      "visibility": "public",
+      "metadata": {
+        "height": "185cm",
+        "id": "muyeong",
+        "title": "무영 (無影 | Muyeong)"
+      }
+    }
+  ],
+  "documents": [
+    {
+      "id": "relationship",
+      "path": "src/content/documents/_hidden/relationship-full.md",
+      "visibility": "private",
+      "metadata": {
+        "id": "relationship",
+        "title": "천무 관계 프로필"
+      }
+    },
+    {
+      "id": "settings",
+      "path": "src/content/documents/_hidden/settings.md",
+      "visibility": "private",
+      "metadata": {
+        "id": "settings",
+        "title": "천무 설정"
+      }
+    },
+    {
+      "id": "relationship",
+      "path": "src/content/documents/relationship.md",
+      "visibility": "public",
+      "metadata": {
+        "id": "relationship",
+        "title": "천무 관계 프로필"
+      }
+    }
+  ],
+  "records": [
+    {
+      "id": "keeping-distance",
+      "path": "src/content/records/_hidden/06-keeping-distance-full.md",
+      "visibility": "private",
+      "metadata": {
+        "characters": [
+          "cheonryeong",
+          "muyeong"
+        ],
+        "cinematic": false,
+        "id": "keeping-distance",
+        "quote": "누가 가볍다고 판단했어요?",
+        "recordNumber": "CM-06",
+        "related": [
+          "fracture",
+          "witnessing"
+        ],
+        "stage": 6,
+        "status": "confirmed",
+        "tags": [
+          "거리",
+          "보호",
+          "통제"
+        ],
+        "title": "거리 두기"
+      },
+      "stage": 6,
+      "status": "confirmed"
+    },
+    {
+      "id": "the-one-who-stayed",
+      "path": "src/content/records/00-the-one-who-stayed.md",
+      "visibility": "public",
+      "metadata": {
+        "characters": [
+          "cheonryeong",
+          "muyeong"
+        ],
+        "cinematic": true,
+        "credit": {
+          "creator": "리몽"
+        },
+        "id": "the-one-who-stayed",
+        "illustration": "/images/Forgotten_record_first_meeting.png",
+        "illustrationAlt": "무너진 건물과 흩날리는 불티 속에서 검은 머리 아이를 안은 흰 옷의 구조자가 뒤를 돌아보는 흑백 삽화",
+        "quote": "두고 가기엔 아깝잖아.",
+        "recordNumber": "잊혀진 기록",
+        "related": [
+          "first-contact"
+        ],
+        "stage": 0,
+        "status": "confirmed",
+        "tags": [
+          "전사",
+          "구조",
+          "과거"
+        ],
+        "title": "남아 있던 사람"
+      },
+      "stage": 0,
+      "status": "confirmed"
+    },
+    {
+      "id": "first-contact",
+      "path": "src/content/records/01-first-contact.md",
+      "visibility": "public",
+      "metadata": {
+        "characters": [
+          "cheonryeong",
+          "muyeong"
+        ],
+        "cinematic": true,
+        "id": "first-contact",
+        "quote": "전원 철수한 뒤에 나가겠습니다.",
+        "recordNumber": "CM-01",
+        "related": [
+          "repeated-treatment",
+          "the-one-who-stayed"
+        ],
+        "stage": 1,
+        "status": "confirmed",
+        "tags": [
+          "첫-조우",
+          "치료",
+          "중상"
+        ],
+        "title": "기록된 첫 만남"
+      },
+      "stage": 1,
+      "status": "confirmed"
+    },
+    {
+      "id": "repeated-treatment",
+      "path": "src/content/records/02-repeated-treatment.md",
+      "visibility": "public",
+      "metadata": {
+        "characters": [
+          "cheonryeong",
+          "muyeong"
+        ],
+        "cinematic": false,
+        "credit": {
+          "creator": "레이지빈"
+        },
+        "id": "repeated-treatment",
+        "illustration": "/images/cheonmu_repeated_treatment.jpg",
+        "illustrationAlt": "블라인드 사이로 볕이 드는 진료실에서 흰 가운에 붉은 완장을 찬 천령이 진료대에 앉은 전투복 차림 무영의 가슴에 손을 얹고 살피는 삽화",
+        "quote": "이번에도 돌아왔네. 참 성실한 환자야.",
+        "recordNumber": "CM-02",
+        "related": [
+          "first-contact",
+          "field-accompaniment"
+        ],
+        "stage": 2,
+        "status": "confirmed",
+        "tags": [
+          "치료",
+          "귀환",
+          "상처"
+        ],
+        "title": "반복되는 치료"
+      },
+      "stage": 2,
+      "status": "confirmed"
+    },
+    {
+      "id": "field-accompaniment",
+      "path": "src/content/records/03-field-accompaniment.md",
+      "visibility": "public",
+      "metadata": {
+        "characters": [
+          "cheonryeong",
+          "muyeong"
+        ],
+        "cinematic": true,
+        "id": "field-accompaniment",
+        "quote": "환자가 아직 안 나왔는데 내가 어떻게 가.",
+        "recordNumber": "CM-03",
+        "related": [
+          "repeated-treatment",
+          "uneasy-trust"
+        ],
+        "stage": 3,
+        "status": "confirmed",
+        "tags": [
+          "현장",
+          "의료-지원",
+          "지휘"
+        ],
+        "title": "현장 동행"
+      },
+      "stage": 3,
+      "status": "confirmed"
+    },
+    {
+      "id": "uneasy-trust",
+      "path": "src/content/records/04-uneasy-trust.md",
+      "visibility": "public",
+      "metadata": {
+        "characters": [
+          "cheonryeong",
+          "muyeong"
+        ],
+        "cinematic": false,
+        "id": "uneasy-trust",
+        "quote": "생사는 상대의 판단에 맡길 수 있다.",
+        "recordNumber": "CM-04",
+        "related": [
+          "field-accompaniment",
+          "fracture"
+        ],
+        "stage": 4,
+        "status": "confirmed",
+        "tags": [
+          "신뢰",
+          "동료",
+          "판단"
+        ],
+        "title": "불쾌한 신뢰"
+      },
+      "stage": 4,
+      "status": "confirmed"
+    },
+    {
+      "id": "fracture",
+      "path": "src/content/records/05-fracture.md",
+      "visibility": "public",
+      "metadata": {
+        "characters": [
+          "cheonryeong",
+          "muyeong"
+        ],
+        "cinematic": true,
+        "id": "fracture",
+        "quote": "눈 떠. 지금 자면 안 돼.",
+        "recordNumber": "CM-05",
+        "related": [
+          "uneasy-trust",
+          "keeping-distance"
+        ],
+        "stage": 5,
+        "status": "confirmed",
+        "tags": [
+          "중상",
+          "오염",
+          "희생"
+        ],
+        "title": "균열"
+      },
+      "stage": 5,
+      "status": "confirmed"
+    },
+    {
+      "id": "keeping-distance",
+      "path": "src/content/records/06-keeping-distance.md",
+      "visibility": "public",
+      "metadata": {
+        "characters": [
+          "cheonryeong",
+          "muyeong"
+        ],
+        "cinematic": false,
+        "id": "keeping-distance",
+        "quote": "누가 가볍다고 판단했어요?",
+        "recordNumber": "CM-06",
+        "related": [
+          "fracture",
+          "witnessing"
+        ],
+        "stage": 6,
+        "status": "confirmed",
+        "tags": [
+          "거리",
+          "보호",
+          "통제"
+        ],
+        "title": "거리 두기"
+      },
+      "stage": 6,
+      "status": "confirmed"
+    },
+    {
+      "id": "witnessing",
+      "path": "src/content/records/07-witnessing.md",
+      "visibility": "public",
+      "metadata": {
+        "characters": [
+          "cheonryeong",
+          "muyeong"
+        ],
+        "cinematic": true,
+        "id": "witnessing",
+        "quote": "가벼운 부상이 아니었습니다.",
+        "recordNumber": "CM-07",
+        "related": [
+          "keeping-distance"
+        ],
+        "stage": 7,
+        "status": "confirmed",
+        "tags": [
+          "목격",
+          "위급",
+          "비밀"
+        ],
+        "title": "목격"
+      },
+      "stage": 7,
+      "status": "confirmed"
+    }
+  ],
+  "world": [
+    {
+      "basisStage": 1,
+      "categories": [
+        "organization"
+      ],
+      "clearance": "공개 열람",
+      "documentNumber": "WF-01",
+      "explanation": "현장 부서와 의료 부서를 함께 운용하는 특수재난 대응 기관이다.",
+      "id": "special-disaster-agency",
+      "relatedRecords": [
+        "first-contact",
+        "field-accompaniment"
+      ],
+      "sections": [
+        {
+          "paragraphs": [
+            "현장 통제와 격리, 구조, 의료 지원을 담당한다.",
+            "산하에 현장 대응 부서인 특수기동대, 치료와 관찰을 맡는 의료센터, 그리고 사건을 문서로 남기는 기록 부서를 둔다.",
+            "모든 특수재난 사건은 종결 후 기록철에 등재되며, 문서 번호가 붙은 기록만 정식 사건으로 인정된다."
+          ],
+          "revealStage": 1
+        },
+        {
+          "paragraphs": [
+            "사건 보고서의 측정값과 판정은 사후 정정될 수 있으나, 정정에는 담당 의료인 또는 지휘관의 서명이 필요하다."
+          ],
+          "revealStage": 5
+        }
+      ],
+      "status": "public",
+      "summary": "미확인 개체와 특수재난을 관리하는 기관.",
+      "title": "특수재난관리청"
+    },
+    {
+      "basisStage": 1,
+      "categories": [
+        "organization"
+      ],
+      "clearance": "공개 열람",
+      "documentNumber": "WF-02",
+      "explanation": "무영이 소속된 현장 대응 부서다.",
+      "id": "special-task-force",
+      "relatedRecords": [
+        "first-contact",
+        "field-accompaniment",
+        "fracture"
+      ],
+      "sections": [
+        {
+          "paragraphs": [
+            "지휘관은 철수 순서와 구조 인원의 안전을 확인하며 무영이 현장 지휘를 맡고 있다.",
+            "위험 현장에서는 지휘관이 가장 먼저 진입하고 가장 마지막에 철수하는 것이 부대의 오랜 관행이다."
+          ],
+          "revealStage": 1
+        },
+        {
+          "paragraphs": [
+            "고위험 작전에는 의료 지원 인력이 점검선까지 동행하는 편성이 정착되어 있다."
+          ],
+          "revealStage": 3
+        },
+        {
+          "paragraphs": [
+            "대원을 대신해 위험 요소에 노출된 지휘관의 사례가 보고되어 있으며, 해당 인원의 현장 복귀는 의료 판정을 따른다."
+          ],
+          "revealStage": 5
+        }
+      ],
+      "status": "public",
+      "summary": "고위험 현장에 투입되는 대응 부서.",
+      "title": "특수기동대"
+    },
+    {
+      "basisStage": 1,
+      "categories": [
+        "medical"
+      ],
+      "clearance": "공개 열람",
+      "documentNumber": "WF-03",
+      "explanation": "천령이 근무하며 무영의 치료가 반복되는 곳이다.",
+      "id": "third-medical-center",
+      "relatedRecords": [
+        "first-contact",
+        "repeated-treatment",
+        "fracture"
+      ],
+      "sections": [
+        {
+          "paragraphs": [
+            "천령이 의사이자 연구원으로 소속되어 현장 의료 지원에도 참여한다."
+          ],
+          "revealStage": 1
+        },
+        {
+          "paragraphs": [
+            "반복 내원하는 환자에게는 전담 의사가 배정된다. 전담 배정은 공식 제도라기보다 반복되는 배정이 굳어진 관행에 가깝다.",
+            "적성 등록자(WF-10)는 회복이 빨라 외상 징후가 조기에 가려진다. 여기에 자각 증상의 축소 보고가 겹치면 중증이 늦게 발견되는 사례가 반복되어, 적성자 반복 내원자에게는 전담 의사의 지속 관찰이 권장된다."
+          ],
+          "revealStage": 2
+        },
+        {
+          "paragraphs": [
+            "일부 치료 기록은 담당 의료인 전담으로 잠기며, 다른 의료진은 열람할 수 없다. 전담 잠금의 사유는 차트에 남지 않는다."
+          ],
+          "revealStage": 5
+        }
+      ],
+      "status": "public",
+      "summary": "특수재난 부상자와 오염 노출자를 치료하고 관찰하는 의료 기관.",
+      "title": "제3의료센터"
+    },
+    {
+      "basisStage": 1,
+      "categories": [
+        "field-response"
+      ],
+      "clearance": "공개 열람",
+      "documentNumber": "WF-04",
+      "explanation": "현장 인원을 살리기 위한 절차이며 두 사람의 판단이 자주 부딪치는 지점이다.",
+      "id": "containment-protocol",
+      "relatedRecords": [
+        "first-contact",
+        "field-accompaniment",
+        "fracture"
+      ],
+      "sections": [
+        {
+          "paragraphs": [
+            "의료진도 철수 명령의 대상이지만 현장 판단과 충돌한 사례가 존재한다.",
+            "격리문은 다중 잠금쇠 구조이며, 마지막 잠금의 확인은 현장 지휘관의 몫이다. 격리선 안에 인원이 남은 상태의 폐쇄는 지휘관 권한으로만 가능하다."
+          ],
+          "revealStage": 1
+        },
+        {
+          "paragraphs": [
+            "오염 농도가 철수 기준을 넘으면 전 인원 철수가 원칙이다. 기준 초과 후 잔류한 인원은 사후 보고 대상이 되지만, 실제로 보고까지 이어진 사례는 드물다."
+          ],
+          "revealStage": 5
+        }
+      ],
+      "status": "public",
+      "summary": "미확인 개체가 관측된 현장은 격리선을 기준으로 통제된다.",
+      "title": "격리 및 철수 절차"
+    },
+    {
+      "basisStage": 5,
+      "categories": [
+        "anomaly"
+      ],
+      "clearance": "부분 공개",
+      "documentNumber": "WF-05",
+      "explanation": "특수재난 현장의 부상은 상처만 치료한다고 끝나지 않는다.",
+      "id": "contamination-treatment",
+      "relatedRecords": [
+        "first-contact",
+        "fracture"
+      ],
+      "sections": [
+        {
+          "paragraphs": [
+            "노출 정도에 따라 장비 측정과 의료 관찰이 이루어진다.",
+            "오염은 열상이나 골절과 달리 노출 직후에는 겉으로 드러나지 않는 경우가 있어, 무증상 인원도 관찰 기간을 거친다."
+          ],
+          "revealStage": 1
+        },
+        {
+          "paragraphs": [
+            "치료 방식과 일부 회복 사례는 제한 정보로 분류되어 있다.",
+            "고농도 오염 물질은 검은 액상으로 관측되며, 접촉한 구조물 표면을 하얗게 일으키고 방호복 섬유를 침식한 사례가 있다.",
+            "오염 강도 측정값이 사후 하향 정정된 사건이 존재한다. 정정 사유는 초기 계측 오류로 기재되어 있다."
+          ],
+          "revealStage": 5
+        }
+      ],
+      "status": "partial",
+      "summary": "오염은 일반 외상과 구분해 다뤄진다.",
+      "title": "오염과 치료"
+    },
+    {
+      "basisStage": 5,
+      "categories": [
+        "anomaly"
+      ],
+      "clearance": "부분 공개",
+      "documentNumber": "WF-06",
+      "explanation": "특수재난의 원인이 되는 존재들로, 관측되는 즉시 격리선이 설정된다.",
+      "id": "unidentified-entities",
+      "relatedRecords": [
+        "first-contact",
+        "fracture"
+      ],
+      "sections": [
+        {
+          "paragraphs": [
+            "미확인 개체는 형태와 성질이 일정하지 않아 개별 사건 단위로 분류된다. 관측 즉시 격리선이 설정되고 민간인 접근이 통제된다.",
+            "제압보다 격리가 우선이며, 제압은 격리 유지가 불가능하다고 판단된 경우에만 승인된다.",
+            "사건이 누적되며 대응 규모를 기준으로 한 등급 체계(WF-09)와 행동 경향 묶음(OB-03)이 도입되었다. 두 체계 모두 개체의 정체를 분류하지 않는다 — 개체는 여전히 개별 사건 단위로만 다뤄진다."
+          ],
+          "revealStage": 1
+        },
+        {
+          "paragraphs": [
+            "폐쇄 시설에 장기간 머문 개체는 내부에 오염 물질을 축적하며, 제압 과정에서 이를 방출한 사례가 보고되어 있다."
+          ],
+          "revealStage": 5
+        }
+      ],
+      "status": "partial",
+      "summary": "격리와 제압의 대상이 되는 미확인 개체에 관한 개요.",
+      "title": "미확인 개체"
+    },
+    {
+      "basisStage": 3,
+      "categories": [
+        "field-response"
+      ],
+      "clearance": "공개 열람",
+      "documentNumber": "WF-07",
+      "explanation": "치료실의 의사가 현장까지 나오게 된 제도적 배경이다.",
+      "id": "medical-field-attachment",
+      "relatedRecords": [
+        "field-accompaniment",
+        "the-one-who-stayed"
+      ],
+      "sections": [
+        {
+          "paragraphs": [
+            "초기에는 부상자를 후방 치료 시설로 이송하는 것이 원칙이었다. 그러나 이송 중 상태가 악화되는 사례가 누적되며 의료 인력의 현장 배속이 도입되었다.",
+            "배속 제도가 도입되기 전, 격리선 설정 이후의 구역에 잔류해 이뤄진 비공식 구조가 초기 기록에 드물게 남아 있다. 해당 사례의 다수는 구조자의 소속이 확인되지 않은 채 종결되었다."
+          ],
+          "revealStage": 1
+        },
+        {
+          "paragraphs": [
+            "배속 의료 인력은 통제선 밖 점검선에 위치하며, 철수 명령의 적용 대상이다. 다만 환자 발생 시 의료적 판단과 지휘 판단의 우선순위는 명문화되어 있지 않다.",
+            "특정 부대와 특정 의료인의 배속 조합이 반복되는 경우, 편성 담당은 이를 관행으로 존중하는 편이다."
+          ],
+          "revealStage": 3
+        }
+      ],
+      "status": "public",
+      "summary": "의료센터 인력이 현장 작전에 배속되는 제도.",
+      "title": "현장 의료 지원 배속"
+    },
+    {
+      "basisStage": 5,
+      "categories": [
+        "organization"
+      ],
+      "clearance": "부분 공개",
+      "documentNumber": "WF-08",
+      "explanation": "소속 인원의 이력이 어떻게 기록되고, 어떤 기록이 잠기는지에 대한 문서다.",
+      "id": "personnel-registry",
+      "relatedRecords": [
+        "repeated-treatment",
+        "fracture"
+      ],
+      "sections": [
+        {
+          "paragraphs": [
+            "모든 소속 인원은 등록 절차를 거치며, 인사 기록과 의무 기록이 함께 관리된다. 현장 인원의 부상 이력은 의무 기록에 누적된다."
+          ],
+          "revealStage": 1
+        },
+        {
+          "paragraphs": [
+            "일부 인원의 등록 기록에서 불일치가 보고되어 해당 기록은 제한 문서로 이관되었다. 이관 사유는 공개되지 않는다."
+          ],
+          "revealStage": 5
+        }
+      ],
+      "status": "partial",
+      "summary": "특재청 소속 인원의 등록과 기록 관리에 관한 제도.",
+      "title": "인사 기록과 등록 제도"
+    },
+    {
+      "basisStage": 1,
+      "categories": [
+        "field-response"
+      ],
+      "clearance": "공개 열람",
+      "documentNumber": "WF-09",
+      "explanation": "등급은 개체가 아니라 사건에 붙으며, 필요한 대응의 크기를 말한다.",
+      "id": "entity-response-grades",
+      "relatedRecords": [
+        "first-contact",
+        "fracture",
+        "the-one-who-stayed",
+        "witnessing"
+      ],
+      "sections": [
+        {
+          "paragraphs": [
+            "대응 등급은 개체의 정체나 위험성 평가가 아니라, 격리 유지에 필요한 인력과 통제 범위에 붙는다. 같은 개체라도 재평가에 따라 등급이 오르내린다.",
+            "관(觀)급은 격리선 설정과 정기 관측만을 유지한다. 계(戒)급은 단일 구역 통제와 민간인 소개를 동반하는 표준 격리 대응이다.",
+            "위(危)급은 인접 구역 소개와 의료 지원 인력 배속이 의무화되는 확장 통제 단계다. 제압 검토는 위급에서만 승인된다.",
+            "멸(滅)급은 광역 상실을 전제로 한 최상위 등급이다. 제도 시행 이후 지정된 사례가 없으며, 지정 요건과 대응 절차는 제한 문서로 이관되어 있다."
+          ],
+          "revealStage": 1
+        },
+        {
+          "paragraphs": [
+            "위급 사건에서는 제압 과정의 오염 방출이 반복적으로 보고되어, 제압 승인에는 의료 부서의 사전 검토가 포함된다.",
+            "제압 교리는 차단, 압박, 후퇴 유도의 세 단계로 구성된다. 개체를 소멸시키는 것이 아니라 격리 가능한 위치로 되몰아 넣는 것이 목적이며, 화기는 살상 수단이 아니라 이동 축을 꺾는 수단으로 규정되어 있다."
+          ],
+          "revealStage": 5
+        }
+      ],
+      "status": "public",
+      "summary": "격리 유지에 필요한 대응 규모를 기준으로 한 네 단계 등급.",
+      "title": "개체 대응 등급"
+    },
+    {
+      "basisStage": 5,
+      "categories": [
+        "observation"
+      ],
+      "clearance": "부분 공개",
+      "documentNumber": "OB-03",
+      "explanation": "공식 분류가 아니라, 보고서에 반복 등장하는 서술을 정리한 것이다.",
+      "id": "behavior-patterns",
+      "relatedRecords": [
+        "first-contact",
+        "fracture",
+        "the-one-who-stayed"
+      ],
+      "sections": [
+        {
+          "paragraphs": [
+            "반복 보고에서 세 가지 경향이 사후적으로 묶였다. 정주형은 폐쇄 시설에 머무르며 움직이지 않는다. 배회형은 격리 구역 안을 일정하지 않은 간격으로 이동한다. 돌파형은 구조물과 격리 설비를 반복해서 타격한다.",
+            "배회형 개체가 음원에 접근하는 반응이 여러 현장에서 보고되었다. 격리 구역 내 구조 활동에서 소음 통제가 권고되는 근거다."
+          ],
+          "revealStage": 1
+        },
+        {
+          "paragraphs": [
+            "하나의 사건에서 경향을 넘나드는 개체가 보고된 뒤, 경향 묶음을 예측 도구로 쓰지 않도록 명시되었다.",
+            "대원들이 붙인 비공식 별칭이 보고서 여백에 남는 관행이 있다. 별칭은 색인되지 않으며, 같은 별칭이 서로 다른 사건에서 반복될 때만 참고된다."
+          ],
+          "revealStage": 5
+        }
+      ],
+      "status": "partial",
+      "summary": "반복 보고에서 사후적으로 묶인 개체 행동의 세 가지 경향.",
+      "title": "행동 경향 관측 묶음"
+    },
+    {
+      "basisStage": 1,
+      "categories": [
+        "organization"
+      ],
+      "clearance": "공개 열람",
+      "documentNumber": "WF-10",
+      "explanation": "특수기동대 같은 현장 부서의 선발이 이 판정 위에 서 있다.",
+      "id": "aptitude-registry",
+      "relatedRecords": [
+        "first-contact",
+        "fracture"
+      ],
+      "sections": [
+        {
+          "paragraphs": [
+            "일부 인원에게서 감각, 지구력, 회복이 통상 범위를 웃도는 신체 적성이 확인된다. 적성이 언제부터 나타났는지에 대한 합의된 기록은 없다.",
+            "적성은 판정 절차를 거쳐 등록되며, 특수기동대를 비롯한 현장 부서의 선발 요건에 포함된다. 현장 지휘관급 인원은 대부분 적성 등록자다.",
+            "적성의 원인은 확정되지 않았다. 유전과 훈련으로 설명되지 않는 발현 사례가 보고되어 연구가 계속되고 있다."
+          ],
+          "revealStage": 1
+        },
+        {
+          "paragraphs": [
+            "판정 절차에서 판정 불능으로 분류된 사례가 소수 존재한다. 계측 오류로 종결된 건이 대부분이며, 반복 판정 불능 기록은 제한 문서로 이관된다."
+          ],
+          "revealStage": 5
+        }
+      ],
+      "status": "public",
+      "summary": "통상 범위를 넘는 신체 적성을 판정하고 등록하는 제도.",
+      "title": "적성 판정과 등록"
+    },
+    {
+      "basisStage": 5,
+      "categories": [
+        "observation"
+      ],
+      "clearance": "부분 공개",
+      "documentNumber": "OB-04",
+      "explanation": "이야기 속에만 있다고 하기에는, 서로 모르는 이야기들이 너무 닮아 있다.",
+      "id": "collected-folklore",
+      "relatedRecords": [
+        "the-one-who-stayed"
+      ],
+      "sections": [
+        {
+          "paragraphs": [
+            "기관은 재난 기록 사업의 일환으로 각지의 오래된 이야기를 채록해 왔다. 시대와 지역이 다른 이야기들에 비슷한 존재가 반복해서 등장한다.",
+            "반복되는 모티프 가운데 가장 흔한 것은 두 가지다. 부르면 안 되는 것에 대한 경고, 그리고 죽을 자리에서 낯선 이에게 구해져 살아 돌아왔다는 이야기. 구전 설화의 전형적 모티프로 설명되어 있다."
+          ],
+          "revealStage": 1
+        },
+        {
+          "paragraphs": [
+            "설화 속 존재와 미확인 개체를 같은 것으로 보는 견해가 제기되었으나 채택되지 않았다. 경고 설화의 서술과 일부 사건 보고가 유사하다는 지적만 각주로 남아 있다.",
+            "근래의 사건 보고와 특정 설화의 서술이 세부까지 일치한 사례가 있어, 해당 대조표는 색인에서 제외되고 제한 문서로 이관되었다."
+          ],
+          "revealStage": 5
+        }
+      ],
+      "status": "partial",
+      "summary": "각지에서 채록된 오래된 이야기에 같은 존재들이 반복해서 등장한다.",
+      "title": "채록 설화의 반복 존재"
+    },
+    {
+      "basisStage": 5,
+      "categories": [
+        "anomaly"
+      ],
+      "clearance": "부분 공개",
+      "documentNumber": "WF-11",
+      "explanation": "지금의 도시는, 언제 지어졌는지 모르는 것들 위에 서 있다.",
+      "id": "undated-structures",
+      "relatedRecords": [
+        "fracture"
+      ],
+      "sections": [
+        {
+          "paragraphs": [
+            "재개발과 지반 정비 과정에서 축조 연대를 확정할 수 없는 구조물이 드러나는 사례가 있다. 현행 공법 및 자재 대장과 일치하지 않으며, 발견 즉시 보고가 의무화되어 있다."
+          ],
+          "revealStage": 1
+        },
+        {
+          "paragraphs": [
+            "폐쇄 시설형 사건 다수가 이러한 구조물과 겹친 위치에서 발생했다. 오염 방출로 종결된 지하 정수장 사건의 시설 역시 연대 불명 구조물 위에 증축된 것으로 사후 확인되었다.",
+            "장기 정주 개체와 구조물의 상관은 판단이 유보되어 있다. 일부 구조물 내부에서 판독되지 않는 표기가 확인되어 해당 기록은 제한 문서로 이관되었다."
+          ],
+          "revealStage": 5
+        }
+      ],
+      "status": "partial",
+      "summary": "축조 연대를 확정할 수 없는 구조물이 도시 지하와 외곽에서 확인된다.",
+      "title": "연대 불명 구조물"
+    },
+    {
+      "basisStage": 5,
+      "categories": [
+        "observation"
+      ],
+      "clearance": "부분 공개",
+      "documentNumber": "OB-05",
+      "explanation": "아무도 이유를 설명하지 않지만, 아무도 어기지 않는다.",
+      "id": "field-customs",
+      "relatedRecords": [
+        "the-one-who-stayed",
+        "first-contact"
+      ],
+      "sections": [
+        {
+          "paragraphs": [
+            "격리선 안에서는 이름을 크게 부르지 않는다. 두드리는 소리에 응답하지 않는다. 어느 규정에도 없는 습속이지만, 신입 대원은 이유를 묻기 전에 먼저 배운다.",
+            "조마다 출동 전에 지키는 사소한 관습이 있다. 기록으로 남기지 않는 것이 관습의 일부다."
+          ],
+          "revealStage": 1
+        },
+        {
+          "paragraphs": [
+            "습속 다수가 채록 설화의 경고 모티프(OB-04)와 겹친다는 대조 결과가 있다. 습속이 미신이 아니라 잊힌 지침의 잔재라는 견해가 각주로 남아 있다.",
+            "두드림에 응답하지 않는 습속은 격리 구역 응답 규칙이 개정되기 전부터 존재했다. 규정이 습속을 뒤늦게 따라온 사례로 기록되어 있다."
+          ],
+          "revealStage": 5
+        }
+      ],
+      "status": "partial",
+      "summary": "규정에 없지만 대원들 사이에서 지켜지는 격리 구역 안의 습속.",
+      "title": "격리선 안의 관습"
+    },
+    {
+      "basisStage": 5,
+      "categories": [
+        "field-response"
+      ],
+      "clearance": "공개 열람",
+      "documentNumber": "WF-12",
+      "explanation": "부르면 안 되는 것을, 일부러 부르는 사람들이 있다.",
+      "id": "response-behavior-protocol",
+      "relatedRecords": [
+        "witnessing"
+      ],
+      "sections": [
+        {
+          "paragraphs": [
+            "격리선 침입 사건 가운데 개체에 대한 접촉 시도가 목적인 사례가 반복 확인된다. 두드림에 응답하는 행위, 음원 유인 장비의 설치, 격리 설비의 고의 개방 시도가 대표 유형이며, 통칭 응답 행위로 분류된다.",
+            "응답 행위자는 조직적으로 움직이는 사례가 많다. 스스로를 부르는 이름은 확인되지 않았으며, 내부 보고서는 이들을 응답회로 통칭한다.",
+            "응답 행위자와의 단독 접촉은 금지된다. 확인 즉시 인계하고, 이들이 남긴 표식과 장비는 만지지 않고 보고한다."
+          ],
+          "revealStage": 1
+        },
+        {
+          "paragraphs": [
+            "응답회 관계자가 미공표 사건 정보를 사전에 인지하고 있던 정황이 복수 건 보고되었다. 정보 경로는 확인되지 않았다.",
+            "상위 등급 사건의 발생 시기와 응답회 활동의 상관을 지적한 보고가 있으나, 인과는 판단이 유보되어 있다.",
+            "작전 통신망에 정체불명의 음성이 침입한 사례가 보고되었다. 응답을 요청하는 내용이며, 발신 위치와 침입 경로는 확인되지 않았다."
+          ],
+          "revealStage": 5
+        }
+      ],
+      "status": "public",
+      "summary": "격리선에 침입해 개체에 접촉을 시도하는 집단에 대한 대응 지침.",
+      "title": "응답 행위 대응 지침"
+    },
+    {
+      "basisStage": 5,
+      "categories": [
+        "observation"
+      ],
+      "clearance": "부분 공개",
+      "documentNumber": "OB-01",
+      "explanation": "원인을 확정하지 않고 기록철에서 관측된 사실만 연결한다.",
+      "id": "recurring-anomalies",
+      "relatedRecords": [
+        "first-contact",
+        "field-accompaniment",
+        "fracture"
+      ],
+      "sections": [
+        {
+          "paragraphs": [
+            "천령의 낮은 체온과 불안정한 측정값이 기록되었다."
+          ],
+          "revealStage": 1
+        },
+        {
+          "paragraphs": [
+            "현장 의료 지원 중에도 설명하기 어려운 반응이 반복되었다."
+          ],
+          "revealStage": 3
+        },
+        {
+          "paragraphs": [
+            "심각한 오염과 치료 이후 일부 보고 수치가 정정되었다."
+          ],
+          "revealStage": 5
+        }
+      ],
+      "status": "partial",
+      "summary": "서로 다른 현장에서 같은 종류의 이상이 반복되고 있다.",
+      "title": "반복 관측 이상"
+    },
+    {
+      "basisStage": 5,
+      "categories": [
+        "observation"
+      ],
+      "clearance": "부분 공개",
+      "documentNumber": "OB-02",
+      "explanation": "공식 판정이 아니라, 함께 현장에 선 사람들이 남긴 관측 기록이다.",
+      "id": "medic-outside-ward",
+      "relatedRecords": [
+        "field-accompaniment",
+        "fracture"
+      ],
+      "sections": [
+        {
+          "paragraphs": [
+            "경보음과 진동에 반응하지 않는 태연함이 여러 대원에 의해 관측되었다. 응급 의료 경력에 따른 둔감화로 설명되어 있다.",
+            "현장 기준을 웃도는 처치 속도가 기록되었다. 보조 인력이 손을 따라가지 못한 사례가 복수 존재하며, 숙련도로 설명되어 있다."
+          ],
+          "revealStage": 3
+        },
+        {
+          "paragraphs": [
+            "철수 기준 초과 후에도 처치 위치를 지킨 사례가 있다. 해당 건은 보고되지 않았다.",
+            "중증 환자의 집중 치료 이후 담당 의료관에게서 뚜렷한 소모가 관측되었다. 사흘간 병상을 떠나지 않은 근무 기록이 남아 있다."
+          ],
+          "revealStage": 5
+        }
+      ],
+      "status": "partial",
+      "summary": "현장에 배속된 의료관에 대한 대원들의 관측 모음.",
+      "title": "치료실 밖의 의료관"
+    },
+    {
+      "basisStage": 5,
+      "categories": [
+        "classified"
+      ],
+      "clearance": "제한 열람",
+      "documentNumber": "CL-02",
+      "explanation": "개체가 배우고, 피하고, 부른다는 보고들이다.",
+      "id": "repeated-targeting",
+      "lockLabel": "대응 지침 개정 후 해금",
+      "relatedRecords": [
+        "fracture",
+        "the-one-who-stayed"
+      ],
+      "sections": [
+        {
+          "paragraphs": [
+            "일부 위급 사건에서 자극 반응만으로 설명되지 않는 행동 순서가 보고되었다."
+          ],
+          "revealStage": 1
+        },
+        {
+          "paragraphs": [
+            "위급 사건 복수 건에서 학습·회피·유인에 해당하는 행동이 확인되었다. 순찰 조명의 주기에 맞춘 이동, 격리문 잠금 절차의 간격을 노린 타격이 대표 사례다.",
+            "구조 신호를 모사한 두드림이 관측된 사례가 있다. 해당 보고 이후 격리 구역 내 응답 규칙이 개정되었다."
+          ],
+          "revealStage": 5
+        }
+      ],
+      "status": "locked",
+      "summary": "일부 상위 등급 사건에서 자극 반응으로 설명되지 않는 행동이 확인되었다.",
+      "title": "반복 표적화 관측 보고"
+    },
+    {
+      "basisStage": 5,
+      "categories": [
+        "classified"
+      ],
+      "clearance": "제한 열람",
+      "documentNumber": "CL-03",
+      "explanation": "지금의 세계가 무엇의 뒤에 세워졌는지에 대한, 확인되지 않는 조각들이다.",
+      "id": "pre-reconstruction-fragments",
+      "lockLabel": "연대 확정 전 열람 제한",
+      "relatedRecords": [
+        "the-one-who-stayed"
+      ],
+      "sections": [
+        {
+          "paragraphs": [
+            "기관이 보관한 가장 오래된 문서군은 연대 불명의 단편으로",
+            "상호 교차 검증이 불가능해 정식 기록으로 인정되지 않는다."
+          ],
+          "revealStage": 1
+        },
+        {
+          "paragraphs": [
+            "단편들은 광역 상실기의 존재를 시사한다. 현재 문명이 소수 생존 집단의 재건에서 비롯했다는 해석이 있으나, 이를 확정할 기록은 남아 있지 않다. 단편들에는 그 시기를 가리키는 합의된 명칭조차 남아 있지 않다.",
+            "단편 다수가 같은 대상을 서로 다른 말로 가리키는 것으로 보인다. 형태에 대한 서술은 남아 있지 않고, 규모와 침묵에 대한 묘사만 반복된다.",
+            "멸(滅)급 대응 기준은 이 단편들에서 유래했다. 문서 번호가 붙은 기록만 정식 사건으로 인정하는 현행 기록 제도 역시 같은 시기의 교훈에서 비롯했다는 견해가 기관 내부에 있다."
+          ],
+          "revealStage": 5
+        }
+      ],
+      "status": "locked",
+      "summary": "기관이 보관한 가장 오래된 문서군은 연대 불명의 단편이다.",
+      "title": "재건기 이전 기록 단편"
+    },
+    {
+      "basisStage": 5,
+      "categories": [
+        "classified"
+      ],
+      "clearance": "제한 열람",
+      "documentNumber": "CL-04",
+      "explanation": "이 기관을 세운 사람들의 이름이, 기관의 기록에서 지워져 있다.",
+      "id": "founding-record-gaps",
+      "lockLabel": "조사 승인 전 열람 제한",
+      "relatedRecords": [],
+      "sections": [
+        {
+          "paragraphs": [
+            "창설기 인사 기록의 일부가 일괄 말소되어 있다. 말소 절차의 승인자 역시 기록에 남아 있지 않다."
+          ],
+          "revealStage": 1
+        },
+        {
+          "paragraphs": [
+            "재건 초기의 자원 배분을 주도한 집단이 존재했음을 시사하는 문서가 남아 있다. 해당 집단의 이름은 문서마다 다르게 등장하며, 이후 일괄 말소되었다. 말소를 피한 각주 하나에 수계(守契)라는 표기가 반복된다.",
+            "말소된 이름들과 관련된 계좌·법인 일부가 응답 행위 관련 집단(WF-12)의 자금 흐름과 교차한 정황이 있다. 조사는 승인되지 않았다.",
+            "지켜야 할 약속이 있다는 문장이 서로 다른 시기의 단편에서 같은 형태로 발견되었다. 약속의 상대와 내용은 어느 기록에도 남아 있지 않다."
+          ],
+          "revealStage": 5
+        }
+      ],
+      "status": "locked",
+      "summary": "기관 창설기의 인사·자원 기록에 설명되지 않는 공백이 있다.",
+      "title": "창설기 기록의 공백"
+    },
+    {
+      "basisStage": 5,
+      "categories": [
+        "classified"
+      ],
+      "clearance": "제한 열람",
+      "documentNumber": "CL-01",
+      "explanation": "현재 확인 가능한 것은 기록의 불일치와 반복 관측뿐이다.",
+      "id": "cheonryeong-restricted",
+      "lockLabel": "추가 기록 확인 후 해금",
+      "relatedRecords": [
+        "first-contact",
+        "fracture"
+      ],
+      "sections": [
+        {
+          "paragraphs": [
+            "신원 기록 일부 불일치."
+          ],
+          "revealStage": 1
+        },
+        {
+          "paragraphs": [
+            "특정 오염 상황에서 비정상 반응 관측."
+          ],
+          "revealStage": 5
+        }
+      ],
+      "status": "locked",
+      "summary": "신원 및 의료 활동 관련 일부 기록의 열람이 제한되어 있다.",
+      "title": "의료인 천령 관련 제한 기록"
+    }
+  ],
+  "claims": [
+    {
+      "id": "root-character-profile:1",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "항목: 내용"
+    },
+    {
+      "id": "root-character-profile:2",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "이름: 천령 (天靈)"
+    },
+    {
+      "id": "root-character-profile:3",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "영문 표기: Cheonryeong"
+    },
+    {
+      "id": "root-character-profile:4",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "종족: 인간의 모습으로 살아가는 인외"
+    },
+    {
+      "id": "root-character-profile:5",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "성별: 남성"
+    },
+    {
+      "id": "root-character-profile:6",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "나이: 실제 나이 불명 / 외관상 20대"
+    },
+    {
+      "id": "root-character-profile:7",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "신장: 186cm"
+    },
+    {
+      "id": "root-character-profile:8",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "unresolved",
+      "revealStage": 7,
+      "text": "체중: 미정"
+    },
+    {
+      "id": "root-character-profile:9",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "직업: 의사 · 연구원"
+    },
+    {
+      "id": "root-character-profile:10",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "소속: 특재청 제3의료센터"
+    },
+    {
+      "id": "root-character-profile:11",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "역할: 특수재난 부상자 치료, 독성·인외 관련 연구, 현장 의료 지원"
+    },
+    {
+      "id": "root-character-profile:12",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "동물화: 흰 백사"
+    },
+    {
+      "id": "root-character-profile:13",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "포지션: 공"
+    },
+    {
+      "id": "root-character-profile:14",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "#능글맞은"
+    },
+    {
+      "id": "root-character-profile:15",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "#위험한다정"
+    },
+    {
+      "id": "root-character-profile:16",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "#무자각집착"
+    },
+    {
+      "id": "root-character-profile:17",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "#미인공"
+    },
+    {
+      "id": "root-character-profile:18",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "#능글공"
+    },
+    {
+      "id": "root-character-profile:19",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "#인외공"
+    },
+    {
+      "id": "root-character-profile:20",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "#의사공"
+    },
+    {
+      "id": "root-character-profile:21",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "#반존대공"
+    },
+    {
+      "id": "root-character-profile:22",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "희고 창백한 피부와 옅은 머리색."
+    },
+    {
+      "id": "root-character-profile:23",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "가늘고 긴 체형으로, 근육이 크게 드러나지 않는 유연한 장신."
+    },
+    {
+      "id": "root-character-profile:24",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "나른하게 처진 눈매와 속내를 읽기 어려운 미소."
+    },
+    {
+      "id": "root-character-profile:25",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "인간과 닮았지만 자세히 볼수록 어딘가 이질적인 인상."
+    },
+    {
+      "id": "root-character-profile:26",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "전통 장식이 섞인 의료복과 백색 가운을 착용."
+    },
+    {
+      "id": "root-character-profile:27",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "붉은 장식과 탁한 녹색 계열이 주요 포인트 컬러."
+    },
+    {
+      "id": "root-character-profile:28",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "체온이 낮고 손끝이 차갑다."
+    },
+    {
+      "id": "root-character-profile:29",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "겉보기보다 완력이 강하며 움직임이 조용하고 매끄럽다."
+    },
+    {
+      "id": "root-character-profile:30",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "존댓말과 반말이 자연스럽게 섞이는 반존대."
+    },
+    {
+      "id": "root-character-profile:31",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "느리고 나른한 말투."
+    },
+    {
+      "id": "root-character-profile:32",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "말끝을 부드럽게 늘이거나 한마디를 덧붙여 상대를 떠봄."
+    },
+    {
+      "id": "root-character-profile:33",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "감정을 직접 고백하지 않고, 농담이나 관찰을 가장해 우회함."
+    },
+    {
+      "id": "root-character-profile:34",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "심각한 상황에서는 오히려 말이 짧고 단호해짐."
+    },
+    {
+      "id": "root-character-profile:35",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "천령의 피는 독이자 약으로 작용한다."
+    },
+    {
+      "id": "root-character-profile:36",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "사용 방식과 농도에 따라 치유제 또는 치명적인 독이 될 수 있다."
+    },
+    {
+      "id": "root-character-profile:37",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "일반적인 독성 물질과 인외성 오염에 높은 내성을 지닌다."
+    },
+    {
+      "id": "root-character-profile:38",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "인간의 의학과 인외의 생리를 모두 이해하고 다룬다."
+    },
+    {
+      "id": "root-character-profile:39",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "치료 과정에서 자신의 피나 신체 능력을 사용할 수 있으나, 과도하게 사용하면 천령에게도 부담이 된다."
+    },
+    {
+      "id": "root-character-profile:40",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "세부 능력 범위와 한계는 서사 진행에 맞춰 추가 설정 필요."
+    },
+    {
+      "id": "root-character-profile:41",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "몸집이 큰 흰색 뱀."
+    },
+    {
+      "id": "root-character-profile:42",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "흰 눈과 세로로 긴 뱀 동공."
+    },
+    {
+      "id": "root-character-profile:43",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "크기가 작은 머리와 길고 매끄러운 몸."
+    },
+    {
+      "id": "root-character-profile:44",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "나른하고 여유로운 눈매."
+    },
+    {
+      "id": "root-character-profile:45",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "검은 늑대 무영의 몸을 느슨하게 감싸거나 또아리를 틀어 품는 모습."
+    },
+    {
+      "id": "root-character-profile:46",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "보호처럼 보이면서도 소유와 구속의 이미지가 함께 느껴짐."
+    },
+    {
+      "id": "root-character-profile:47",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "request-only",
+      "revealStage": 7,
+      "text": "후보: 4월 4일"
+    },
+    {
+      "id": "root-character-profile:48",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "실제 탄생일이 아니라 특재청 등록 과정에서 임의로 정한 날짜일 가능성 있음."
+    },
+    {
+      "id": "root-character-profile:49",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "항목: 내용"
+    },
+    {
+      "id": "root-character-profile:50",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "이름: 무영 (無影)"
+    },
+    {
+      "id": "root-character-profile:51",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "영문 표기: Muyeong"
+    },
+    {
+      "id": "root-character-profile:52",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "종족: 인간"
+    },
+    {
+      "id": "root-character-profile:53",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "성별: 남성"
+    },
+    {
+      "id": "root-character-profile:54",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "나이: 28세"
+    },
+    {
+      "id": "root-character-profile:55",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "신장: 185cm"
+    },
+    {
+      "id": "root-character-profile:56",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "unresolved",
+      "revealStage": 7,
+      "text": "체중: 미정"
+    },
+    {
+      "id": "root-character-profile:57",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "직업: 현장 지휘관"
+    },
+    {
+      "id": "root-character-profile:58",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "소속: 특재청 특수기동대"
+    },
+    {
+      "id": "root-character-profile:59",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "역할: 특수재난 현장 지휘, 인명 구조, 위험 개체 제압, 대원 철수 판단"
+    },
+    {
+      "id": "root-character-profile:60",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "동물화: 검은 늑대"
+    },
+    {
+      "id": "root-character-profile:61",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "포지션: 수"
+    },
+    {
+      "id": "root-character-profile:62",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "#과묵한"
+    },
+    {
+      "id": "root-character-profile:63",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "#책임감강한"
+    },
+    {
+      "id": "root-character-profile:64",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "#자기희생적"
+    },
+    {
+      "id": "root-character-profile:65",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "#과묵수"
+    },
+    {
+      "id": "root-character-profile:66",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "#헌신수"
+    },
+    {
+      "id": "root-character-profile:67",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "#군인수"
+    },
+    {
+      "id": "root-character-profile:68",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "#현장지휘관수"
+    },
+    {
+      "id": "root-character-profile:69",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "#자기희생수"
+    },
+    {
+      "id": "root-character-profile:70",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "#존대수"
+    },
+    {
+      "id": "root-character-profile:71",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "검은 머리와 금빛 눈."
+    },
+    {
+      "id": "root-character-profile:72",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "날카롭고 무뚝뚝한 인상."
+    },
+    {
+      "id": "root-character-profile:73",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "얼굴과 몸 곳곳에 오래된 흉터가 많다."
+    },
+    {
+      "id": "root-character-profile:74",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "넓은 어깨와 단단한 상체를 가진 근육질 체형."
+    },
+    {
+      "id": "root-character-profile:75",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "전투복과 전술 장비를 실용적으로 착용."
+    },
+    {
+      "id": "root-character-profile:76",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "검은색과 짙은 회색이 중심이며 붉은 선이 포인트."
+    },
+    {
+      "id": "root-character-profile:77",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "표정 변화가 적고 피곤하거나 경계하는 듯한 얼굴."
+    },
+    {
+      "id": "root-character-profile:78",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "주변 사람과 출입구, 위험 요소를 습관적으로 확인한다."
+    },
+    {
+      "id": "root-character-profile:79",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "군더더기 없이 짧고 명확함."
+    },
+    {
+      "id": "root-character-profile:80",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "존댓말을 기본으로 사용."
+    },
+    {
+      "id": "root-character-profile:81",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "임무 중에는 단호한 명령형."
+    },
+    {
+      "id": "root-character-profile:82",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "감정을 직접 설명하지 않고 행동이나 약속으로 대신함."
+    },
+    {
+      "id": "root-character-profile:83",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "천령의 장난에 크게 반응하지 않지만, 대화를 끊지도 않음."
+    },
+    {
+      "id": "root-character-profile:84",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "현장 판단력과 지휘 능력이 뛰어남."
+    },
+    {
+      "id": "root-character-profile:85",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "인명 구조와 전투를 동시에 수행하는 실전형 지휘관."
+    },
+    {
+      "id": "root-character-profile:86",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "소총을 비롯한 현대 화기와 제압 장비에 능숙함."
+    },
+    {
+      "id": "root-character-profile:87",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "위험 상황에서 가장 먼저 진입하고 가장 마지막에 철수함."
+    },
+    {
+      "id": "root-character-profile:88",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "부상 상태에서도 임무를 이어가려는 경향이 강함."
+    },
+    {
+      "id": "root-character-profile:89",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "흉터 대부분은 타인을 대신해 공격을 받거나 철수를 지연한 결과로 남음."
+    },
+    {
+      "id": "root-character-profile:90",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "검은 털과 금빛 눈."
+    },
+    {
+      "id": "root-character-profile:91",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "반쯤 감긴 눈과 무뚝뚝한 표정."
+    },
+    {
+      "id": "root-character-profile:92",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "몸집이 크고 단단하지만, 자세는 낮고 조용함."
+    },
+    {
+      "id": "root-character-profile:93",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "몸에 작은 흉터가 표현될 수 있음."
+    },
+    {
+      "id": "root-character-profile:94",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "흰 백사 천령이 몸을 감아도 불편한 티만 낼 뿐 밀어내지는 않음."
+    },
+    {
+      "id": "root-character-profile:95",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "무리의 가장 뒤에 남아 위험을 막는 보호자 이미지."
+    },
+    {
+      "id": "root-character-profile:96",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "request-only",
+      "revealStage": 7,
+      "text": "후보: 12월 21일"
+    },
+    {
+      "id": "root-character-profile:97",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "항목: 내용"
+    },
+    {
+      "id": "root-character-profile:98",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "페어명: 천무 (天無)"
+    },
+    {
+      "id": "root-character-profile:99",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "조합: 천령 × 무영"
+    },
+    {
+      "id": "root-character-profile:100",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "관계 구도: 인외 의사공 × 인간 군인수"
+    },
+    {
+      "id": "root-character-profile:101",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "주요 키워드: #능글공과묵수 #인외공인간수 #의사공군인수 #불쾌한신뢰 #상처치료"
+    },
+    {
+      "id": "root-character-profile:102",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "관계의 출발: 치료자와 중상 환자"
+    },
+    {
+      "id": "root-character-profile:103",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "관계의 중심: 반복되는 귀환과 치료"
+    },
+    {
+      "id": "root-character-profile:104",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "갈등의 중심: 생명을 대하는 기준과 자기희생"
+    },
+    {
+      "id": "root-character-profile:105",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "감정 변화: 흥미와 경계 → 익숙함 → 불쾌한 신뢰 → 애착과 의존 → 목격 → 알고도 남는 사이"
+    },
+    {
+      "id": "root-character-profile:106",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "**Return to me, alive.** — 살아서 내게 돌아와."
+    },
+    {
+      "id": "root-character-profile:107",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "**You always come back to me.** — 당신은 언제나 내게 돌아온다."
+    },
+    {
+      "id": "root-character-profile:108",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "**Death does not get to keep you.** — 죽음이 당신을 데려가게 두지 않겠다."
+    },
+    {
+      "id": "root-character-profile:109",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "흥미로운 인간"
+    },
+    {
+      "id": "root-character-profile:110",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "고집스러운 환자"
+    },
+    {
+      "id": "root-character-profile:111",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "돌아오지 않으면 곤란한 사람"
+    },
+    {
+      "id": "root-character-profile:112",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "이해하기 어려운 사람"
+    },
+    {
+      "id": "root-character-profile:113",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "가장 확실한 치료자"
+    },
+    {
+      "id": "root-character-profile:114",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "죽음을 허락하지 않는 사람"
+    },
+    {
+      "id": "root-character-profile:115",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "무영"
+    },
+    {
+      "id": "root-character-profile:116",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "지휘관 씨"
+    },
+    {
+      "id": "root-character-profile:117",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "지휘관님 / 우리 지휘관님 — 일부러 예의를 과장해 비꼬거나 장난칠 때만 사용"
+    },
+    {
+      "id": "root-character-profile:118",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "환자분"
+    },
+    {
+      "id": "root-character-profile:119",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "고질적인 환자"
+    },
+    {
+      "id": "root-character-profile:120",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "천령"
+    },
+    {
+      "id": "root-character-profile:121",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "천령 선생"
+    },
+    {
+      "id": "root-character-profile:122",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "선생님"
+    },
+    {
+      "id": "root-character-profile:123",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "의료관님"
+    },
+    {
+      "id": "root-character-profile:124",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "천령은 장난스럽게 직함을 붙이다가 심각한 상황에서는 이름만 짧게 부른다."
+    },
+    {
+      "id": "root-character-profile:125",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 3,
+      "text": "무영은 초반(1~3단계)에는 ‘의료관님’을 기본으로 쓰다가, 관계가 쌓인 뒤(4단계~)에는 ‘천령 선생’이라 부른다. 감정이 흔들릴 때는 ‘천령’이라고만 부른다."
+    },
+    {
+      "id": "root-character-profile:126",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 8,
+      "text": "무영은 알게 된 것을 보고서에 쓰지 않았다."
+    },
+    {
+      "id": "root-character-profile:127",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 8,
+      "text": "천령은 무영 앞에서 더 이상 소매를 내리지 않는다."
+    },
+    {
+      "id": "root-character-profile:128",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 8,
+      "text": "치료와 귀환은 계속된다 — 다만 이제, 돌아와서 갈 곳이 있다."
+    },
+    {
+      "id": "root-character-profile:129",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 8,
+      "text": "관계를 무엇이라 부를지는 두 사람 다 아직 정하지 않았다."
+    },
+    {
+      "id": "root-character-profile:130",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "천령은 무영을 **죽지 못하게 하는 사람**이 된다."
+    },
+    {
+      "id": "root-character-profile:131",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "무영은 천령에게 **반드시 돌아오는 사람**이 된다."
+    },
+    {
+      "id": "root-character-profile:132",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "두 사람은 서로를 완전히 이해하지 못한다."
+    },
+    {
+      "id": "root-character-profile:133",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "이해하지 못하는 부분까지 포함해 상대를 살려두기로 선택한다."
+    },
+    {
+      "id": "root-character-profile:134",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "무영의 사랑은 귀환이고, 천령의 사랑은 생존을 강요하는 일에 가깝다."
+    },
+    {
+      "id": "root-character-profile:135",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "둘의 관계는 구원이 아니라 반복되는 구조와 치료로 완성된다."
+    },
+    {
+      "id": "root-character-profile:136",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "서로를 신뢰한다고 말하지 않지만, 이미 자신의 생명을 상대에게 맡기고 있다."
+    },
+    {
+      "id": "root-character-profile:137",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "unresolved",
+      "revealStage": 7,
+      "text": "페어명: 천무"
+    },
+    {
+      "id": "root-character-profile:138",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "unresolved",
+      "revealStage": 7,
+      "text": "천령: 외관상 20대, 186cm, 의사·연구원, 특재청 제3의료센터"
+    },
+    {
+      "id": "root-character-profile:139",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "unresolved",
+      "revealStage": 7,
+      "text": "무영: 28세, 185cm, 현장 지휘관, 특재청 특수기동대"
+    },
+    {
+      "id": "root-character-profile:140",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "unresolved",
+      "revealStage": 7,
+      "text": "천령은 인외, 무영은 인간"
+    },
+    {
+      "id": "root-character-profile:141",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "unresolved",
+      "revealStage": 7,
+      "text": "천령은 공, 무영은 수"
+    },
+    {
+      "id": "root-character-profile:142",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "unresolved",
+      "revealStage": 7,
+      "text": "천령 동물화: 큰 흰 백사"
+    },
+    {
+      "id": "root-character-profile:143",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "unresolved",
+      "revealStage": 7,
+      "text": "무영 동물화: 검은 늑대"
+    },
+    {
+      "id": "root-character-profile:144",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "unresolved",
+      "revealStage": 7,
+      "text": "무영은 얼굴과 몸에 흉터가 많음"
+    },
+    {
+      "id": "root-character-profile:145",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "unresolved",
+      "revealStage": 7,
+      "text": "관계 핵심: 불쾌한 신뢰, 상처 치료, 반복되는 귀환"
+    },
+    {
+      "id": "root-character-profile:146",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "unresolved",
+      "revealStage": 7,
+      "text": "천령의 피는 독이자 약"
+    },
+    {
+      "id": "root-character-profile:147",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "unresolved",
+      "revealStage": 7,
+      "text": "무영은 9세에 상가 붕괴 특수재난의 격리 구역에서 소속 미상의 의료 인력(천령)에게 구조됨 — 얼굴·이름은 남지 않고 감각 단편(차가운 손, 느린 목소리, 흰 옷자락)만 기억. '구하는 사람'이 되기로 한 결심의 기원 (잊혀진 기록 「남아 있던 사람」)"
+    },
+    {
+      "id": "root-character-profile:148",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "unresolved",
+      "revealStage": 7,
+      "text": "무영은 특재청 적성 판정을 받은 등록 적성자 — 감각·지구력·회복이 통상 범위를 웃도는 신체 강화 계열 (WF-10). 동물화(검은 늑대)는 캐릭터 모티프로 유지"
+    },
+    {
+      "id": "root-character-profile:149",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "unresolved",
+      "revealStage": 7,
+      "text": "세계에는 적성자(공인 제도)와, 설화·신화 속 존재들이 실재한다는 단편·소문이 함께 있음 — 존재의 실재는 공인되지 않음 (OB-04, CL-03)"
+    },
+    {
+      "id": "root-character-profile:150",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "unresolved",
+      "revealStage": 7,
+      "text": "천령과 무영이 알고 지낸 기간은 약 5년 (CM-07 「목격」 시점 기준)"
+    },
+    {
+      "id": "root-character-profile:151",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "unresolved",
+      "revealStage": 7,
+      "text": "7단계 「목격」에서 무영이 천령의 비밀 두 겹(사람이 아님, 피가 사람을 살림)을 목격 — 기제·한계·나이·기원·잔류 이유는 여전히 미공개"
+    },
+    {
+      "id": "root-character-profile:152",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "unresolved",
+      "revealStage": 7,
+      "text": "각자의 정확한 체중"
+    },
+    {
+      "id": "root-character-profile:153",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "unresolved",
+      "revealStage": 7,
+      "text": "천령의 실제 나이와 기원"
+    },
+    {
+      "id": "root-character-profile:154",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "unresolved",
+      "revealStage": 7,
+      "text": "천령이 특재청에 들어온 계기"
+    },
+    {
+      "id": "root-character-profile:155",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "unresolved",
+      "revealStage": 7,
+      "text": "무영이 지휘관이 된 과정"
+    },
+    {
+      "id": "root-character-profile:156",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "unresolved",
+      "revealStage": 7,
+      "text": "무영의 가족 및 과거"
+    },
+    {
+      "id": "root-character-profile:157",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "unresolved",
+      "revealStage": 7,
+      "text": "천령의 능력 한계와 부작용"
+    },
+    {
+      "id": "root-character-profile:158",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "unresolved",
+      "revealStage": 7,
+      "text": "둘의 첫 조우가 발생한 구체적 재난"
+    },
+    {
+      "id": "root-character-profile:159",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "unresolved",
+      "revealStage": 7,
+      "text": "관계가 결정적으로 변하는 대형 사건"
+    },
+    {
+      "id": "root-character-profile:160",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "unresolved",
+      "revealStage": 7,
+      "text": "최종 관계가 연인인지, 연인 직전인지"
+    },
+    {
+      "id": "root-character-profile:161",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "unresolved",
+      "revealStage": 7,
+      "text": "특재청 내부에서 두 사람의 관계를 아는 인물"
+    },
+    {
+      "id": "root-character-profile:162",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "unresolved",
+      "revealStage": 7,
+      "text": "둘만의 일상적인 습관과 사적인 장소"
+    },
+    {
+      "id": "root-character-profile:163",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "request-only",
+      "revealStage": 7,
+      "text": "천령은 왜 인간 사회와 특재청에 머물고 있는가?"
+    },
+    {
+      "id": "root-character-profile:164",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "request-only",
+      "revealStage": 7,
+      "text": "사람을 살리는 일을 처음 시작한 계기는 무엇인가?"
+    },
+    {
+      "id": "root-character-profile:165",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "request-only",
+      "revealStage": 7,
+      "text": "무영 이전에도 특별히 오래 관찰한 인간이 있었는가?"
+    },
+    {
+      "id": "root-character-profile:166",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "request-only",
+      "revealStage": 7,
+      "text": "천령에게 죽음은 어떤 의미인가?"
+    },
+    {
+      "id": "root-character-profile:167",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "request-only",
+      "revealStage": 7,
+      "text": "자신의 집착을 처음 자각하는 순간은 언제인가?"
+    },
+    {
+      "id": "root-character-profile:168",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "request-only",
+      "revealStage": 7,
+      "text": "무영을 살리기 위해 어디까지 인간의 규칙을 어길 수 있는가?"
+    },
+    {
+      "id": "root-character-profile:169",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "request-only",
+      "revealStage": 7,
+      "text": "사람을 두고 나오지 못하게 된 과거 사건이 있는가?"
+    },
+    {
+      "id": "root-character-profile:170",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "request-only",
+      "revealStage": 7,
+      "text": "몸의 흉터 중 가장 오래되고 중요한 흉터는 무엇인가?"
+    },
+    {
+      "id": "root-character-profile:171",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "request-only",
+      "revealStage": 7,
+      "text": "자신의 죽음과 타인의 죽음을 다르게 받아들이는 이유는 무엇인가?"
+    },
+    {
+      "id": "root-character-profile:172",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "request-only",
+      "revealStage": 7,
+      "text": "천령에게 치료받는 것 외에 의존하게 되는 부분은 무엇인가?"
+    },
+    {
+      "id": "root-character-profile:173",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "request-only",
+      "revealStage": 7,
+      "text": "천령이 자신 때문에 망가진다면 어떤 선택을 하는가?"
+    },
+    {
+      "id": "root-character-profile:174",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "request-only",
+      "revealStage": 7,
+      "text": "처음으로 ‘살아서 돌아가고 싶다’고 생각하게 되는 계기는 무엇인가?"
+    },
+    {
+      "id": "root-character-profile:175",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "request-only",
+      "revealStage": 7,
+      "text": "첫 조우 당시 어떤 재난이 발생했는가?"
+    },
+    {
+      "id": "root-character-profile:176",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "request-only",
+      "revealStage": 7,
+      "text": "천령이 무영의 치료를 전담하게 된 공식적인 이유는 무엇인가?"
+    },
+    {
+      "id": "root-character-profile:177",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "request-only",
+      "revealStage": 7,
+      "text": "둘이 처음으로 서로의 판단에 생명을 맡긴 사건은 무엇인가?"
+    },
+    {
+      "id": "root-character-profile:178",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "request-only",
+      "revealStage": 7,
+      "text": "무영이 천령을 보호한 최초의 순간은 언제인가?"
+    },
+    {
+      "id": "root-character-profile:179",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "request-only",
+      "revealStage": 7,
+      "text": "천령이 처음으로 무영을 잃을까 두려워한 사건은 무엇인가?"
+    },
+    {
+      "id": "root-character-profile:180",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "request-only",
+      "revealStage": 7,
+      "text": "둘의 거리 두기는 얼마나 오래 지속되는가?"
+    },
+    {
+      "id": "root-character-profile:181",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "request-only",
+      "revealStage": 7,
+      "text": "먼저 감정을 자각하는 쪽과 먼저 고백하는 쪽은 누구인가?"
+    },
+    {
+      "id": "root-character-profile:182",
+      "sourceId": "root-character-profile",
+      "sourcePriority": 1,
+      "status": "request-only",
+      "revealStage": 7,
+      "text": "둘이 연인이 된 뒤에도 해결되지 않는 갈등은 무엇인가?"
+    },
+    {
+      "id": "profile:cheonryeong:1",
+      "sourceId": "profile:cheonryeong",
+      "sourcePriority": 2,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "{\"height\":\"186cm\",\"id\":\"cheonryeong\",\"title\":\"천령 (天靈 | Cheonryeong)\"}"
+    },
+    {
+      "id": "profile:cheonryeong:1",
+      "sourceId": "profile:cheonryeong",
+      "sourcePriority": 2,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "{\"height\":\"186cm\",\"id\":\"cheonryeong\",\"title\":\"천령 (天靈 | Cheonryeong)\"}"
+    },
+    {
+      "id": "profile:muyeong:1",
+      "sourceId": "profile:muyeong",
+      "sourcePriority": 2,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "{\"height\":\"185cm\",\"id\":\"muyeong\",\"title\":\"무영 (無影 | Muyeong)\"}"
+    },
+    {
+      "id": "document:relationship:1",
+      "sourceId": "document:relationship",
+      "sourcePriority": 2,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "{\"id\":\"relationship\",\"title\":\"천무 관계 프로필\"}"
+    },
+    {
+      "id": "document:settings:1",
+      "sourceId": "document:settings",
+      "sourcePriority": 2,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "{\"id\":\"settings\",\"title\":\"천무 설정\"}"
+    },
+    {
+      "id": "document:relationship:1",
+      "sourceId": "document:relationship",
+      "sourcePriority": 2,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "{\"id\":\"relationship\",\"title\":\"천무 관계 프로필\"}"
+    },
+    {
+      "id": "record:keeping-distance:1",
+      "sourceId": "record:keeping-distance",
+      "sourcePriority": 3,
+      "status": "confirmed",
+      "revealStage": 6,
+      "text": "{\"characters\":[\"cheonryeong\",\"muyeong\"],\"cinematic\":false,\"id\":\"keeping-distance\",\"quote\":\"누가 가볍다고 판단했어요?\",\"recordNumber\":\"CM-06\",\"related\":[\"fracture\",\"witnessing\"],\"stage\":6,\"status\":\"confirmed\",\"tags\":[\"거리\",\"보호\",\"통제\"],\"title\":\"거리 두기\"}"
+    },
+    {
+      "id": "record:the-one-who-stayed:1",
+      "sourceId": "record:the-one-who-stayed",
+      "sourcePriority": 3,
+      "status": "confirmed",
+      "revealStage": 0,
+      "text": "{\"characters\":[\"cheonryeong\",\"muyeong\"],\"cinematic\":true,\"credit\":{\"creator\":\"리몽\"},\"id\":\"the-one-who-stayed\",\"illustration\":\"/images/Forgotten_record_first_meeting.png\",\"illustrationAlt\":\"무너진 건물과 흩날리는 불티 속에서 검은 머리 아이를 안은 흰 옷의 구조자가 뒤를 돌아보는 흑백 삽화\",\"quote\":\"두고 가기엔 아깝잖아.\",\"recordNumber\":\"잊혀진 기록\",\"related\":[\"first-contact\"],\"stage\":0,\"status\":\"confirmed\",\"tags\":[\"전사\",\"구조\",\"과거\"],\"title\":\"남아 있던 사람\"}"
+    },
+    {
+      "id": "record:first-contact:1",
+      "sourceId": "record:first-contact",
+      "sourcePriority": 3,
+      "status": "confirmed",
+      "revealStage": 1,
+      "text": "{\"characters\":[\"cheonryeong\",\"muyeong\"],\"cinematic\":true,\"id\":\"first-contact\",\"quote\":\"전원 철수한 뒤에 나가겠습니다.\",\"recordNumber\":\"CM-01\",\"related\":[\"repeated-treatment\",\"the-one-who-stayed\"],\"stage\":1,\"status\":\"confirmed\",\"tags\":[\"첫-조우\",\"치료\",\"중상\"],\"title\":\"기록된 첫 만남\"}"
+    },
+    {
+      "id": "record:repeated-treatment:1",
+      "sourceId": "record:repeated-treatment",
+      "sourcePriority": 3,
+      "status": "confirmed",
+      "revealStage": 2,
+      "text": "{\"characters\":[\"cheonryeong\",\"muyeong\"],\"cinematic\":false,\"credit\":{\"creator\":\"레이지빈\"},\"id\":\"repeated-treatment\",\"illustration\":\"/images/cheonmu_repeated_treatment.jpg\",\"illustrationAlt\":\"블라인드 사이로 볕이 드는 진료실에서 흰 가운에 붉은 완장을 찬 천령이 진료대에 앉은 전투복 차림 무영의 가슴에 손을 얹고 살피는 삽화\",\"quote\":\"이번에도 돌아왔네. 참 성실한 환자야.\",\"recordNumber\":\"CM-02\",\"related\":[\"first-contact\",\"field-accompaniment\"],\"stage\":2,\"status\":\"confirmed\",\"tags\":[\"치료\",\"귀환\",\"상처\"],\"title\":\"반복되는 치료\"}"
+    },
+    {
+      "id": "record:field-accompaniment:1",
+      "sourceId": "record:field-accompaniment",
+      "sourcePriority": 3,
+      "status": "confirmed",
+      "revealStage": 3,
+      "text": "{\"characters\":[\"cheonryeong\",\"muyeong\"],\"cinematic\":true,\"id\":\"field-accompaniment\",\"quote\":\"환자가 아직 안 나왔는데 내가 어떻게 가.\",\"recordNumber\":\"CM-03\",\"related\":[\"repeated-treatment\",\"uneasy-trust\"],\"stage\":3,\"status\":\"confirmed\",\"tags\":[\"현장\",\"의료-지원\",\"지휘\"],\"title\":\"현장 동행\"}"
+    },
+    {
+      "id": "record:uneasy-trust:1",
+      "sourceId": "record:uneasy-trust",
+      "sourcePriority": 3,
+      "status": "confirmed",
+      "revealStage": 4,
+      "text": "{\"characters\":[\"cheonryeong\",\"muyeong\"],\"cinematic\":false,\"id\":\"uneasy-trust\",\"quote\":\"생사는 상대의 판단에 맡길 수 있다.\",\"recordNumber\":\"CM-04\",\"related\":[\"field-accompaniment\",\"fracture\"],\"stage\":4,\"status\":\"confirmed\",\"tags\":[\"신뢰\",\"동료\",\"판단\"],\"title\":\"불쾌한 신뢰\"}"
+    },
+    {
+      "id": "record:fracture:1",
+      "sourceId": "record:fracture",
+      "sourcePriority": 3,
+      "status": "confirmed",
+      "revealStage": 5,
+      "text": "{\"characters\":[\"cheonryeong\",\"muyeong\"],\"cinematic\":true,\"id\":\"fracture\",\"quote\":\"눈 떠. 지금 자면 안 돼.\",\"recordNumber\":\"CM-05\",\"related\":[\"uneasy-trust\",\"keeping-distance\"],\"stage\":5,\"status\":\"confirmed\",\"tags\":[\"중상\",\"오염\",\"희생\"],\"title\":\"균열\"}"
+    },
+    {
+      "id": "record:keeping-distance:1",
+      "sourceId": "record:keeping-distance",
+      "sourcePriority": 3,
+      "status": "confirmed",
+      "revealStage": 6,
+      "text": "{\"characters\":[\"cheonryeong\",\"muyeong\"],\"cinematic\":false,\"id\":\"keeping-distance\",\"quote\":\"누가 가볍다고 판단했어요?\",\"recordNumber\":\"CM-06\",\"related\":[\"fracture\",\"witnessing\"],\"stage\":6,\"status\":\"confirmed\",\"tags\":[\"거리\",\"보호\",\"통제\"],\"title\":\"거리 두기\"}"
+    },
+    {
+      "id": "record:witnessing:1",
+      "sourceId": "record:witnessing",
+      "sourcePriority": 3,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "{\"characters\":[\"cheonryeong\",\"muyeong\"],\"cinematic\":true,\"id\":\"witnessing\",\"quote\":\"가벼운 부상이 아니었습니다.\",\"recordNumber\":\"CM-07\",\"related\":[\"keeping-distance\"],\"stage\":7,\"status\":\"confirmed\",\"tags\":[\"목격\",\"위급\",\"비밀\"],\"title\":\"목격\"}"
+    },
+    {
+      "id": "world:special-disaster-agency:1",
+      "sourceId": "world:special-disaster-agency",
+      "sourcePriority": 3,
+      "status": "confirmed",
+      "revealStage": 1,
+      "text": "현장 통제와 격리, 구조, 의료 지원을 담당한다."
+    },
+    {
+      "id": "world:special-disaster-agency:2",
+      "sourceId": "world:special-disaster-agency",
+      "sourcePriority": 3,
+      "status": "confirmed",
+      "revealStage": 1,
+      "text": "산하에 현장 대응 부서인 특수기동대, 치료와 관찰을 맡는 의료센터, 그리고 사건을 문서로 남기는 기록 부서를 둔다."
+    },
+    {
+      "id": "world:special-disaster-agency:3",
+      "sourceId": "world:special-disaster-agency",
+      "sourcePriority": 3,
+      "status": "confirmed",
+      "revealStage": 1,
+      "text": "모든 특수재난 사건은 종결 후 기록철에 등재되며, 문서 번호가 붙은 기록만 정식 사건으로 인정된다."
+    },
+    {
+      "id": "world:special-disaster-agency:4",
+      "sourceId": "world:special-disaster-agency",
+      "sourcePriority": 3,
+      "status": "confirmed",
+      "revealStage": 5,
+      "text": "사건 보고서의 측정값과 판정은 사후 정정될 수 있으나, 정정에는 담당 의료인 또는 지휘관의 서명이 필요하다."
+    },
+    {
+      "id": "world:special-task-force:5",
+      "sourceId": "world:special-task-force",
+      "sourcePriority": 3,
+      "status": "confirmed",
+      "revealStage": 1,
+      "text": "지휘관은 철수 순서와 구조 인원의 안전을 확인하며 무영이 현장 지휘를 맡고 있다."
+    },
+    {
+      "id": "world:special-task-force:6",
+      "sourceId": "world:special-task-force",
+      "sourcePriority": 3,
+      "status": "confirmed",
+      "revealStage": 1,
+      "text": "위험 현장에서는 지휘관이 가장 먼저 진입하고 가장 마지막에 철수하는 것이 부대의 오랜 관행이다."
+    },
+    {
+      "id": "world:special-task-force:7",
+      "sourceId": "world:special-task-force",
+      "sourcePriority": 3,
+      "status": "confirmed",
+      "revealStage": 3,
+      "text": "고위험 작전에는 의료 지원 인력이 점검선까지 동행하는 편성이 정착되어 있다."
+    },
+    {
+      "id": "world:special-task-force:8",
+      "sourceId": "world:special-task-force",
+      "sourcePriority": 3,
+      "status": "confirmed",
+      "revealStage": 5,
+      "text": "대원을 대신해 위험 요소에 노출된 지휘관의 사례가 보고되어 있으며, 해당 인원의 현장 복귀는 의료 판정을 따른다."
+    },
+    {
+      "id": "world:third-medical-center:9",
+      "sourceId": "world:third-medical-center",
+      "sourcePriority": 3,
+      "status": "confirmed",
+      "revealStage": 1,
+      "text": "천령이 의사이자 연구원으로 소속되어 현장 의료 지원에도 참여한다."
+    },
+    {
+      "id": "world:third-medical-center:10",
+      "sourceId": "world:third-medical-center",
+      "sourcePriority": 3,
+      "status": "confirmed",
+      "revealStage": 2,
+      "text": "반복 내원하는 환자에게는 전담 의사가 배정된다. 전담 배정은 공식 제도라기보다 반복되는 배정이 굳어진 관행에 가깝다."
+    },
+    {
+      "id": "world:third-medical-center:11",
+      "sourceId": "world:third-medical-center",
+      "sourcePriority": 3,
+      "status": "confirmed",
+      "revealStage": 2,
+      "text": "적성 등록자(WF-10)는 회복이 빨라 외상 징후가 조기에 가려진다. 여기에 자각 증상의 축소 보고가 겹치면 중증이 늦게 발견되는 사례가 반복되어, 적성자 반복 내원자에게는 전담 의사의 지속 관찰이 권장된다."
+    },
+    {
+      "id": "world:third-medical-center:12",
+      "sourceId": "world:third-medical-center",
+      "sourcePriority": 3,
+      "status": "confirmed",
+      "revealStage": 5,
+      "text": "일부 치료 기록은 담당 의료인 전담으로 잠기며, 다른 의료진은 열람할 수 없다. 전담 잠금의 사유는 차트에 남지 않는다."
+    },
+    {
+      "id": "world:containment-protocol:13",
+      "sourceId": "world:containment-protocol",
+      "sourcePriority": 3,
+      "status": "confirmed",
+      "revealStage": 1,
+      "text": "의료진도 철수 명령의 대상이지만 현장 판단과 충돌한 사례가 존재한다."
+    },
+    {
+      "id": "world:containment-protocol:14",
+      "sourceId": "world:containment-protocol",
+      "sourcePriority": 3,
+      "status": "confirmed",
+      "revealStage": 1,
+      "text": "격리문은 다중 잠금쇠 구조이며, 마지막 잠금의 확인은 현장 지휘관의 몫이다. 격리선 안에 인원이 남은 상태의 폐쇄는 지휘관 권한으로만 가능하다."
+    },
+    {
+      "id": "world:containment-protocol:15",
+      "sourceId": "world:containment-protocol",
+      "sourcePriority": 3,
+      "status": "confirmed",
+      "revealStage": 5,
+      "text": "오염 농도가 철수 기준을 넘으면 전 인원 철수가 원칙이다. 기준 초과 후 잔류한 인원은 사후 보고 대상이 되지만, 실제로 보고까지 이어진 사례는 드물다."
+    },
+    {
+      "id": "world:contamination-treatment:16",
+      "sourceId": "world:contamination-treatment",
+      "sourcePriority": 3,
+      "status": "confirmed",
+      "revealStage": 1,
+      "text": "노출 정도에 따라 장비 측정과 의료 관찰이 이루어진다."
+    },
+    {
+      "id": "world:contamination-treatment:17",
+      "sourceId": "world:contamination-treatment",
+      "sourcePriority": 3,
+      "status": "confirmed",
+      "revealStage": 1,
+      "text": "오염은 열상이나 골절과 달리 노출 직후에는 겉으로 드러나지 않는 경우가 있어, 무증상 인원도 관찰 기간을 거친다."
+    },
+    {
+      "id": "world:contamination-treatment:18",
+      "sourceId": "world:contamination-treatment",
+      "sourcePriority": 3,
+      "status": "confirmed",
+      "revealStage": 5,
+      "text": "치료 방식과 일부 회복 사례는 제한 정보로 분류되어 있다."
+    },
+    {
+      "id": "world:contamination-treatment:19",
+      "sourceId": "world:contamination-treatment",
+      "sourcePriority": 3,
+      "status": "confirmed",
+      "revealStage": 5,
+      "text": "고농도 오염 물질은 검은 액상으로 관측되며, 접촉한 구조물 표면을 하얗게 일으키고 방호복 섬유를 침식한 사례가 있다."
+    },
+    {
+      "id": "world:contamination-treatment:20",
+      "sourceId": "world:contamination-treatment",
+      "sourcePriority": 3,
+      "status": "confirmed",
+      "revealStage": 5,
+      "text": "오염 강도 측정값이 사후 하향 정정된 사건이 존재한다. 정정 사유는 초기 계측 오류로 기재되어 있다."
+    },
+    {
+      "id": "world:unidentified-entities:21",
+      "sourceId": "world:unidentified-entities",
+      "sourcePriority": 3,
+      "status": "confirmed",
+      "revealStage": 1,
+      "text": "미확인 개체는 형태와 성질이 일정하지 않아 개별 사건 단위로 분류된다. 관측 즉시 격리선이 설정되고 민간인 접근이 통제된다."
+    },
+    {
+      "id": "world:unidentified-entities:22",
+      "sourceId": "world:unidentified-entities",
+      "sourcePriority": 3,
+      "status": "confirmed",
+      "revealStage": 1,
+      "text": "제압보다 격리가 우선이며, 제압은 격리 유지가 불가능하다고 판단된 경우에만 승인된다."
+    },
+    {
+      "id": "world:unidentified-entities:23",
+      "sourceId": "world:unidentified-entities",
+      "sourcePriority": 3,
+      "status": "confirmed",
+      "revealStage": 1,
+      "text": "사건이 누적되며 대응 규모를 기준으로 한 등급 체계(WF-09)와 행동 경향 묶음(OB-03)이 도입되었다. 두 체계 모두 개체의 정체를 분류하지 않는다 — 개체는 여전히 개별 사건 단위로만 다뤄진다."
+    },
+    {
+      "id": "world:unidentified-entities:24",
+      "sourceId": "world:unidentified-entities",
+      "sourcePriority": 3,
+      "status": "confirmed",
+      "revealStage": 5,
+      "text": "폐쇄 시설에 장기간 머문 개체는 내부에 오염 물질을 축적하며, 제압 과정에서 이를 방출한 사례가 보고되어 있다."
+    },
+    {
+      "id": "world:medical-field-attachment:25",
+      "sourceId": "world:medical-field-attachment",
+      "sourcePriority": 3,
+      "status": "confirmed",
+      "revealStage": 1,
+      "text": "초기에는 부상자를 후방 치료 시설로 이송하는 것이 원칙이었다. 그러나 이송 중 상태가 악화되는 사례가 누적되며 의료 인력의 현장 배속이 도입되었다."
+    },
+    {
+      "id": "world:medical-field-attachment:26",
+      "sourceId": "world:medical-field-attachment",
+      "sourcePriority": 3,
+      "status": "confirmed",
+      "revealStage": 1,
+      "text": "배속 제도가 도입되기 전, 격리선 설정 이후의 구역에 잔류해 이뤄진 비공식 구조가 초기 기록에 드물게 남아 있다. 해당 사례의 다수는 구조자의 소속이 확인되지 않은 채 종결되었다."
+    },
+    {
+      "id": "world:medical-field-attachment:27",
+      "sourceId": "world:medical-field-attachment",
+      "sourcePriority": 3,
+      "status": "confirmed",
+      "revealStage": 3,
+      "text": "배속 의료 인력은 통제선 밖 점검선에 위치하며, 철수 명령의 적용 대상이다. 다만 환자 발생 시 의료적 판단과 지휘 판단의 우선순위는 명문화되어 있지 않다."
+    },
+    {
+      "id": "world:medical-field-attachment:28",
+      "sourceId": "world:medical-field-attachment",
+      "sourcePriority": 3,
+      "status": "confirmed",
+      "revealStage": 3,
+      "text": "특정 부대와 특정 의료인의 배속 조합이 반복되는 경우, 편성 담당은 이를 관행으로 존중하는 편이다."
+    },
+    {
+      "id": "world:personnel-registry:29",
+      "sourceId": "world:personnel-registry",
+      "sourcePriority": 3,
+      "status": "confirmed",
+      "revealStage": 1,
+      "text": "모든 소속 인원은 등록 절차를 거치며, 인사 기록과 의무 기록이 함께 관리된다. 현장 인원의 부상 이력은 의무 기록에 누적된다."
+    },
+    {
+      "id": "world:personnel-registry:30",
+      "sourceId": "world:personnel-registry",
+      "sourcePriority": 3,
+      "status": "confirmed",
+      "revealStage": 5,
+      "text": "일부 인원의 등록 기록에서 불일치가 보고되어 해당 기록은 제한 문서로 이관되었다. 이관 사유는 공개되지 않는다."
+    },
+    {
+      "id": "world:entity-response-grades:31",
+      "sourceId": "world:entity-response-grades",
+      "sourcePriority": 3,
+      "status": "confirmed",
+      "revealStage": 1,
+      "text": "대응 등급은 개체의 정체나 위험성 평가가 아니라, 격리 유지에 필요한 인력과 통제 범위에 붙는다. 같은 개체라도 재평가에 따라 등급이 오르내린다."
+    },
+    {
+      "id": "world:entity-response-grades:32",
+      "sourceId": "world:entity-response-grades",
+      "sourcePriority": 3,
+      "status": "confirmed",
+      "revealStage": 1,
+      "text": "관(觀)급은 격리선 설정과 정기 관측만을 유지한다. 계(戒)급은 단일 구역 통제와 민간인 소개를 동반하는 표준 격리 대응이다."
+    },
+    {
+      "id": "world:entity-response-grades:33",
+      "sourceId": "world:entity-response-grades",
+      "sourcePriority": 3,
+      "status": "confirmed",
+      "revealStage": 1,
+      "text": "위(危)급은 인접 구역 소개와 의료 지원 인력 배속이 의무화되는 확장 통제 단계다. 제압 검토는 위급에서만 승인된다."
+    },
+    {
+      "id": "world:entity-response-grades:34",
+      "sourceId": "world:entity-response-grades",
+      "sourcePriority": 3,
+      "status": "confirmed",
+      "revealStage": 1,
+      "text": "멸(滅)급은 광역 상실을 전제로 한 최상위 등급이다. 제도 시행 이후 지정된 사례가 없으며, 지정 요건과 대응 절차는 제한 문서로 이관되어 있다."
+    },
+    {
+      "id": "world:entity-response-grades:35",
+      "sourceId": "world:entity-response-grades",
+      "sourcePriority": 3,
+      "status": "confirmed",
+      "revealStage": 5,
+      "text": "위급 사건에서는 제압 과정의 오염 방출이 반복적으로 보고되어, 제압 승인에는 의료 부서의 사전 검토가 포함된다."
+    },
+    {
+      "id": "world:entity-response-grades:36",
+      "sourceId": "world:entity-response-grades",
+      "sourcePriority": 3,
+      "status": "confirmed",
+      "revealStage": 5,
+      "text": "제압 교리는 차단, 압박, 후퇴 유도의 세 단계로 구성된다. 개체를 소멸시키는 것이 아니라 격리 가능한 위치로 되몰아 넣는 것이 목적이며, 화기는 살상 수단이 아니라 이동 축을 꺾는 수단으로 규정되어 있다."
+    },
+    {
+      "id": "world:behavior-patterns:37",
+      "sourceId": "world:behavior-patterns",
+      "sourcePriority": 3,
+      "status": "confirmed",
+      "revealStage": 1,
+      "text": "반복 보고에서 세 가지 경향이 사후적으로 묶였다. 정주형은 폐쇄 시설에 머무르며 움직이지 않는다. 배회형은 격리 구역 안을 일정하지 않은 간격으로 이동한다. 돌파형은 구조물과 격리 설비를 반복해서 타격한다."
+    },
+    {
+      "id": "world:behavior-patterns:38",
+      "sourceId": "world:behavior-patterns",
+      "sourcePriority": 3,
+      "status": "confirmed",
+      "revealStage": 1,
+      "text": "배회형 개체가 음원에 접근하는 반응이 여러 현장에서 보고되었다. 격리 구역 내 구조 활동에서 소음 통제가 권고되는 근거다."
+    },
+    {
+      "id": "world:behavior-patterns:39",
+      "sourceId": "world:behavior-patterns",
+      "sourcePriority": 3,
+      "status": "confirmed",
+      "revealStage": 5,
+      "text": "하나의 사건에서 경향을 넘나드는 개체가 보고된 뒤, 경향 묶음을 예측 도구로 쓰지 않도록 명시되었다."
+    },
+    {
+      "id": "world:behavior-patterns:40",
+      "sourceId": "world:behavior-patterns",
+      "sourcePriority": 3,
+      "status": "confirmed",
+      "revealStage": 5,
+      "text": "대원들이 붙인 비공식 별칭이 보고서 여백에 남는 관행이 있다. 별칭은 색인되지 않으며, 같은 별칭이 서로 다른 사건에서 반복될 때만 참고된다."
+    },
+    {
+      "id": "world:aptitude-registry:41",
+      "sourceId": "world:aptitude-registry",
+      "sourcePriority": 3,
+      "status": "confirmed",
+      "revealStage": 1,
+      "text": "일부 인원에게서 감각, 지구력, 회복이 통상 범위를 웃도는 신체 적성이 확인된다. 적성이 언제부터 나타났는지에 대한 합의된 기록은 없다."
+    },
+    {
+      "id": "world:aptitude-registry:42",
+      "sourceId": "world:aptitude-registry",
+      "sourcePriority": 3,
+      "status": "confirmed",
+      "revealStage": 1,
+      "text": "적성은 판정 절차를 거쳐 등록되며, 특수기동대를 비롯한 현장 부서의 선발 요건에 포함된다. 현장 지휘관급 인원은 대부분 적성 등록자다."
+    },
+    {
+      "id": "world:aptitude-registry:43",
+      "sourceId": "world:aptitude-registry",
+      "sourcePriority": 3,
+      "status": "confirmed",
+      "revealStage": 1,
+      "text": "적성의 원인은 확정되지 않았다. 유전과 훈련으로 설명되지 않는 발현 사례가 보고되어 연구가 계속되고 있다."
+    },
+    {
+      "id": "world:aptitude-registry:44",
+      "sourceId": "world:aptitude-registry",
+      "sourcePriority": 3,
+      "status": "confirmed",
+      "revealStage": 5,
+      "text": "판정 절차에서 판정 불능으로 분류된 사례가 소수 존재한다. 계측 오류로 종결된 건이 대부분이며, 반복 판정 불능 기록은 제한 문서로 이관된다."
+    },
+    {
+      "id": "world:collected-folklore:45",
+      "sourceId": "world:collected-folklore",
+      "sourcePriority": 3,
+      "status": "confirmed",
+      "revealStage": 1,
+      "text": "기관은 재난 기록 사업의 일환으로 각지의 오래된 이야기를 채록해 왔다. 시대와 지역이 다른 이야기들에 비슷한 존재가 반복해서 등장한다."
+    },
+    {
+      "id": "world:collected-folklore:46",
+      "sourceId": "world:collected-folklore",
+      "sourcePriority": 3,
+      "status": "confirmed",
+      "revealStage": 1,
+      "text": "반복되는 모티프 가운데 가장 흔한 것은 두 가지다. 부르면 안 되는 것에 대한 경고, 그리고 죽을 자리에서 낯선 이에게 구해져 살아 돌아왔다는 이야기. 구전 설화의 전형적 모티프로 설명되어 있다."
+    },
+    {
+      "id": "world:collected-folklore:47",
+      "sourceId": "world:collected-folklore",
+      "sourcePriority": 3,
+      "status": "confirmed",
+      "revealStage": 5,
+      "text": "설화 속 존재와 미확인 개체를 같은 것으로 보는 견해가 제기되었으나 채택되지 않았다. 경고 설화의 서술과 일부 사건 보고가 유사하다는 지적만 각주로 남아 있다."
+    },
+    {
+      "id": "world:collected-folklore:48",
+      "sourceId": "world:collected-folklore",
+      "sourcePriority": 3,
+      "status": "confirmed",
+      "revealStage": 5,
+      "text": "근래의 사건 보고와 특정 설화의 서술이 세부까지 일치한 사례가 있어, 해당 대조표는 색인에서 제외되고 제한 문서로 이관되었다."
+    },
+    {
+      "id": "world:undated-structures:49",
+      "sourceId": "world:undated-structures",
+      "sourcePriority": 3,
+      "status": "confirmed",
+      "revealStage": 1,
+      "text": "재개발과 지반 정비 과정에서 축조 연대를 확정할 수 없는 구조물이 드러나는 사례가 있다. 현행 공법 및 자재 대장과 일치하지 않으며, 발견 즉시 보고가 의무화되어 있다."
+    },
+    {
+      "id": "world:undated-structures:50",
+      "sourceId": "world:undated-structures",
+      "sourcePriority": 3,
+      "status": "confirmed",
+      "revealStage": 5,
+      "text": "폐쇄 시설형 사건 다수가 이러한 구조물과 겹친 위치에서 발생했다. 오염 방출로 종결된 지하 정수장 사건의 시설 역시 연대 불명 구조물 위에 증축된 것으로 사후 확인되었다."
+    },
+    {
+      "id": "world:undated-structures:51",
+      "sourceId": "world:undated-structures",
+      "sourcePriority": 3,
+      "status": "confirmed",
+      "revealStage": 5,
+      "text": "장기 정주 개체와 구조물의 상관은 판단이 유보되어 있다. 일부 구조물 내부에서 판독되지 않는 표기가 확인되어 해당 기록은 제한 문서로 이관되었다."
+    },
+    {
+      "id": "world:field-customs:52",
+      "sourceId": "world:field-customs",
+      "sourcePriority": 3,
+      "status": "confirmed",
+      "revealStage": 1,
+      "text": "격리선 안에서는 이름을 크게 부르지 않는다. 두드리는 소리에 응답하지 않는다. 어느 규정에도 없는 습속이지만, 신입 대원은 이유를 묻기 전에 먼저 배운다."
+    },
+    {
+      "id": "world:field-customs:53",
+      "sourceId": "world:field-customs",
+      "sourcePriority": 3,
+      "status": "confirmed",
+      "revealStage": 1,
+      "text": "조마다 출동 전에 지키는 사소한 관습이 있다. 기록으로 남기지 않는 것이 관습의 일부다."
+    },
+    {
+      "id": "world:field-customs:54",
+      "sourceId": "world:field-customs",
+      "sourcePriority": 3,
+      "status": "confirmed",
+      "revealStage": 5,
+      "text": "습속 다수가 채록 설화의 경고 모티프(OB-04)와 겹친다는 대조 결과가 있다. 습속이 미신이 아니라 잊힌 지침의 잔재라는 견해가 각주로 남아 있다."
+    },
+    {
+      "id": "world:field-customs:55",
+      "sourceId": "world:field-customs",
+      "sourcePriority": 3,
+      "status": "confirmed",
+      "revealStage": 5,
+      "text": "두드림에 응답하지 않는 습속은 격리 구역 응답 규칙이 개정되기 전부터 존재했다. 규정이 습속을 뒤늦게 따라온 사례로 기록되어 있다."
+    },
+    {
+      "id": "world:response-behavior-protocol:56",
+      "sourceId": "world:response-behavior-protocol",
+      "sourcePriority": 3,
+      "status": "confirmed",
+      "revealStage": 1,
+      "text": "격리선 침입 사건 가운데 개체에 대한 접촉 시도가 목적인 사례가 반복 확인된다. 두드림에 응답하는 행위, 음원 유인 장비의 설치, 격리 설비의 고의 개방 시도가 대표 유형이며, 통칭 응답 행위로 분류된다."
+    },
+    {
+      "id": "world:response-behavior-protocol:57",
+      "sourceId": "world:response-behavior-protocol",
+      "sourcePriority": 3,
+      "status": "confirmed",
+      "revealStage": 1,
+      "text": "응답 행위자는 조직적으로 움직이는 사례가 많다. 스스로를 부르는 이름은 확인되지 않았으며, 내부 보고서는 이들을 응답회로 통칭한다."
+    },
+    {
+      "id": "world:response-behavior-protocol:58",
+      "sourceId": "world:response-behavior-protocol",
+      "sourcePriority": 3,
+      "status": "confirmed",
+      "revealStage": 1,
+      "text": "응답 행위자와의 단독 접촉은 금지된다. 확인 즉시 인계하고, 이들이 남긴 표식과 장비는 만지지 않고 보고한다."
+    },
+    {
+      "id": "world:response-behavior-protocol:59",
+      "sourceId": "world:response-behavior-protocol",
+      "sourcePriority": 3,
+      "status": "confirmed",
+      "revealStage": 5,
+      "text": "응답회 관계자가 미공표 사건 정보를 사전에 인지하고 있던 정황이 복수 건 보고되었다. 정보 경로는 확인되지 않았다."
+    },
+    {
+      "id": "world:response-behavior-protocol:60",
+      "sourceId": "world:response-behavior-protocol",
+      "sourcePriority": 3,
+      "status": "confirmed",
+      "revealStage": 5,
+      "text": "상위 등급 사건의 발생 시기와 응답회 활동의 상관을 지적한 보고가 있으나, 인과는 판단이 유보되어 있다."
+    },
+    {
+      "id": "world:response-behavior-protocol:61",
+      "sourceId": "world:response-behavior-protocol",
+      "sourcePriority": 3,
+      "status": "confirmed",
+      "revealStage": 5,
+      "text": "작전 통신망에 정체불명의 음성이 침입한 사례가 보고되었다. 응답을 요청하는 내용이며, 발신 위치와 침입 경로는 확인되지 않았다."
+    },
+    {
+      "id": "world:recurring-anomalies:62",
+      "sourceId": "world:recurring-anomalies",
+      "sourcePriority": 3,
+      "status": "confirmed",
+      "revealStage": 1,
+      "text": "천령의 낮은 체온과 불안정한 측정값이 기록되었다."
+    },
+    {
+      "id": "world:recurring-anomalies:63",
+      "sourceId": "world:recurring-anomalies",
+      "sourcePriority": 3,
+      "status": "confirmed",
+      "revealStage": 3,
+      "text": "현장 의료 지원 중에도 설명하기 어려운 반응이 반복되었다."
+    },
+    {
+      "id": "world:recurring-anomalies:64",
+      "sourceId": "world:recurring-anomalies",
+      "sourcePriority": 3,
+      "status": "confirmed",
+      "revealStage": 5,
+      "text": "심각한 오염과 치료 이후 일부 보고 수치가 정정되었다."
+    },
+    {
+      "id": "world:medic-outside-ward:65",
+      "sourceId": "world:medic-outside-ward",
+      "sourcePriority": 3,
+      "status": "confirmed",
+      "revealStage": 3,
+      "text": "경보음과 진동에 반응하지 않는 태연함이 여러 대원에 의해 관측되었다. 응급 의료 경력에 따른 둔감화로 설명되어 있다."
+    },
+    {
+      "id": "world:medic-outside-ward:66",
+      "sourceId": "world:medic-outside-ward",
+      "sourcePriority": 3,
+      "status": "confirmed",
+      "revealStage": 3,
+      "text": "현장 기준을 웃도는 처치 속도가 기록되었다. 보조 인력이 손을 따라가지 못한 사례가 복수 존재하며, 숙련도로 설명되어 있다."
+    },
+    {
+      "id": "world:medic-outside-ward:67",
+      "sourceId": "world:medic-outside-ward",
+      "sourcePriority": 3,
+      "status": "confirmed",
+      "revealStage": 5,
+      "text": "철수 기준 초과 후에도 처치 위치를 지킨 사례가 있다. 해당 건은 보고되지 않았다."
+    },
+    {
+      "id": "world:medic-outside-ward:68",
+      "sourceId": "world:medic-outside-ward",
+      "sourcePriority": 3,
+      "status": "confirmed",
+      "revealStage": 5,
+      "text": "중증 환자의 집중 치료 이후 담당 의료관에게서 뚜렷한 소모가 관측되었다. 사흘간 병상을 떠나지 않은 근무 기록이 남아 있다."
+    },
+    {
+      "id": "world:repeated-targeting:69",
+      "sourceId": "world:repeated-targeting",
+      "sourcePriority": 3,
+      "status": "unresolved",
+      "revealStage": 1,
+      "text": "일부 위급 사건에서 자극 반응만으로 설명되지 않는 행동 순서가 보고되었다."
+    },
+    {
+      "id": "world:repeated-targeting:70",
+      "sourceId": "world:repeated-targeting",
+      "sourcePriority": 3,
+      "status": "unresolved",
+      "revealStage": 5,
+      "text": "위급 사건 복수 건에서 학습·회피·유인에 해당하는 행동이 확인되었다. 순찰 조명의 주기에 맞춘 이동, 격리문 잠금 절차의 간격을 노린 타격이 대표 사례다."
+    },
+    {
+      "id": "world:repeated-targeting:71",
+      "sourceId": "world:repeated-targeting",
+      "sourcePriority": 3,
+      "status": "unresolved",
+      "revealStage": 5,
+      "text": "구조 신호를 모사한 두드림이 관측된 사례가 있다. 해당 보고 이후 격리 구역 내 응답 규칙이 개정되었다."
+    },
+    {
+      "id": "world:pre-reconstruction-fragments:72",
+      "sourceId": "world:pre-reconstruction-fragments",
+      "sourcePriority": 3,
+      "status": "unresolved",
+      "revealStage": 1,
+      "text": "기관이 보관한 가장 오래된 문서군은 연대 불명의 단편으로"
+    },
+    {
+      "id": "world:pre-reconstruction-fragments:73",
+      "sourceId": "world:pre-reconstruction-fragments",
+      "sourcePriority": 3,
+      "status": "unresolved",
+      "revealStage": 1,
+      "text": "상호 교차 검증이 불가능해 정식 기록으로 인정되지 않는다."
+    },
+    {
+      "id": "world:pre-reconstruction-fragments:74",
+      "sourceId": "world:pre-reconstruction-fragments",
+      "sourcePriority": 3,
+      "status": "unresolved",
+      "revealStage": 5,
+      "text": "단편들은 광역 상실기의 존재를 시사한다. 현재 문명이 소수 생존 집단의 재건에서 비롯했다는 해석이 있으나, 이를 확정할 기록은 남아 있지 않다. 단편들에는 그 시기를 가리키는 합의된 명칭조차 남아 있지 않다."
+    },
+    {
+      "id": "world:pre-reconstruction-fragments:75",
+      "sourceId": "world:pre-reconstruction-fragments",
+      "sourcePriority": 3,
+      "status": "unresolved",
+      "revealStage": 5,
+      "text": "단편 다수가 같은 대상을 서로 다른 말로 가리키는 것으로 보인다. 형태에 대한 서술은 남아 있지 않고, 규모와 침묵에 대한 묘사만 반복된다."
+    },
+    {
+      "id": "world:pre-reconstruction-fragments:76",
+      "sourceId": "world:pre-reconstruction-fragments",
+      "sourcePriority": 3,
+      "status": "unresolved",
+      "revealStage": 5,
+      "text": "멸(滅)급 대응 기준은 이 단편들에서 유래했다. 문서 번호가 붙은 기록만 정식 사건으로 인정하는 현행 기록 제도 역시 같은 시기의 교훈에서 비롯했다는 견해가 기관 내부에 있다."
+    },
+    {
+      "id": "world:founding-record-gaps:77",
+      "sourceId": "world:founding-record-gaps",
+      "sourcePriority": 3,
+      "status": "unresolved",
+      "revealStage": 1,
+      "text": "창설기 인사 기록의 일부가 일괄 말소되어 있다. 말소 절차의 승인자 역시 기록에 남아 있지 않다."
+    },
+    {
+      "id": "world:founding-record-gaps:78",
+      "sourceId": "world:founding-record-gaps",
+      "sourcePriority": 3,
+      "status": "unresolved",
+      "revealStage": 5,
+      "text": "재건 초기의 자원 배분을 주도한 집단이 존재했음을 시사하는 문서가 남아 있다. 해당 집단의 이름은 문서마다 다르게 등장하며, 이후 일괄 말소되었다. 말소를 피한 각주 하나에 수계(守契)라는 표기가 반복된다."
+    },
+    {
+      "id": "world:founding-record-gaps:79",
+      "sourceId": "world:founding-record-gaps",
+      "sourcePriority": 3,
+      "status": "unresolved",
+      "revealStage": 5,
+      "text": "말소된 이름들과 관련된 계좌·법인 일부가 응답 행위 관련 집단(WF-12)의 자금 흐름과 교차한 정황이 있다. 조사는 승인되지 않았다."
+    },
+    {
+      "id": "world:founding-record-gaps:80",
+      "sourceId": "world:founding-record-gaps",
+      "sourcePriority": 3,
+      "status": "unresolved",
+      "revealStage": 5,
+      "text": "지켜야 할 약속이 있다는 문장이 서로 다른 시기의 단편에서 같은 형태로 발견되었다. 약속의 상대와 내용은 어느 기록에도 남아 있지 않다."
+    },
+    {
+      "id": "world:cheonryeong-restricted:81",
+      "sourceId": "world:cheonryeong-restricted",
+      "sourcePriority": 3,
+      "status": "unresolved",
+      "revealStage": 1,
+      "text": "신원 기록 일부 불일치."
+    },
+    {
+      "id": "world:cheonryeong-restricted:82",
+      "sourceId": "world:cheonryeong-restricted",
+      "sourcePriority": 3,
+      "status": "unresolved",
+      "revealStage": 5,
+      "text": "특정 오염 상황에서 비정상 반응 관측."
+    },
+    {
+      "id": "reveal-plan:1",
+      "sourceId": "reveal-plan",
+      "sourcePriority": 4,
+      "status": "unresolved",
+      "revealStage": 7,
+      "text": "비밀: 초기 단서: 다음 단계: 확인 gate"
+    },
+    {
+      "id": "reveal-plan:2",
+      "sourceId": "reveal-plan",
+      "sourcePriority": 4,
+      "status": "unresolved",
+      "revealStage": 7,
+      "text": "Cheonryeong not ordinary: 낮은 체온, 비정상적으로 고요한 반응, 일관되지 않은 측정값: 불가능해 보이는 회복 또는 오염 반응의 부분 목격: 사용자가 승인한 확인 에피소드"
+    },
+    {
+      "id": "reveal-plan:3",
+      "sourceId": "reveal-plan",
+      "sourcePriority": 4,
+      "status": "unresolved",
+      "revealStage": 7,
+      "text": "blood heals and harms: 냄새, 주변 인물의 반응, 감춘 처치법, 대가: 모호하게 보이는 사용 장면: 별도의 기제와 한계 승인"
+    },
+    {
+      "id": "reveal-plan:4",
+      "sourceId": "reveal-plan",
+      "sourcePriority": 4,
+      "status": "unresolved",
+      "revealStage": 7,
+      "text": "age/origin: 빠진 기록, 회피하는 날짜, 시대에 맞지 않는 지식: 서로 모순되는 기관 기록: 사용자가 canon을 확정"
+    },
+    {
+      "id": "reveal-plan:5",
+      "sourceId": "reveal-plan",
+      "sourcePriority": 4,
+      "status": "unresolved",
+      "revealStage": 7,
+      "text": "reason for staying: 회피, 이례적인 합의: 부분적인 거래 또는 의무: 사용자가 동기를 확정"
+    },
+    {
+      "id": "unresolved-canon:1",
+      "sourceId": "unresolved-canon",
+      "sourcePriority": 4,
+      "status": "unresolved",
+      "revealStage": 7,
+      "text": "항목: 상태: 비고"
+    },
+    {
+      "id": "unresolved-canon:2",
+      "sourceId": "unresolved-canon",
+      "sourcePriority": 4,
+      "status": "unresolved",
+      "revealStage": 7,
+      "text": "각자의 정확한 체중: unresolved"
+    },
+    {
+      "id": "unresolved-canon:3",
+      "sourceId": "unresolved-canon",
+      "sourcePriority": 4,
+      "status": "unresolved",
+      "revealStage": 7,
+      "text": "천령의 실제 나이와 기원: unresolved: 공개는 `reveal-plan.md`의 age/origin gate를 따름"
+    },
+    {
+      "id": "unresolved-canon:4",
+      "sourceId": "unresolved-canon",
+      "sourcePriority": 4,
+      "status": "unresolved",
+      "revealStage": 7,
+      "text": "천령이 특재청에 들어온 계기: unresolved: reason for staying gate와 연동"
+    },
+    {
+      "id": "unresolved-canon:5",
+      "sourceId": "unresolved-canon",
+      "sourcePriority": 4,
+      "status": "unresolved",
+      "revealStage": 7,
+      "text": "무영이 지휘관이 된 과정: unresolved: 동기의 기원(9세 구조 사건, 잊혀진 기록)만 확정 — 입대·승진 과정은 미정"
+    },
+    {
+      "id": "unresolved-canon:6",
+      "sourceId": "unresolved-canon",
+      "sourcePriority": 4,
+      "status": "unresolved",
+      "revealStage": 7,
+      "text": "무영의 가족 및 과거: unresolved: 9세에 상가 붕괴 재난에서 구조된 사건은 확정(잊혀진 기록) — 가족 구성·생사는 미정"
+    },
+    {
+      "id": "unresolved-canon:7",
+      "sourceId": "unresolved-canon",
+      "sourcePriority": 4,
+      "status": "unresolved",
+      "revealStage": 7,
+      "text": "천령의 능력 한계와 부작용: unresolved: blood heals and harms gate와 연동"
+    },
+    {
+      "id": "unresolved-canon:8",
+      "sourceId": "unresolved-canon",
+      "sourcePriority": 4,
+      "status": "unresolved",
+      "revealStage": 7,
+      "text": "둘의 첫 조우가 발생한 구체적 재난: unresolved: records/01은 재난 종류를 특정하지 않음"
+    },
+    {
+      "id": "unresolved-canon:9",
+      "sourceId": "unresolved-canon",
+      "sourcePriority": 4,
+      "status": "unresolved",
+      "revealStage": 5,
+      "text": "관계가 결정적으로 변하는 대형 사건: unresolved: 5단계 균열의 구체 사건"
+    },
+    {
+      "id": "unresolved-canon:10",
+      "sourceId": "unresolved-canon",
+      "sourcePriority": 4,
+      "status": "unresolved",
+      "revealStage": 8,
+      "text": "최종 관계가 연인인지, 연인 직전인지: unresolved: 새 8단계는 '알고도 남는 사이'로 확정 — 연인 확정 여부는 그 이후(2부)로 미정"
+    },
+    {
+      "id": "unresolved-canon:11",
+      "sourceId": "unresolved-canon",
+      "sourcePriority": 4,
+      "status": "unresolved",
+      "revealStage": 7,
+      "text": "특재청 내부에서 두 사람의 관계를 아는 인물: unresolved"
+    },
+    {
+      "id": "unresolved-canon:12",
+      "sourceId": "unresolved-canon",
+      "sourcePriority": 4,
+      "status": "unresolved",
+      "revealStage": 7,
+      "text": "둘만의 일상적인 습관과 사적인 장소: unresolved"
+    },
+    {
+      "id": "unresolved-canon:13",
+      "sourceId": "unresolved-canon",
+      "sourcePriority": 4,
+      "status": "unresolved",
+      "revealStage": 7,
+      "text": "재건기 이전 시대(멸망기)의 연대·규모·경위: unresolved: CL-03은 단편의 존재만 확정 — 시기는 수 세기 전 추정으로만 모호하게 유지"
+    },
+    {
+      "id": "unresolved-canon:14",
+      "sourceId": "unresolved-canon",
+      "sourcePriority": 4,
+      "status": "unresolved",
+      "revealStage": 7,
+      "text": "천령과 재건기 이전 시대의 관계: unresolved: 멸망·재건 설정 도입으로 생긴 연결 후보 — age/origin gate 통과 전 확정 금지"
+    },
+    {
+      "id": "unresolved-canon:15",
+      "sourceId": "unresolved-canon",
+      "sourcePriority": 4,
+      "status": "unresolved",
+      "revealStage": 7,
+      "text": "멸(滅)급 지정 요건과 멸망기 개체의 실체: unresolved: 상위 개체는 지능 확정(CL-02), 크툴루적 규모·침묵의 존재라는 방향만 합의"
+    },
+    {
+      "id": "unresolved-canon:16",
+      "sourceId": "unresolved-canon",
+      "sourcePriority": 4,
+      "status": "unresolved",
+      "revealStage": 7,
+      "text": "무영 적성의 세부(판정 등급·한계·발현 시점): unresolved: 적성자 확정(WF-10) — 세부는 미정. 9세 구조 사건과 발현의 관계도 미정"
+    },
+    {
+      "id": "unresolved-canon:17",
+      "sourceId": "unresolved-canon",
+      "sourcePriority": 4,
+      "status": "unresolved",
+      "revealStage": 7,
+      "text": "설화 속 존재들과 미확인 개체·천령의 관계: unresolved: OB-04는 견해 미채택으로만 기록 — 천령 정체·기원 gate 통과 전 확정 금지"
+    },
+    {
+      "id": "unresolved-canon:18",
+      "sourceId": "unresolved-canon",
+      "sourcePriority": 4,
+      "status": "unresolved",
+      "revealStage": 7,
+      "text": "천령의 적성 판정 기록 여부: unresolved: WF-10의 판정 불능 사례와 CL-01 신원 불일치의 연결 후보"
+    },
+    {
+      "id": "unresolved-canon:19",
+      "sourceId": "unresolved-canon",
+      "sourcePriority": 4,
+      "status": "unresolved",
+      "revealStage": 7,
+      "text": "연대 불명 구조물의 정체와 내부 표기의 판독: unresolved: WF-11은 존재와 위치 상관만 확정 — CL-03 단편과의 관계 미정"
+    },
+    {
+      "id": "unresolved-canon:20",
+      "sourceId": "unresolved-canon",
+      "sourcePriority": 4,
+      "status": "unresolved",
+      "revealStage": 7,
+      "text": "응답회의 목적과 교리, 지도부: unresolved: WF-12는 행위 유형과 통칭만 확정 — 사전 인지 경로 미정"
+    },
+    {
+      "id": "unresolved-canon:21",
+      "sourceId": "unresolved-canon",
+      "sourcePriority": 4,
+      "status": "unresolved",
+      "revealStage": 7,
+      "text": "수계(守契)의 실체와 약속의 내용·상대: unresolved: CL-04는 말소 흔적과 표기 반복만 확정 — 흑막의 정체는 gate"
+    },
+    {
+      "id": "unresolved-canon:22",
+      "sourceId": "unresolved-canon",
+      "sourcePriority": 4,
+      "status": "unresolved",
+      "revealStage": 7,
+      "text": "수계와 응답회의 관계: unresolved: 자금 교차 정황만 기록 — 인과·지휘 관계 확정 금지"
+    },
+    {
+      "id": "continuity-ledger:1",
+      "sourceId": "continuity-ledger",
+      "sourcePriority": 4,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "씬을 site-save 할 때마다 해당 기록의 행을 갱신한다. 갱신 없이 저장을 끝내지 않는다."
+    },
+    {
+      "id": "continuity-ledger:2",
+      "sourceId": "continuity-ledger",
+      "sourcePriority": 4,
+      "status": "request-only",
+      "revealStage": 7,
+      "text": "`새로 도입한 사실`에는 그 화가 처음 만든 설정(request-only에서 게시로 canon이 된 것)만 적는다."
+    },
+    {
+      "id": "continuity-ledger:3",
+      "sourceId": "continuity-ledger",
+      "sourcePriority": 4,
+      "status": "unresolved",
+      "revealStage": 7,
+      "text": "`미회수 요소`는 이후 화가 회수하면 회수한 화의 행으로 옮기고 원래 행에서 지운다."
+    },
+    {
+      "id": "continuity-ledger:4",
+      "sourceId": "continuity-ledger",
+      "sourcePriority": 4,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "항목은 한 줄씩, 자세한 맥락이 필요하면 원문을 연다."
+    },
+    {
+      "id": "continuity-ledger:5",
+      "sourceId": "continuity-ledger",
+      "sourcePriority": 4,
+      "status": "confirmed",
+      "revealStage": 0,
+      "text": "새로 도입한 사실: 약 19년 전 상가 붕괴 특수재난과 격리 철수, 무영 9세 고립·구조, 무영 왼팔 최고(最古) 흉터와 이마 열상(일시적 시야 상실), '구하는 사람' 결심의 기원(특기대 입대 동기의 씨앗), 구조자의 소속 미확인 종결(천령의 당시 신분은 비특정 유지)"
+    },
+    {
+      "id": "continuity-ledger:6",
+      "sourceId": "continuity-ledger",
+      "sourcePriority": 4,
+      "status": "confirmed",
+      "revealStage": 0,
+      "text": "단서(표면 설명): 차가운 손·서늘한 품(겨울 새벽), 콘크리트 판을 혼자 움직임(어른의 힘 — 성인이 된 뒤에야 회고로 이상 자각), 무등화·무음 이동(구조 숙련), 심장 소리 안 들림(방진복·이명), 소독약 밑의 마른 풀·쇠 냄새(원인 미상), 지치지 않음(아이의 단편 관찰) — 전체에 '중상 입은 아이의 흐린 지각'이라는 상위 표면 설명이 덮임"
+    },
+    {
+      "id": "continuity-ledger:7",
+      "sourceId": "continuity-ledger",
+      "sourcePriority": 4,
+      "status": "unresolved",
+      "revealStage": 0,
+      "text": "미회수 요소: \"흰 사람이었어요\" 진술, 이마 흉터, 손등 두 번 두드리는 몸짓, 삼켜진 이름 대답, 냄새 단서(blood-gate 초기 단서 후보), \"잘하네\" 평가"
+    },
+    {
+      "id": "continuity-ledger:8",
+      "sourceId": "continuity-ledger",
+      "sourcePriority": 4,
+      "status": "confirmed",
+      "revealStage": 0,
+      "text": "callbacks 생성: 차가운 손끝의 원형(CM-01·03·05로 이어짐), \"두고 가기엔 아깝잖아\"(대표 대사 \"죽게 두기엔, 아직 조금 아깝잖아\"의 원형), 마지막 문장이 CM-01 손목 장면 예고 — CM-01의 '근거 없는 신뢰'가 무의식적 재인으로 재해석됨(연결됨: CM-01 카드에 \"기록철에 남은 두 사람의 첫 만남이다\" 프레임 추가, related 상호 연결)"
+    },
+    {
+      "id": "continuity-ledger:9",
+      "sourceId": "continuity-ledger",
+      "sourcePriority": 4,
+      "status": "confirmed",
+      "revealStage": 0,
+      "text": "호칭: 상호 무명(아저씨 / 아이) — 호칭 체계 미적용 구간"
+    },
+    {
+      "id": "continuity-ledger:10",
+      "sourceId": "continuity-ledger",
+      "sourcePriority": 4,
+      "status": "confirmed",
+      "revealStage": 0,
+      "text": "세계관 등재: WF-07 초기 문단에 '배속 도입 전 비공식 잔류 구조 사례' 추가 반영"
+    },
+    {
+      "id": "continuity-ledger:11",
+      "sourceId": "continuity-ledger",
+      "sourcePriority": 4,
+      "status": "confirmed",
+      "revealStage": 1,
+      "text": "제목 변경(첫 조우 → 기록된 첫 만남): 전사 공개 후 '기록상의 첫 만남' 프레임 반영. 관계 단계명 '1단계 — 첫 조우'는 프로필 canon으로 유지"
+    },
+    {
+      "id": "continuity-ledger:12",
+      "sourceId": "continuity-ledger",
+      "sourcePriority": 4,
+      "status": "confirmed",
+      "revealStage": 1,
+      "text": "씬에 기시감 한 스침 추가: 손목을 잡힌 순간 \"아주 오래전에도 이런 온도를 만진 적이 있는 것 같았다\" — 표면 설명(실혈이 만든 착각) 병기, 재인 없음"
+    },
+    {
+      "id": "continuity-ledger:13",
+      "sourceId": "continuity-ledger",
+      "sourcePriority": 4,
+      "status": "confirmed",
+      "revealStage": 1,
+      "text": "새로 도입한 사실: 격리문(다중 잠금쇠, 지휘관이 마지막 확인), 임시 치료소(방수포·발전기·칸막이), 무전 콜사인 운용(3조), 무영 옆구리 중상과 최소 이틀 안정 지시, 천령의 긁힌 임시 출입증(식별 번호 절반 가림)"
+    },
+    {
+      "id": "continuity-ledger:14",
+      "sourceId": "continuity-ledger",
+      "sourcePriority": 4,
+      "status": "confirmed",
+      "revealStage": 1,
+      "text": "단서(표면 설명): 휴대용 측정기가 천령 손 근처에서만 수치 요동(현장 장비의 먼지·충격), 차가운 손끝(출혈로 흐려진 감각), 혼란 속 지나친 고요(직업적 침착과는 다름 — 이유 미상으로 종결), 차가운 손이 닿은 곳의 열감 후퇴(약물·출혈 탓일 수도)"
+    },
+    {
+      "id": "continuity-ledger:15",
+      "sourceId": "continuity-ledger",
+      "sourcePriority": 4,
+      "status": "unresolved",
+      "revealStage": 1,
+      "text": "미회수 요소: 출입증에 가려진 식별 번호, 측정기 요동의 원인, \"최소 이틀 안정\"을 무영이 지켰는지"
+    },
+    {
+      "id": "continuity-ledger:16",
+      "sourceId": "continuity-ledger",
+      "sourcePriority": 4,
+      "status": "confirmed",
+      "revealStage": 1,
+      "text": "callbacks 생성: 차가운 손끝, `지휘관 씨` 호칭, 위기 시 이름만 부르기(“무영.”)"
+    },
+    {
+      "id": "continuity-ledger:17",
+      "sourceId": "continuity-ledger",
+      "sourcePriority": 4,
+      "status": "confirmed",
+      "revealStage": 1,
+      "text": "세계관 등재: WF-04(격리문 구조) 반영됨"
+    },
+    {
+      "id": "continuity-ledger:18",
+      "sourceId": "continuity-ledger",
+      "sourcePriority": 4,
+      "status": "confirmed",
+      "revealStage": 2,
+      "text": "핵심: \"가벼운 부상\" 화법(무영), 이전에 없던 상처를 찾아내는 천령"
+    },
+    {
+      "id": "continuity-ledger:19",
+      "sourceId": "continuity-ledger",
+      "sourcePriority": 4,
+      "status": "confirmed",
+      "revealStage": 2,
+      "text": "세계관 등재: WF-03(전담 의사 관행) 반영됨"
+    },
+    {
+      "id": "continuity-ledger:20",
+      "sourceId": "continuity-ledger",
+      "sourcePriority": 4,
+      "status": "confirmed",
+      "revealStage": 3,
+      "text": "새로 도입한 사실: 재개발 구역 붕괴+지하 배관 유독가스 사건, 제3의료센터 현장 지원 배속, 무영의 마스크 양보와 나흘 복귀 불가 판정"
+    },
+    {
+      "id": "continuity-ledger:21",
+      "sourceId": "continuity-ledger",
+      "sourcePriority": 4,
+      "status": "confirmed",
+      "revealStage": 3,
+      "text": "단서(표면 설명): 가스 경보 무반응(응급실 둔감화), 차가운 손끝(새벽 공기)"
+    },
+    {
+      "id": "continuity-ledger:22",
+      "sourceId": "continuity-ledger",
+      "sourcePriority": 4,
+      "status": "unresolved",
+      "revealStage": 3,
+      "text": "미회수 요소: \"다음부터는 먼저 나가요\" 약속, 나흘 복귀 불가 기간의 일, 4장면의 '웃음기 없는 얼굴'"
+    },
+    {
+      "id": "continuity-ledger:23",
+      "sourceId": "continuity-ledger",
+      "sourcePriority": 4,
+      "status": "confirmed",
+      "revealStage": 3,
+      "text": "callbacks 생성: 차가운 손끝, \"그건 내가 정해요\""
+    },
+    {
+      "id": "continuity-ledger:24",
+      "sourceId": "continuity-ledger",
+      "sourcePriority": 4,
+      "status": "confirmed",
+      "revealStage": 3,
+      "text": "호칭: 무영→천령 `의료관님` (초반 호칭 규칙 적용)"
+    },
+    {
+      "id": "continuity-ledger:25",
+      "sourceId": "continuity-ledger",
+      "sourcePriority": 4,
+      "status": "confirmed",
+      "revealStage": 3,
+      "text": "세계관 등재: WF-07(배속 제도), OB-02(경보 무반응·처치 속도) 반영됨"
+    },
+    {
+      "id": "continuity-ledger:26",
+      "sourceId": "continuity-ledger",
+      "sourcePriority": 4,
+      "status": "confirmed",
+      "revealStage": 4,
+      "text": "핵심: 생사는 상대의 판단에 맡길 수 있는 동료"
+    },
+    {
+      "id": "continuity-ledger:27",
+      "sourceId": "continuity-ledger",
+      "sourcePriority": 4,
+      "status": "confirmed",
+      "revealStage": 5,
+      "text": "새로 도입한 사실: 지하 정수장 인외 개체 제압 작전과 오염 방출, 무영 엿새 의식불명, 천령 사흘 밤샘, 차트 전담 잠금, 오염 측정값 하향 정정(천령 서명)"
+    },
+    {
+      "id": "continuity-ledger:28",
+      "sourceId": "continuity-ledger",
+      "sourcePriority": 4,
+      "status": "confirmed",
+      "revealStage": 5,
+      "text": "단서(표면 설명): 쓴 냄새·소매 걷기·긋는 동작(반의식 단편, 순서 불확실), 불가능한 회복(계측 오판 정정), 힘없는 손끝"
+    },
+    {
+      "id": "continuity-ledger:29",
+      "sourceId": "continuity-ledger",
+      "sourcePriority": 4,
+      "status": "unresolved",
+      "revealStage": 5,
+      "text": "미회수 요소: 오염 후유증 여부, 잠긴 차트의 내용, 천령의 회복 여부·속도, \"가벼운 부상이었습니다\"의 실행(CM-06에서 회수 예정), 신입 대원의 이후"
+    },
+    {
+      "id": "continuity-ledger:30",
+      "sourceId": "continuity-ledger",
+      "sourcePriority": 4,
+      "status": "confirmed",
+      "revealStage": 5,
+      "text": "callbacks 사용: 차가운 손끝(힘없음으로 변주), \"그건 내가 정해요\"(자기 소모로 의미 반전), \"가벼운\"(무영이 자기 것으로 삼음)"
+    },
+    {
+      "id": "continuity-ledger:31",
+      "sourceId": "continuity-ledger",
+      "sourcePriority": 4,
+      "status": "confirmed",
+      "revealStage": 4,
+      "text": "호칭: 무영→천령 `천령 선생` (4단계 이후 호칭)"
+    },
+    {
+      "id": "continuity-ledger:32",
+      "sourceId": "continuity-ledger",
+      "sourcePriority": 4,
+      "status": "confirmed",
+      "revealStage": 5,
+      "text": "세계관 등재: WF-01(정정 서명), WF-02(대리 노출 사례), WF-03(차트 잠금), WF-05(오염 성상·정정), WF-06(폐쇄 시설 개체), OB-02(잔류·소모) 반영됨"
+    },
+    {
+      "id": "continuity-ledger:33",
+      "sourceId": "continuity-ledger",
+      "sourcePriority": 4,
+      "status": "confirmed",
+      "revealStage": 6,
+      "text": "핵심: \"가벼운 부상이었습니다\" / \"누가 가볍다고 판단했어요?\" — CM-05 결말의 결심이 실행된 단계"
+    },
+    {
+      "id": "continuity-ledger:34",
+      "sourceId": "continuity-ledger",
+      "sourcePriority": 4,
+      "status": "confirmed",
+      "revealStage": 6,
+      "text": "공개 카드는 `치료자`로 표기(비밀 유지) — 집필 시 비공개 전문을 참조"
+    },
+    {
+      "id": "continuity-ledger:35",
+      "sourceId": "continuity-ledger",
+      "sourcePriority": 4,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "재설계 이력: 구 「귀환의 약속」·「연인 직전」 기록은 폐기되어 `.trash/records/`로 이동 (2026-07 사용자 결정). 귀환·기다림 모티프는 페어 정체성으로 유지. 공개 마커 금지는 구 기록 문구(promise-to-return, 귀환의 약속)만 유지 — `CM-07` 문자열은 새 기록 공개로 금지 해제."
+    },
+    {
+      "id": "continuity-ledger:36",
+      "sourceId": "continuity-ledger",
+      "sourcePriority": 4,
+      "status": "unresolved",
+      "revealStage": 3,
+      "text": "새로 도입한 사실: 계급 폐쇄 물류 시설과 석 달 정주 개체, 응답회의 잠금쇠 절단·표식·음원 장비 3기·통신망 침입 목소리, 무영 옆구리 3주 전 부상과 타 센터 진료, 제압 교리 3단계(차단·압박·후퇴 유도)의 실행 묘사, 두 사람이 알고 지낸 기간 약 5년, 개체의 대(對)천령 회피 행동(해석 미확정)"
+    },
+    {
+      "id": "continuity-ledger:37",
+      "sourceId": "continuity-ledger",
+      "sourcePriority": 4,
+      "status": "unresolved",
+      "revealStage": 7,
+      "text": "비밀 공개 집행: 비밀 1(범상치 않음)·비밀 2(피의 힘) 목격 gate 집행됨 — 상처 자가 회복, 피 투여 치료를 무영이 의식 있는 채 목격. 기제·한계 미설명. 나이·기원·잔류 이유 gate 잠김 유지."
+    },
+    {
+      "id": "continuity-ledger:38",
+      "sourceId": "continuity-ledger",
+      "sourcePriority": 4,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "단서(표면 설명): 단내 비슷한 냄새(계기 미검출 — 원인 미상), 개체 후미의 교리 밖 움직임, 탄착음의 이질성 — 모두 관측만"
+    },
+    {
+      "id": "continuity-ledger:39",
+      "sourceId": "continuity-ledger",
+      "sourcePriority": 4,
+      "status": "unresolved",
+      "revealStage": 8,
+      "text": "미회수 요소: 무전 목소리의 발신자, 응답회 표식의 의미, 개체가 천령을 피한 이유, \"보고서에는 쓸 것만\" — 실제 보고서 내용(8단계 회수 예정), 목격 이후 두 사람의 첫 대화(8단계 몫), 응답회의 재방문 정황"
+    },
+    {
+      "id": "continuity-ledger:40",
+      "sourceId": "continuity-ledger",
+      "sourcePriority": 4,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "callbacks: CM-05 단편 전량 회수(쓴 냄새·소매·긋기·\"그건 내가 정해요\"·제압 교리 문구), \"가벼운 부상\" 화법 회수 후 폐기, 전사의 무음 보행·기시감·\"부르면 안 되는 것\", CM-01 어깨 조임(부재로 회수)"
+    },
+    {
+      "id": "continuity-ledger:41",
+      "sourceId": "continuity-ledger",
+      "sourcePriority": 4,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "호칭: 거리 두기 상태 '지휘관 씨/의료관님' → 위기에서 '천령 선생' 복귀, 천령은 호칭 생략(정지)"
+    },
+    {
+      "id": "continuity-ledger:42",
+      "sourceId": "continuity-ledger",
+      "sourcePriority": 4,
+      "status": "confirmed",
+      "revealStage": 7,
+      "text": "세계관 등재: WF-09에 제압 교리 문단, WF-12에 통신망 침입 문단 추가 반영. relatedRecords에 witnessing 연결"
+    },
+    {
+      "id": "continuity-ledger:43",
+      "sourceId": "continuity-ledger",
+      "sourcePriority": 4,
+      "status": "unresolved",
+      "revealStage": 7,
+      "text": "목격 이후 재정의된 일상. 연인 확정은 미확정으로 열어둠. 프로필 6장 정의 확정 상태."
+    }
+  ]
+}

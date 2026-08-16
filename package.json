@@ -9,9 +9,18 @@
     "build": "tsc --noEmit && vite build",
     "test": "vitest",
     "test:run": "vitest run",
+    "test:db:concurrency": "node supabase/tests/budget_concurrency.test.mjs && node supabase/tests/review_concurrency.test.mjs && node supabase/tests/generation_attempt_concurrency.test.mjs && node supabase/tests/generation_worker_concurrency.test.mjs && node supabase/tests/generation_direct_worker_concurrency.test.mjs && node supabase/tests/generation_worker_reservation_recovery.test.mjs && node supabase/tests/settings_worker_claim_concurrency.test.mjs && node supabase/tests/schedule_access_concurrency.test.mjs && node supabase/tests/schedule_queue_concurrency.test.mjs && node supabase/tests/settings_reservation_concurrency.test.mjs && node supabase/tests/automation_policy_concurrency.test.mjs && node supabase/tests/schedule_save_dispatch_concurrency.test.mjs && node supabase/tests/publication_concurrency.test.mjs",
+    "test:db:upgrade": "tsx supabase/tests/schedule_migration_upgrade.test.ts && tsx supabase/tests/publication_migration_upgrade.test.ts && tsx supabase/tests/automation_policy_migration_upgrade.test.ts && tsx supabase/tests/generation_worker_migration_upgrade.test.ts",
+    "test:functions:gateway": "node supabase/tests/function_gateway_cors.test.mjs",
+    "test:functions:generation-worker": "node supabase/tests/generation_worker_edge_integration.test.mjs",
+    "narrative:security": "tsx scripts/check-narrative-secrets.ts",
+    "narrative:canon": "tsx scripts/export-narrative-canon.ts",
     "validate": "tsx scripts/validate-content.ts",
     "e2e": "playwright test",
-    "e2e:editor": "playwright test --config playwright.editor.config.ts"
+    "e2e:editor": "playwright test --config playwright.editor.config.ts",
+    "admin:dev": "npm --prefix admin run dev",
+    "admin:test": "npm --prefix admin run test -- --run",
+    "admin:build": "npm --prefix admin run build"
   },
   "dependencies": {
     "express": "^5.2.1",

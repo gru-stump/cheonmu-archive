@@ -1,7 +1,11 @@
 import { z } from 'zod';
+import { isCalendarDate } from '../../shared/narrative/archive-record';
 
 const nonEmptyText = z.string().trim().min(1);
 const contentId = nonEmptyText.regex(/^[a-z0-9-]+$/);
+export const calendarDateSchema = z.string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/)
+  .refine(isCalendarDate, 'Date must be a real ISO calendar date.');
 
 export const statusSchema = z.enum(['confirmed', 'draft']);
 
@@ -14,7 +18,11 @@ export const recordMetaSchema = z.object({
   id: contentId,
   recordNumber: nonEmptyText,
   title: nonEmptyText,
+  // Legacy archive records predate these publication fields. New records are
+  // required to provide them by the publishing transformer.
+  summary: nonEmptyText.optional(),
   stage: z.number().int().min(0).max(8),
+  date: calendarDateSchema.optional(),
   status: statusSchema,
   characters: z.array(contentId),
   tags: z.array(nonEmptyText),

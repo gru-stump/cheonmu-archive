@@ -15,7 +15,13 @@ export default defineConfig(({ command, isPreview }) => ({
   },
   test: {
     environment: 'jsdom',
-    include: ['src/**/*.test.{ts,tsx}', 'scripts/**/*.test.ts', 'editor/**/*.test.ts'],
+    include: [
+      'src/**/*.test.{ts,tsx}',
+      'scripts/**/*.test.ts',
+      'editor/**/*.test.ts',
+      'shared/**/*.test.ts',
+      'supabase/functions/**/*.test.ts',
+    ],
     setupFiles: './src/test/setup.ts',
   },
 }));
