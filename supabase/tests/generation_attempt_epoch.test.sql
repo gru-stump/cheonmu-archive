@@ -7,8 +7,13 @@ where id = '12000000-0000-0000-0000-000000000001';
 
 insert into public.drafts (id, owner_id, kind, title)
 values ('d1000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001', 'daily_event', 'attempt epoch');
-insert into public.generation_jobs (id, owner_id, draft_id, schedule_key, scheduled_for, payload)
-values ('d2000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001', 'd1000000-0000-0000-0000-000000000001', 'attempt-epoch', '2026-08-15T00:00:00Z', '{"source":"manual"}'::jsonb);
+insert into public.generation_jobs (id, owner_id, draft_id, schedule_key, scheduled_for, provider_setting_id, payload)
+values (
+  'd2000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001',
+  'd1000000-0000-0000-0000-000000000001', 'same-key', '2026-08-15T00:00:00Z',
+  '12000000-0000-0000-0000-000000000001',
+  '{"source":"manual","mode":"new","kind":"daily_event","manualRequestKey":"same-key"}'::jsonb
+);
 
 select has_column('public', 'generation_jobs', 'attempt_token', 'jobs persist an immutable attempt epoch');
 select set_config('request.jwt.claim.role', 'service_role', true);

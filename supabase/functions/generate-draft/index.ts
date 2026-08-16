@@ -67,7 +67,7 @@ export interface GenerationDependencies {
   createAttemptToken(): string;
   authenticate(token: string): Promise<{ ownerId: string }>;
   authorize(ownerId: string, command: GenerationCommand): Promise<{ draftStatus: DraftStatus; draftKind: DraftKind; workflowPhase: string | null }>;
-  findIdempotent(ownerId: string, idempotencyKey: string): Promise<GenerationResponse | null>;
+  findIdempotent(ownerId: string, command: GenerationCommand): Promise<GenerationResponse | null>;
   loadPolicy(ownerId: string, command: GenerationCommand): Promise<TrustedGenerationPolicy>;
   selectContext(ownerId: string, command: GenerationCommand, inputTokenBudget: number): Promise<ContextSelection>;
   freezeContext(input: {
@@ -240,7 +240,7 @@ const stableConflictCodes = new Set([
   'mode_kind_mismatch', 'active_provider_setting_required', 'context_budget_too_small', 'stale_attempt',
   'stale_provider_pricing', 'invalid_provider_pricing', 'manual_generation_disabled',
   'schedule_automation_disabled', 'manual_call_limit_reached', 'invalid_generation_source',
-  'manual_generation_binding_changed',
+  'manual_generation_binding_changed', 'generation_replay_mismatch',
 ]);
 
 function mapPersistence(error: unknown, fallbackCode = 'internal_error'): GenerationError {
@@ -270,9 +270,9 @@ async function abortAfterFreeze(
 export async function runGeneration(deps: GenerationDependencies, command: GenerationCommand): Promise<GenerationResponse> {
   const { ownerId } = await deps.authenticate(command.authToken);
   const authorized = await deps.authorize(ownerId, command);
-  const existing = await deps.findIdempotent(ownerId, command.idempotencyKey);
-  if (existing) return existing;
   validateCommand(command, authorized.draftKind);
+  const existing = await deps.findIdempotent(ownerId, command);
+  if (existing) return existing;
   if (!prerequisiteApproved(command.mode, authorized.workflowPhase)) throw new GenerationError(409, 'workflow_phase_not_approved');
   if (authorized.draftStatus !== 'queued') throw new GenerationError(409, 'stale_transition');
 
@@ -462,12 +462,35 @@ export function createSupabaseGenerationDependencies(
       const workflowPhase = command.mode.startsWith('major_event_') ? row<{ phase: string }>(await call(`/rest/v1/major_event_workflows?select=phase&draft_id=eq.${encodeURIComponent(command.draftId)}`))?.phase ?? null : null;
       return { draftStatus: draft.status, draftKind: draft.kind, workflowPhase };
     },
-    findIdempotent: async (_ownerId, key) => {
-      const job = row<{ id: string; draft_id: string; status: string }>(await call(`/rest/v1/generation_jobs?select=id,draft_id,status&idempotency_key=eq.${encodeURIComponent(key)}`));
+    findIdempotent: async (_ownerId, command) => {
+      const job = row<{
+        id: string; draft_id: string | null; status: string; idempotency_key: string | null;
+        generation_mode: GenerationMode | null; payload: Record<string, unknown>;
+      }>(await call(`/rest/v1/generation_jobs?select=id,draft_id,status,idempotency_key,generation_mode,payload&id=eq.${encodeURIComponent(command.jobId)}`));
       if (!job) return null;
-      if (job.status !== 'completed') throw new GenerationError(409, 'duplicate_generation');
+      const payload = job.payload && typeof job.payload === 'object' ? job.payload : {};
+      const preboundKey = typeof payload.manualRequestKey === 'string' ? payload.manualRequestKey : null;
+      const preboundMode = typeof payload.mode === 'string' ? payload.mode : null;
+      const storedKind = typeof payload.kind === 'string' ? payload.kind : null;
+      const completedBindingMatches = job.id === command.jobId
+        && job.draft_id === command.draftId
+        && job.idempotency_key === command.idempotencyKey
+        && job.generation_mode === command.mode
+        && storedKind === command.kind;
+      if (job.status === 'completed' && !completedBindingMatches) throw new GenerationError(409, 'generation_replay_mismatch');
+      if (job.status !== 'completed') {
+        const frozenBindingMismatch = job.idempotency_key !== null
+          && (job.draft_id !== command.draftId || job.idempotency_key !== command.idempotencyKey
+            || job.generation_mode !== command.mode || storedKind !== command.kind);
+        const queuedBindingMismatch = preboundKey !== null
+          && (job.draft_id !== command.draftId || preboundKey !== command.idempotencyKey
+            || preboundMode !== command.mode || storedKind !== command.kind);
+        if (job.id !== command.jobId || frozenBindingMismatch || queuedBindingMismatch) throw new GenerationError(409, 'generation_replay_mismatch');
+        if (job.idempotency_key !== null) throw new GenerationError(409, 'duplicate_generation');
+        return null;
+      }
       const version = row<{ id: string; continuity_level: ContinuityCheck['level'] }>(await call(`/rest/v1/draft_versions?select=id,continuity_level&generation_job_id=eq.${job.id}`));
-      return version ? { draftId: job.draft_id, versionId: version.id, status: 'generated', continuityLevel: version.continuity_level } : null;
+      return version ? { draftId: command.draftId, versionId: version.id, status: 'generated', continuityLevel: version.continuity_level } : null;
     },
     loadPolicy: async (ownerId) => {
       const values = await callWith(serviceHeaders, `/rest/v1/provider_settings?select=id,owner_id,provider_key,enabled,configuration,model_key,max_input_tokens,max_output_tokens,max_revision_output_tokens,input_cost_micros_per_million,output_cost_micros_per_million,fixed_cost_micros&enabled=eq.true&owner_id=eq.${encodeURIComponent(ownerId)}`);

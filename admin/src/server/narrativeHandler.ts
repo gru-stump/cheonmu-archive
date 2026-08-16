@@ -5,7 +5,7 @@ const conflicts = new Set([
   'blocked_version_reject_only', 'revision_cost_changed', 'duplicate_review', 'version_not_approvable', 'duplicate_generation',
   'fixed_canon_read_only', 'stale_memory', 'stale_provider_pricing', 'invalid_provider_pricing', 'manual_generation_disabled', 'schedule_automation_disabled',
   'manual_call_limit_reached', 'invalid_generation_source', 'workflow_phase_not_approved',
-  'manual_generation_mode_mismatch', 'manual_generation_binding_changed',
+  'manual_generation_mode_mismatch', 'manual_generation_binding_changed', 'generation_replay_mismatch',
   'budget_limit_below_committed', 'duplicate_schedule_key', 'active_provider_setting_required',
   'publication_in_progress', 'publication_queue_busy', 'publication_idempotency_mismatch',
   'publication_not_approved', 'publication_attempt_mismatch', 'publication_already_finalized', 'publication_not_configured',

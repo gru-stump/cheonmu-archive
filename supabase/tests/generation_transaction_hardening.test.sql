@@ -25,11 +25,11 @@ values
   ('a1000000-0000-0000-0000-000000000013', '10000000-0000-0000-0000-000000000001', 'daily_event', 'pass review'),
   ('a1000000-0000-0000-0000-000000000014', '10000000-0000-0000-0000-000000000001', 'daily_event', 'old policy review');
 
-insert into public.generation_jobs (id, owner_id, draft_id, schedule_key, scheduled_for, payload)
+insert into public.generation_jobs (id, owner_id, draft_id, schedule_key, scheduled_for, provider_setting_id, payload)
 values
-  ('a2000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001', 'a1000000-0000-0000-0000-000000000001', 'hardening-major', '2026-08-14T01:00:00Z', '{"source":"manual"}'::jsonb),
-  ('a2000000-0000-0000-0000-000000000002', '10000000-0000-0000-0000-000000000001', 'a1000000-0000-0000-0000-000000000002', 'hardening-failure', '2026-08-14T02:00:00Z', '{"source":"manual"}'::jsonb),
-  ('a2000000-0000-0000-0000-000000000003', '10000000-0000-0000-0000-000000000001', 'a1000000-0000-0000-0000-000000000002', 'hardening-retry', '2026-08-14T03:00:00Z', '{"source":"manual"}'::jsonb);
+  ('a2000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001', 'a1000000-0000-0000-0000-000000000001', 'major-retry-key', '2026-08-14T01:00:00Z', '12000000-0000-0000-0000-000000000001', '{"source":"manual","mode":"major_event_scene_plan","kind":"major_event_proposal","manualRequestKey":"major-retry-key"}'::jsonb),
+  ('a2000000-0000-0000-0000-000000000002', '10000000-0000-0000-0000-000000000001', 'a1000000-0000-0000-0000-000000000002', 'failure-retry-key', '2026-08-14T02:00:00Z', '12000000-0000-0000-0000-000000000001', '{"source":"manual","mode":"new","kind":"daily_event","manualRequestKey":"failure-retry-key"}'::jsonb),
+  ('a2000000-0000-0000-0000-000000000003', '10000000-0000-0000-0000-000000000001', 'a1000000-0000-0000-0000-000000000002', 'failure-retry-key', '2026-08-14T03:00:00Z', '12000000-0000-0000-0000-000000000001', '{"source":"manual","mode":"new","kind":"daily_event","manualRequestKey":"failure-retry-key"}'::jsonb);
 
 insert into public.major_event_workflows (id, owner_id, draft_id, phase)
 values ('a3000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001', 'a1000000-0000-0000-0000-000000000001', 'proposal_approved');

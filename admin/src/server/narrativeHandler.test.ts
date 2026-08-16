@@ -165,6 +165,28 @@ describe('same-origin narrative server boundary', () => {
     expect(fetch).toHaveBeenCalledTimes(3);
   });
 
+  it('preserves an exact generation replay binding conflict from Edge as stable 409', async () => {
+    const fetch: typeof globalThis.fetch = vi.fn(async (input) => {
+      const path = new URL(String(input)).pathname;
+      if (path === '/auth/v1/user') return Response.json({ id: 'owner-1' });
+      if (path === '/rest/v1/owner_profiles') return Response.json([{ owner_id: 'owner-1' }]);
+      if (path.endsWith('/queue_draft_revision')) return Response.json({ job_id: 'job-1', draft_id: 'draft-1', idempotency_key: 'revision-key', kind: 'short_dialogue' });
+      return Response.json({ error: 'generation_replay_mismatch' }, { status: 409 });
+    });
+    const handler = createNarrativeHandler({ supabaseUrl: 'https://db.example.test', supabaseAnonKey: 'anon', fetch });
+    const response = await handler(new Request('https://admin.example.test/api/narrative/generate', {
+      method: 'POST', headers: { authorization: 'Bearer owner-token', 'content-type': 'application/json' },
+      body: JSON.stringify({
+        draftId: 'draft-1', expectedVersionId: 'version-1', expectedState: 'reviewing', mode: 'revise_selection', kind: 'short_dialogue',
+        revision: { selectedText: '문장', instruction: '수정' }, requestedMaxOutputTokens: 64,
+        maximumCostConfirmed: true, confirmedMaximumCostMicros: 100,
+      }),
+    }));
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toEqual({ error: 'generation_replay_mismatch' });
+  });
+
   it('rejects unsafe archive source states before invoking the database command', async () => {
     const fetch: typeof globalThis.fetch = vi.fn(async (input) => {
       const path = new URL(String(input)).pathname;

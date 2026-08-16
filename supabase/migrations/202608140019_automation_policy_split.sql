@@ -377,14 +377,17 @@ begin
 
   insert into public.generation_jobs (
     owner_id, draft_id, schedule_key, scheduled_for, status, payload,
-    requested_max_output_tokens, confirmed_maximum_cost_micros, source_draft_version_id
+    requested_max_output_tokens, confirmed_maximum_cost_micros, source_draft_version_id,
+    provider_setting_id
   ) values (
     locked_draft.owner_id, locked_draft.id, generation_key, now(), 'queued', jsonb_build_object(
-      'mode', 'revise_selection', 'source', 'manual', 'sourceVersionId', locked_version.id,
+      'mode', 'revise_selection', 'kind', locked_draft.kind, 'source', 'manual',
+      'manualRequestKey', generation_key, 'sourceVersionId', locked_version.id,
       'revision', jsonb_build_object('selectedText', p_selected_text, 'instruction', p_instruction),
       'requestedMaxOutputTokens', p_requested_max_output_tokens,
       'confirmedMaximumCostMicros', p_confirmed_maximum_cost_micros),
-    p_requested_max_output_tokens, p_confirmed_maximum_cost_micros, locked_version.id
+    p_requested_max_output_tokens, p_confirmed_maximum_cost_micros, locked_version.id,
+    locked_setting.id
   ) returning * into created_job;
   update public.drafts set status = 'queued', updated_at = now()
   where id = locked_draft.id and owner_id = locked_draft.owner_id and status = 'reviewing';
@@ -537,6 +540,7 @@ set search_path = ''
 as $$
 declare
   locked_job public.generation_jobs;
+  bound_draft public.drafts;
   frozen_job public.generation_jobs;
   confirmed_cost bigint;
 begin
@@ -545,12 +549,23 @@ begin
   select job.* into locked_job from public.generation_jobs as job where job.id = p_job_id for update;
   if locked_job.id is null then raise exception 'generation target not found' using errcode = 'P0002'; end if;
   if locked_job.attempt_token is not null then raise exception 'duplicate_generation' using errcode = 'P0001'; end if;
-  if locked_job.payload ->> 'source' = 'manual' and locked_job.provider_setting_id is not null
-    and (locked_job.draft_id is distinct from p_draft_id
+  if locked_job.payload ->> 'source' = 'manual' then
+    select draft.* into bound_draft from public.drafts as draft where draft.id = locked_job.draft_id;
+    if locked_job.draft_id is null
+      or locked_job.provider_setting_id is null
+      or nullif(btrim(locked_job.payload ->> 'manualRequestKey'), '') is null
+      or nullif(btrim(locked_job.payload ->> 'mode'), '') is null
+      or nullif(btrim(locked_job.payload ->> 'kind'), '') is null
+      or bound_draft.id is null
+      or bound_draft.owner_id is distinct from locked_job.owner_id
+      or locked_job.schedule_key is distinct from locked_job.payload ->> 'manualRequestKey'
+      or locked_job.payload ->> 'kind' is distinct from bound_draft.kind
+      or locked_job.draft_id is distinct from p_draft_id
       or locked_job.payload ->> 'mode' is distinct from p_generation_mode
       or locked_job.payload ->> 'manualRequestKey' is distinct from p_idempotency_key
-      or locked_job.provider_setting_id is distinct from p_provider_setting_id) then
-    raise exception 'manual_generation_binding_changed' using errcode = 'P0001';
+      or locked_job.provider_setting_id is distinct from p_provider_setting_id then
+      raise exception 'manual_generation_binding_changed' using errcode = 'P0001';
+    end if;
   end if;
 
   perform public.generation_internal_freeze_context_v1(
@@ -573,6 +588,44 @@ begin
   return frozen_job;
 exception when unique_violation then
   raise exception 'duplicate_generation' using errcode = 'P0001';
+end;
+$$;
+
+create or replace function public.abort_generation_attempt(
+  p_job_id uuid, p_attempt_token uuid, p_idempotency_key text, p_failure_code text
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  locked_job public.generation_jobs;
+  bound_provider_setting_id uuid;
+  result jsonb;
+begin
+  if auth.role() is distinct from 'service_role' then
+    raise exception 'generation abort caller is not authorized' using errcode = '42501';
+  end if;
+  if p_attempt_token is null then raise exception 'invalid_attempt_token' using errcode = '22023'; end if;
+  select job.* into locked_job from public.generation_jobs as job where job.id = p_job_id for update;
+  if locked_job.id is null then raise exception 'generation target not found' using errcode = 'P0002'; end if;
+  if locked_job.attempt_token is distinct from p_attempt_token then
+    return jsonb_build_object('outcome', 'stale');
+  end if;
+  bound_provider_setting_id := locked_job.provider_setting_id;
+  result := public.generation_internal_abort_attempt_v1(p_job_id, p_idempotency_key, p_failure_code);
+  if result ->> 'outcome' = 'aborted' then
+    update public.generation_jobs
+    set attempt_token = null,
+        provider_setting_id = case
+          when payload ->> 'source' = 'manual' and result ->> 'jobStatus' = 'queued'
+            then bound_provider_setting_id
+          else provider_setting_id
+        end
+    where id = p_job_id;
+  end if;
+  return result;
 end;
 $$;
 
@@ -764,6 +817,7 @@ declare
   locked_job public.generation_jobs;
   admin_settings public.narrative_admin_settings;
   active_provider public.provider_settings;
+  bound_provider_setting_id uuid;
   budget_state text;
   budget_policy text;
   job_source text;
@@ -775,6 +829,7 @@ begin
   select job.* into locked_job from public.generation_jobs as job where job.id = p_job_id for update;
   if locked_job.id is null then raise exception 'generation target not found' using errcode = 'P0002'; end if;
   if locked_job.attempt_token is distinct from p_attempt_token then raise exception 'stale_attempt' using errcode = 'P0001'; end if;
+  bound_provider_setting_id := locked_job.provider_setting_id;
   job_source := locked_job.payload ->> 'source';
   budget_policy := locked_job.payload ->> 'budgetPolicy';
   if job_source is null or job_source not in ('manual', 'schedule', 'access')
@@ -805,7 +860,15 @@ begin
     return jsonb_build_object('status', 'blocked', 'budgetStatus', budget_state, 'remainingMicros', 0);
   end if;
   result := public.generation_internal_reserve_start_v1(p_job_id, p_amount_micros);
-  if result ->> 'status' = 'blocked' then update public.generation_jobs set attempt_token = null where id = p_job_id; end if;
+  if result ->> 'status' = 'blocked' then
+    update public.generation_jobs
+    set attempt_token = null,
+        provider_setting_id = case
+          when payload ->> 'source' = 'manual' then bound_provider_setting_id
+          else provider_setting_id
+        end
+    where id = p_job_id;
+  end if;
   return result;
 end;
 $$;

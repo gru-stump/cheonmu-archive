@@ -121,6 +121,17 @@ describe('runGeneration', () => {
     expect(h.providerRequests).toEqual([]);
   });
 
+  it('validates kind and revision shape before any completed fast return', async () => {
+    const existing = { draftId: 'draft-1', versionId: 'old', status: 'generated' as const, continuityLevel: 'review' as const };
+    const wrongKind = harness({ findIdempotent: async () => existing });
+    await expect(runGeneration(wrongKind.deps, { ...baseCommand, kind: 'daily_event' })).rejects.toMatchObject({ status: 400, code: 'draft_kind_mismatch' });
+    expect(wrongKind.events).not.toContain('idempotency');
+
+    const missingRevision = harness({ findIdempotent: async () => existing });
+    await expect(runGeneration(missingRevision.deps, { ...baseCommand, mode: 'revise_selection' })).rejects.toMatchObject({ status: 400, code: 'revision_payload_required' });
+    expect(missingRevision.events).not.toContain('idempotency');
+  });
+
   it('returns honest 402 state after safe idempotent cleanup without calling provider', async () => {
     const h = harness({ reserveAndStart: async () => ({ status: 'blocked', budgetStatus: 'period_limit_reached', remainingMicros: 12 }) });
     await expect(runGeneration(h.deps, baseCommand)).rejects.toMatchObject({ status: 402, code: 'budget_blocked', details: { budgetStatus: 'period_limit_reached', remainingMicros: 12 } });
@@ -318,7 +329,7 @@ describe('runGeneration', () => {
     await expect(runGeneration(h.deps, baseCommand)).rejects.toMatchObject({ status: 500, code: 'internal_error' });
   });
 
-  it.each(['duplicate_generation', 'stale_transition', 'stale_version', 'stale_attempt', 'workflow_phase_not_approved', 'mode_kind_mismatch', 'active_provider_setting_required', 'context_budget_too_small', 'manual_generation_disabled', 'schedule_automation_disabled', 'manual_call_limit_reached', 'invalid_generation_source', 'manual_generation_binding_changed'])('maps the explicit database conflict %s to 409', async (code) => {
+  it.each(['duplicate_generation', 'stale_transition', 'stale_version', 'stale_attempt', 'workflow_phase_not_approved', 'mode_kind_mismatch', 'active_provider_setting_required', 'context_budget_too_small', 'manual_generation_disabled', 'schedule_automation_disabled', 'manual_call_limit_reached', 'invalid_generation_source', 'manual_generation_binding_changed', 'generation_replay_mismatch'])('maps the explicit database conflict %s to 409', async (code) => {
     const h = harness({ freezeContext: async () => { throw new PersistenceError(code); } });
     await expect(runGeneration(h.deps, baseCommand)).rejects.toMatchObject({ status: 409, code });
   });
@@ -413,6 +424,73 @@ describe('Supabase generation adapter', () => {
     const deps = createSupabaseGenerationDependencies({ url: 'http://supabase', anonKey: 'anon', serviceRoleKey: 'service-secret', fetch }, 'token', async () => new FakeNarrativeProvider(result));
     await expect(deps.authorize('owner-1', baseCommand)).resolves.toMatchObject({ draftStatus: 'queued', draftKind: 'short_dialogue' });
     expect(seen).toEqual(['/rest/v1/drafts:Bearer token', '/rest/v1/generation_jobs:Bearer token']);
+  });
+
+  it('cannot return completed job B when queued prebound job A is invoked with B key', async () => {
+    const fetch: typeof globalThis.fetch = async (input) => {
+      const url = new URL(String(input));
+      if (url.pathname === '/auth/v1/user') return Response.json({ id: 'owner-1' });
+      if (url.pathname === '/rest/v1/drafts') return Response.json([{ status: 'queued', kind: 'short_dialogue' }]);
+      if (url.pathname === '/rest/v1/generation_jobs' && url.searchParams.get('select') === 'id,draft_id') {
+        return Response.json([{ id: 'job-1', draft_id: 'draft-1' }]);
+      }
+      if (url.pathname === '/rest/v1/generation_jobs') {
+        if (url.searchParams.has('idempotency_key')) {
+          return Response.json([{ id: 'job-b', draft_id: 'draft-b', status: 'completed', idempotency_key: 'completed-b-key', generation_mode: 'new', payload: { kind: 'short_dialogue', mode: 'new', manualRequestKey: 'completed-b-key' } }]);
+        }
+        expect(url.searchParams.get('id')).toBe('eq.job-1');
+        return Response.json([{ id: 'job-1', draft_id: 'draft-1', status: 'queued', idempotency_key: null, generation_mode: null, payload: { kind: 'short_dialogue', mode: 'new', manualRequestKey: 'queued-a-key' } }]);
+      }
+      if (url.pathname === '/rest/v1/draft_versions') return Response.json([{ id: 'version-b', continuity_level: 'review' }]);
+      return Response.json([]);
+    };
+    const deps = createSupabaseGenerationDependencies({ url: 'http://supabase', anonKey: 'anon', serviceRoleKey: 'service-secret', fetch }, 'token', async () => new FakeNarrativeProvider(result));
+
+    await expect(runGeneration(deps, { ...baseCommand, idempotencyKey: 'completed-b-key' }))
+      .rejects.toMatchObject({ status: 409, code: 'generation_replay_mismatch' });
+  });
+
+  it.each([
+    ['mode', { mode: 'new', kind: 'short_dialogue', idempotencyKey: 'revision-key' }, 'generation_replay_mismatch'],
+    ['kind', { mode: 'revise_selection', kind: 'daily_event', idempotencyKey: 'revision-key', revision: { selectedText: '문장', instruction: '수정' } }, 'draft_kind_mismatch'],
+    ['key', { mode: 'revise_selection', kind: 'short_dialogue', idempotencyKey: 'wrong-key', revision: { selectedText: '문장', instruction: '수정' } }, 'generation_replay_mismatch'],
+  ] as const)('rejects a completed same-job replay with the wrong %s', async (_field, overrides, expectedCode) => {
+    const fetch: typeof globalThis.fetch = async (input) => {
+      const url = new URL(String(input));
+      if (url.pathname === '/auth/v1/user') return Response.json({ id: 'owner-1' });
+      if (url.pathname === '/rest/v1/drafts') return Response.json([{ status: 'approved_private', kind: 'short_dialogue' }]);
+      if (url.pathname === '/rest/v1/generation_jobs' && url.searchParams.get('select') === 'id,draft_id') return Response.json([{ id: 'job-1', draft_id: 'draft-1' }]);
+      if (url.pathname === '/rest/v1/generation_jobs') return Response.json([{
+        id: 'job-1', draft_id: 'draft-1', status: 'completed', idempotency_key: 'revision-key', generation_mode: 'revise_selection',
+        payload: { kind: 'short_dialogue', mode: 'revise_selection', manualRequestKey: 'revision-key' },
+      }]);
+      if (url.pathname === '/rest/v1/draft_versions') return Response.json([{ id: 'version-1', continuity_level: 'review' }]);
+      return Response.json([]);
+    };
+    const deps = createSupabaseGenerationDependencies({ url: 'http://supabase', anonKey: 'anon', serviceRoleKey: 'service-secret', fetch }, 'token', async () => new FakeNarrativeProvider(result));
+
+    await expect(runGeneration(deps, { ...baseCommand, ...overrides } as never)).rejects.toMatchObject({ code: expectedCode });
+  });
+
+  it('returns only the exact completed job/draft/key/mode/kind retry after draft state advanced', async () => {
+    const fetch: typeof globalThis.fetch = async (input) => {
+      const url = new URL(String(input));
+      if (url.pathname === '/auth/v1/user') return Response.json({ id: 'owner-1' });
+      if (url.pathname === '/rest/v1/drafts') return Response.json([{ status: 'approved_private', kind: 'short_dialogue' }]);
+      if (url.pathname === '/rest/v1/generation_jobs' && url.searchParams.get('select') === 'id,draft_id') return Response.json([{ id: 'job-1', draft_id: 'draft-1' }]);
+      if (url.pathname === '/rest/v1/generation_jobs') return Response.json([{
+        id: 'job-1', draft_id: 'draft-1', status: 'completed', idempotency_key: 'revision-key', generation_mode: 'revise_selection',
+        payload: { kind: 'short_dialogue', mode: 'revise_selection', manualRequestKey: 'revision-key' },
+      }]);
+      if (url.pathname === '/rest/v1/draft_versions') return Response.json([{ id: 'version-1', continuity_level: 'review' }]);
+      return Response.json([]);
+    };
+    const deps = createSupabaseGenerationDependencies({ url: 'http://supabase', anonKey: 'anon', serviceRoleKey: 'service-secret', fetch }, 'token', async () => new FakeNarrativeProvider(result));
+
+    await expect(runGeneration(deps, {
+      ...baseCommand, mode: 'revise_selection', idempotencyKey: 'revision-key',
+      revision: { selectedText: '문장', instruction: '수정' },
+    })).resolves.toEqual({ draftId: 'draft-1', versionId: 'version-1', status: 'generated', continuityLevel: 'review' });
   });
 
   it('loads trusted settings and uses atomic start/success RPCs', async () => {

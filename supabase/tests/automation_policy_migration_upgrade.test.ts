@@ -102,6 +102,19 @@ values
       from public.generation_jobs where id in ('${revisionJob}', '${ambiguousJob}');`),
     `${revisionJob}|manual,${ambiguousJob}|<missing>`, 'only unambiguous queued legacy revisions may receive the server-owned manual source',
   );
+  const substitutedLegacyRevision = await runPsql(`
+begin;
+select set_config('request.jwt.claim.role', 'service_role', true);
+set local role service_role;
+select public.freeze_generation_context(
+  '${revisionJob}', '${revisionDraft}', 'new', 'browser-substituted-key',
+  array['legacy-context'], '[{"versionId":"legacy-context","memoryType":"canon","content":"frozen","tokenCount":1}]',
+  '99000000-0000-0000-0000-000000000022', '99000000-0000-4000-8000-000000000099'
+);
+`);
+  assert.notEqual(substitutedLegacyRevision.code, 0);
+  assert.match(substitutedLegacyRevision.stderr, /manual_generation_binding_changed/,
+    'an incomplete backfilled legacy revision must fail closed before accepting substituted mode, key, or provider');
   assert.equal(
     await scalar("select concat(to_regprocedure('public.save_narrative_settings(boolean,boolean,text,jsonb,bigint,bigint,integer,integer,integer,numeric,integer)') is not null, '|', to_regprocedure('public.save_narrative_settings(boolean,text,jsonb,bigint,bigint,integer,integer,integer,numeric,integer)') is null, '|', has_function_privilege('authenticated', 'public.save_narrative_settings(boolean,boolean,text,jsonb,bigint,bigint,integer,integer,integer,numeric,integer)', 'EXECUTE'), '|', not has_function_privilege('anon', 'public.save_narrative_settings(boolean,boolean,text,jsonb,bigint,bigint,integer,integer,integer,numeric,integer)', 'EXECUTE'));"),
     't|t|t|t', 'upgrade must replace the combined policy command with the narrow authenticated split signature',
