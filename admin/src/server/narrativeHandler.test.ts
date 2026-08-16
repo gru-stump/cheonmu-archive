@@ -2,6 +2,32 @@ import { describe, expect, it, vi } from 'vitest';
 import { createNarrativeHandler } from './narrativeHandler';
 
 describe('same-origin narrative server boundary', () => {
+  it('returns only the sanitized queue projection from the dashboard RPC', async () => {
+    const fetch: typeof globalThis.fetch = vi.fn(async (input) => {
+      const path = new URL(String(input)).pathname;
+      if (path === '/auth/v1/user') return Response.json({ id: 'owner-1' });
+      if (path === '/rest/v1/owner_profiles') return Response.json([{ owner_id: 'owner-1' }]);
+      return Response.json({
+        budget: {}, nextScheduleAt: null, lastSuccessAt: null, failures: [],
+        queue: [{
+          id: 'job-1', source: 'schedule', state: 'retry-wait', attemptCount: 2,
+          retryAt: '2026-08-16T00:05:00Z', leaseExpiresAt: null, failureCode: 'worker_retry_scheduled', scheduledFor: '2026-08-16T00:00:00Z',
+          attemptToken: 'must-not-pass', providerResponse: { raw: true }, payload: { seed: 'must-not-pass' },
+        }],
+      });
+    });
+    const handler = createNarrativeHandler({ supabaseUrl: 'https://db.example.test', supabaseAnonKey: 'anon', fetch });
+    const response = await handler(new Request('https://admin.example.test/api/narrative/dashboard', { headers: { authorization: 'Bearer owner-token' } }));
+    const value = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(value.queue).toEqual([{
+      id: 'job-1', source: 'schedule', state: 'retry-wait', attemptCount: 2,
+      retryAt: '2026-08-16T00:05:00Z', leaseExpiresAt: null, failureCode: 'worker_retry_scheduled', scheduledFor: '2026-08-16T00:00:00Z',
+    }]);
+    expect(JSON.stringify(value)).not.toMatch(/attemptToken|providerResponse|must-not-pass|payload/);
+  });
+
   it('rejects missing bearer credentials before any upstream request', async () => {
     const fetch = vi.fn();
     const handler = createNarrativeHandler({ supabaseUrl: 'https://db.example.test', supabaseAnonKey: 'anon', fetch });

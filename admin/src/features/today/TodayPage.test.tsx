@@ -19,6 +19,12 @@ describe('TodayPage', () => {
         failures: [
           { id: 'failure-1', occurredAt: '2026-08-15T04:00:00.000Z', code: 'provider_timeout' },
         ],
+        queue: [
+          { id: 'job-queued', source: 'schedule', state: 'queued', attemptCount: 0, retryAt: null, leaseExpiresAt: null, failureCode: null, scheduledFor: '2026-08-16T00:00:00.000Z' },
+          { id: 'job-running', source: 'access', state: 'running', attemptCount: 1, retryAt: null, leaseExpiresAt: '2026-08-16T00:01:30.000Z', failureCode: null, scheduledFor: '2026-08-16T00:00:00.000Z' },
+          { id: 'job-retry', source: 'manual', state: 'retry-wait', attemptCount: 2, retryAt: '2026-08-16T00:05:00.000Z', leaseExpiresAt: null, failureCode: 'worker_retry_scheduled', scheduledFor: '2026-08-16T00:00:00.000Z' },
+          { id: 'job-dead', source: 'schedule', state: 'failed/dead-letter', attemptCount: 3, retryAt: null, leaseExpiresAt: null, failureCode: 'provider_outcome_unknown', scheduledFor: '2026-08-16T00:00:00.000Z' },
+        ],
       }),
     } as NarrativeApi;
 
@@ -32,5 +38,12 @@ describe('TodayPage', () => {
     expect(screen.getByText(/2026\. 8\. 16\..*오전 9:30/)).toBeInTheDocument();
     expect(screen.getByText(/2026\. 8\. 15\..*오후 2:10/)).toBeInTheDocument();
     expect(screen.getByText('provider_timeout')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /generation queue/i })).toBeInTheDocument();
+    expect(screen.getByText('schedule · queued · attempt 0')).toBeInTheDocument();
+    expect(screen.getByText('access · running · attempt 1')).toBeInTheDocument();
+    expect(screen.getByText(/retry-wait.*worker_retry_scheduled/)).toBeInTheDocument();
+    expect(screen.getByText(/failed\/dead-letter.*provider_outcome_unknown/)).toBeInTheDocument();
+    expect(screen.getByText(/lease.*2026\. 8\. 16/)).toBeInTheDocument();
+    expect(screen.getByText(/retry.*2026\. 8\. 16/)).toBeInTheDocument();
   });
 });
