@@ -1,0 +1,6 @@
+**/*.test.ts
+**/*.test.tsx
+test/
+e2e/
+playwright-report/
+test-results/

@@ -1,4 +1,4 @@
-import { createNarrativeHandler } from '../../src/server/narrativeHandler';
+import { createNarrativeHandler } from '../../src/server/narrativeHandler.js';
 
 export default async function handler(request: any, response: any) {
   const supabaseUrl = process.env.SUPABASE_URL;
