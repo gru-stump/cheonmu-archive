@@ -126,6 +126,11 @@ const stale = await Promise.all([
 if (stale.some((result) => result.code !== 0 || !result.stdout.includes('stale'))) {
   throw new Error(`an old attempt mutated or escaped the replacement fence\n${stale.map((value) => `${value.stdout}\n${value.stderr}`).join('\n')}`);
 }
+assertResult(
+  await runPsql(service(`select public.fail_generation_worker_attempt('${replacementJob}', '${replacementToken}', 'context_selection_failed');`)),
+  'could not release replacement fixture',
+);
+await runPsql(`update public.generation_jobs set worker_retry_at = clock_timestamp() + interval '1 hour' where id = '${replacementJob}';`);
 
 const fenceJob = randomUUID();
 const fenceDraft = randomUUID();

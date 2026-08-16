@@ -1,6 +1,6 @@
 begin;
 
-select plan(58);
+select plan(63);
 
 select has_column('public', 'generation_jobs', 'worker_attempt_token', 'generation jobs persist a worker attempt token');
 select has_column('public', 'generation_jobs', 'worker_attempt_count', 'generation jobs persist bounded worker attempt count');
