@@ -119,6 +119,7 @@ describe('publication polling orchestration', () => {
         workflowRunId: 41, deploymentId: null, pagesUrl: null, failureCode: null,
       })),
       record: vi.fn(async (input) => { recorded.push(input); return { status: 'recorded' as const }; }),
+      recordObservationRetry: vi.fn(async () => ({ status: 'retry_scheduled' as const })),
       retryTimedOut: vi.fn(async () => ({ status: 'retry_scheduled' as const })),
       ...overrides,
     };
@@ -139,6 +140,21 @@ describe('publication polling orchestration', () => {
       expect(h.value.record).not.toHaveBeenCalled();
     },
   );
+
+  it('durably schedules bounded backoff when GitHub observation times out', async () => {
+    const h = deps(job, {
+      observe: vi.fn(async () => { throw new CheckPublicationError(504, 'github_timeout'); }),
+    });
+
+    await expect(checkNextPublication(h.value)).resolves.toEqual({
+      status: 'retry_scheduled', publishJobId: job.publishJobId,
+    });
+    expect(h.value.recordObservationRetry).toHaveBeenCalledWith({
+      publishJobId: job.publishJobId, checkToken: job.checkToken, commitSha,
+      errorCode: 'github_timeout',
+    });
+    expect(h.value.record).not.toHaveBeenCalled();
+  });
 
   it('retries an observation timeout only through the dispatch boundary', async () => {
     const h = deps({ outcome: 'idle' });
@@ -178,7 +194,11 @@ describe('Supabase publication tracking boundary', () => {
         repository_owner: job.repository.owner, repository_name: job.repository.name, repository_branch: job.repository.branch,
         credential: 'fixture-github-token',
       });
-      return json({ status: path.endsWith('/retry_narrative_publication_check') ? 'retry_scheduled' : 'recorded' });
+      return json({
+        status: path.endsWith('/retry_narrative_publication_check') || path.endsWith('/record_narrative_publication_check_retry')
+          ? 'retry_scheduled'
+          : 'recorded',
+      });
     });
     const deps = createSupabaseTrackingDependencies({ url: 'https://db.example.test', serviceRoleKey: 'service-role-value', fetch });
     const claimed = await deps.claimNext();
@@ -188,15 +208,45 @@ describe('Supabase publication tracking boundary', () => {
       phase: 'workflow_running', workflowStatus: 'in_progress', pagesStatus: 'pending', terminal: false,
       workflowRunId: 41, deploymentId: null, pagesUrl: null, failureCode: null,
     });
+    await deps.recordObservationRetry({
+      publishJobId: job.publishJobId, checkToken: job.checkToken, commitSha,
+      errorCode: 'github_observation_failed',
+    });
     await deps.retryTimedOut(job.publishJobId);
 
-    expect(calls.map((call) => call.authorization)).toEqual(['Bearer service-role-value', 'Bearer service-role-value', 'Bearer service-role-value']);
+    expect(calls.map((call) => call.authorization)).toEqual(['Bearer service-role-value', 'Bearer service-role-value', 'Bearer service-role-value', 'Bearer service-role-value']);
     expect(calls.map((call) => call.path)).toEqual([
       '/rest/v1/rpc/claim_narrative_publication_check',
       '/rest/v1/rpc/record_narrative_publication_check',
+      '/rest/v1/rpc/record_narrative_publication_check_retry',
       '/rest/v1/rpc/retry_narrative_publication_check',
     ]);
     expect(calls[1]?.body).toMatchObject({ p_publish_job_id: job.publishJobId, p_check_token: job.checkToken, p_commit_sha: commitSha });
+    expect(calls[2]?.body).toMatchObject({
+      p_publish_job_id: job.publishJobId, p_check_token: job.checkToken,
+      p_commit_sha: commitSha, p_error_code: 'github_observation_failed',
+    });
     expect(JSON.stringify(calls.slice(1).map((call) => call.body))).not.toMatch(/fixture-github-token|service-role-value|credential/);
+  });
+
+  it('uses the injected HTTP client and timeout for the GitHub observation leg', async () => {
+    const injectedFetch: typeof globalThis.fetch = vi.fn(async (input) => {
+      const url = new URL(String(input));
+      if (url.hostname === 'api.github.com') return json({ workflow_runs: [] });
+      throw new Error(`unexpected database call: ${url.pathname}`);
+    });
+    const forbiddenGlobalFetch = vi.fn(async () => { throw new Error('global fetch must not be used'); });
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = forbiddenGlobalFetch;
+    try {
+      const deps = createSupabaseTrackingDependencies({
+        url: 'https://db.example.test', serviceRoleKey: 'service-role-value', fetch: injectedFetch, timeoutMs: 25,
+      });
+      await expect(deps.observe(job)).resolves.toMatchObject({ phase: 'commit_created', terminal: false });
+      expect(injectedFetch).toHaveBeenCalledOnce();
+      expect(forbiddenGlobalFetch).not.toHaveBeenCalled();
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 });

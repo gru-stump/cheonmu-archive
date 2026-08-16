@@ -261,7 +261,10 @@ begin
   end if;
 
   next_check := case when next_tracking_status = 'pending' then
-    pg_catalog.clock_timestamp() + pg_catalog.make_interval(secs => least(900, (60 * power(2, least(greatest(locked_job.tracking_check_count - 1, 0), 4)))::integer))
+    least(
+      locked_job.tracking_expires_at,
+      pg_catalog.clock_timestamp() + pg_catalog.make_interval(secs => least(900, (60 * power(2, least(greatest(locked_job.tracking_check_count - 1, 0), 4)))::integer))
+    )
     else null end;
   update public.publish_jobs
   set publication_phase = next_phase, tracking_status = next_tracking_status,
@@ -282,6 +285,62 @@ begin
       'failureCode', locked_job.tracking_failure_code
     )));
   return jsonb_build_object('status', 'recorded', 'publishJobId', locked_job.id, 'phase', locked_job.publication_phase);
+end;
+$$;
+
+create function public.record_narrative_publication_check_retry(
+  p_publish_job_id uuid,
+  p_check_token uuid,
+  p_commit_sha text,
+  p_error_code text
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  locked_job public.publish_jobs;
+  next_check timestamptz;
+begin
+  if auth.role() is distinct from 'service_role' then
+    raise exception 'publication check retry recorder is not authorized' using errcode = '42501';
+  end if;
+  if p_publish_job_id is null or p_check_token is null or p_commit_sha !~ '^[0-9a-fA-F]{40}$'
+    or p_error_code not in ('github_timeout', 'github_observation_failed', 'github_response_invalid', 'github_credentials_rejected') then
+    raise exception 'invalid_publication_check_retry_result' using errcode = '22023';
+  end if;
+  perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('narrative-publication-tracking', 0));
+  select job.* into locked_job from public.publish_jobs as job where job.id = p_publish_job_id for update;
+  if locked_job.id is null then raise exception 'publication_target_not_found' using errcode = 'P0002'; end if;
+  if locked_job.status is distinct from 'published'
+    or locked_job.tracking_status is distinct from 'observing'
+    or locked_job.tracking_check_token is distinct from p_check_token
+    or locked_job.tracking_claim_expires_at is null
+    or locked_job.tracking_claim_expires_at <= pg_catalog.clock_timestamp() then
+    raise exception 'publication_check_attempt_mismatch' using errcode = 'P0001';
+  end if;
+  if locked_job.commit_sha is distinct from lower(p_commit_sha) then
+    raise exception 'publication_check_commit_mismatch' using errcode = 'P0001';
+  end if;
+
+  next_check := least(
+    locked_job.tracking_expires_at,
+    pg_catalog.clock_timestamp() + pg_catalog.make_interval(secs => least(900, (60 * power(2, least(greatest(locked_job.tracking_check_count - 1, 0), 4)))::integer))
+  );
+  update public.publish_jobs
+  set tracking_status = 'pending', tracking_next_check_at = next_check,
+      tracking_check_token = null, tracking_claim_expires_at = null,
+      tracking_last_checked_at = pg_catalog.now(), updated_at = pg_catalog.now()
+  where id = locked_job.id returning * into locked_job;
+
+  insert into public.audit_events (owner_id, event_type, entity_type, entity_id, payload)
+  values (locked_job.owner_id, 'publication_tracking_retry_scheduled', 'draft', locked_job.draft_id,
+    jsonb_build_object(
+      'publishJobId', locked_job.id, 'versionId', locked_job.draft_version_id,
+      'commitSha', locked_job.commit_sha, 'errorCode', p_error_code
+    ));
+  return jsonb_build_object('status', 'retry_scheduled', 'publishJobId', locked_job.id);
 end;
 $$;
 
@@ -319,9 +378,11 @@ $$;
 
 revoke all on function public.claim_narrative_publication_check(uuid) from public, anon, authenticated, service_role;
 revoke all on function public.record_narrative_publication_check(uuid, uuid, text, text, text, bigint, bigint, text, text) from public, anon, authenticated, service_role;
+revoke all on function public.record_narrative_publication_check_retry(uuid, uuid, text, text) from public, anon, authenticated, service_role;
 revoke all on function public.retry_narrative_publication_check(uuid) from public, anon, authenticated, service_role;
 grant execute on function public.claim_narrative_publication_check(uuid) to service_role;
 grant execute on function public.record_narrative_publication_check(uuid, uuid, text, text, text, bigint, bigint, text, text) to service_role;
+grant execute on function public.record_narrative_publication_check_retry(uuid, uuid, text, text) to service_role;
 grant execute on function public.retry_narrative_publication_check(uuid) to service_role;
 
 create function narrative_private.publication_check_dispatch_material()

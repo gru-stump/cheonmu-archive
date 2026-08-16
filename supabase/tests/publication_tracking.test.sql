@@ -1,6 +1,6 @@
 begin;
 
-select plan(37);
+select plan(39);
 
 select has_column('public', 'publish_jobs', 'publication_phase', 'publication exposes a phase distinct from commit status');
 select has_column('public', 'publish_jobs', 'tracking_status', 'publication observation has its own terminal state');
@@ -12,11 +12,13 @@ select has_column('public', 'publish_jobs', 'tracking_next_check_at', 'the next 
 select has_column('public', 'publish_jobs', 'tracking_expires_at', 'the observation window has a durable deadline');
 select has_function('public', 'claim_narrative_publication_check', array['uuid'], 'one service RPC claims only due nonterminal checks');
 select has_function('public', 'record_narrative_publication_check', array['uuid','uuid','text','text','text','bigint','bigint','text','text'], 'one exact-token and exact-commit RPC records an observation');
+select has_function('public', 'record_narrative_publication_check_retry', array['uuid','uuid','text','text'], 'one exact-token and exact-commit RPC durably schedules provider-error backoff');
 select has_function('public', 'retry_narrative_publication_check', array['uuid'], 'one service RPC resets an observation timeout');
 select ok(
   (select bool_and(has_function_privilege('service_role', signature, 'EXECUTE')) from unnest(array[
     'public.claim_narrative_publication_check(uuid)',
     'public.record_narrative_publication_check(uuid,uuid,text,text,text,bigint,bigint,text,text)',
+    'public.record_narrative_publication_check_retry(uuid,uuid,text,text)',
     'public.retry_narrative_publication_check(uuid)'
   ]) signature),
   'service_role can execute every tracking mutation RPC'
@@ -25,6 +27,7 @@ select ok(
   not exists (select 1 from unnest(array[
     'public.claim_narrative_publication_check(uuid)',
     'public.record_narrative_publication_check(uuid,uuid,text,text,text,bigint,bigint,text,text)',
+    'public.record_narrative_publication_check_retry(uuid,uuid,text,text)',
     'public.retry_narrative_publication_check(uuid)'
   ]) signature where has_function_privilege('authenticated', signature, 'EXECUTE')),
   'authenticated callers cannot mutate publication tracking'
@@ -97,9 +100,13 @@ select throws_ok(
   $$ select public.record_narrative_publication_check('a8400000-0000-0000-0000-000000000001', 'a8500000-0000-4000-8000-000000000001', repeat('1', 40), 'failure', 'pending', 42, null, null, 'workflow_failed') $$,
   'P0001', 'publication_check_attempt_mismatch', 'a replaced observation token cannot mutate tracking'
 );
+select throws_ok(
+  $$ select public.record_narrative_publication_check_retry('a8400000-0000-0000-0000-000000000001', 'a8500000-0000-4000-8000-000000000002', repeat('9', 40), 'github_timeout') $$,
+  'P0001', 'publication_check_commit_mismatch', 'a provider retry cannot be scheduled for a different commit SHA'
+);
 select lives_ok(
-  $$ select public.record_narrative_publication_check('a8400000-0000-0000-0000-000000000001', 'a8500000-0000-4000-8000-000000000002', repeat('1', 40), 'in_progress', 'pending', 42, null, null, null) $$,
-  'the replacement observation can remain nonterminal'
+  $$ select public.record_narrative_publication_check_retry('a8400000-0000-0000-0000-000000000001', 'a8500000-0000-4000-8000-000000000002', repeat('1', 40), 'github_timeout') $$,
+  'a transient provider failure durably schedules the replacement observation with backoff'
 );
 reset role;
 select ok(

@@ -23,10 +23,22 @@ export interface PublicationObservation {
   failureCode: 'workflow_failed' | 'pages_deployment_failed' | null;
 }
 
+export type GitHubObservationErrorCode =
+  | 'github_timeout'
+  | 'github_observation_failed'
+  | 'github_response_invalid'
+  | 'github_credentials_rejected';
+
 export interface PublicationTrackingDependencies {
   claimNext(): Promise<PublicationClaimResult>;
   observe(claim: PublicationCheckClaim): Promise<PublicationObservation>;
   record(input: PublicationObservation & { publishJobId: string; checkToken: string; commitSha: string }): Promise<{ status: 'recorded' }>;
+  recordObservationRetry(input: {
+    publishJobId: string;
+    checkToken: string;
+    commitSha: string;
+    errorCode: GitHubObservationErrorCode;
+  }): Promise<{ status: 'retry_scheduled' }>;
   retryTimedOut(publishJobId: string): Promise<{ status: 'retry_scheduled' }>;
 }
 
@@ -177,7 +189,22 @@ export async function checkNextPublication(deps: PublicationTrackingDependencies
   const claim = await deps.claimNext();
   if (claim.outcome === 'idle') return { status: 'idle' };
   if (claim.outcome === 'timed_out') return { status: 'tracking_timed_out', publishJobId: claim.publishJobId };
-  const observation = await deps.observe(claim);
+  let observation: PublicationObservation;
+  try {
+    observation = await deps.observe(claim);
+  } catch (error) {
+    const retryCodes: GitHubObservationErrorCode[] = [
+      'github_timeout', 'github_observation_failed', 'github_response_invalid', 'github_credentials_rejected',
+    ];
+    if (!(error instanceof CheckPublicationError) || !retryCodes.includes(error.code as GitHubObservationErrorCode)) throw error;
+    await deps.recordObservationRetry({
+      publishJobId: claim.publishJobId,
+      checkToken: claim.checkToken,
+      commitSha: claim.commitSha,
+      errorCode: error.code as GitHubObservationErrorCode,
+    });
+    return { status: 'retry_scheduled', publishJobId: claim.publishJobId };
+  }
   await deps.record({ ...observation, publishJobId: claim.publishJobId, checkToken: claim.checkToken, commitSha: claim.commitSha });
   return { status: observation.phase, publishJobId: claim.publishJobId };
 }
@@ -227,7 +254,7 @@ export function createSupabaseTrackingDependencies(config: SupabaseTrackingConfi
       throw new CheckPublicationError(500, 'internal_error');
     } finally { if (handle !== undefined) clearTimeout(handle); }
   };
-  const observer = new GitHubPublicationObserver();
+  const observer = new GitHubPublicationObserver({ fetch: request, timeoutMs });
   return {
     claimNext: async () => {
       const value = record(await rpc('claim_narrative_publication_check', { p_check_token: crypto.randomUUID() }));
@@ -252,6 +279,14 @@ export function createSupabaseTrackingDependencies(config: SupabaseTrackingConfi
       }));
       if (value?.status !== 'recorded') throw new CheckPublicationError(500, 'internal_error');
       return { status: 'recorded' };
+    },
+    recordObservationRetry: async (input) => {
+      const value = record(await rpc('record_narrative_publication_check_retry', {
+        p_publish_job_id: input.publishJobId, p_check_token: input.checkToken,
+        p_commit_sha: input.commitSha, p_error_code: input.errorCode,
+      }));
+      if (value?.status !== 'retry_scheduled') throw new CheckPublicationError(500, 'internal_error');
+      return { status: 'retry_scheduled' };
     },
     retryTimedOut: async (publishJobId) => {
       const value = record(await rpc('retry_narrative_publication_check', { p_publish_job_id: publishJobId }));
