@@ -29,7 +29,8 @@ update public.provider_settings
 set enabled = true, pricing_verified_at = public.narrative_business_date(now())
 where id = '${providerId}';
 update public.narrative_admin_settings
-set automation_enabled = true, warning_threshold_percent = 80, risk_threshold_percent = 95
+set manual_generation_enabled = true, schedule_automation_enabled = true,
+    warning_threshold_percent = 80, risk_threshold_percent = 95
 where owner_id = '${ownerId}';
 update public.budget_periods
 set period_start = public.narrative_business_date(now()) - 1,
@@ -59,7 +60,7 @@ begin;
 select set_config('request.jwt.claim.role', 'authenticated', true);
 select set_config('request.jwt.claim.sub', '${ownerId}', true);
 set local role authenticated;
-select public.save_narrative_settings(true, 'fake-local-provider', '[]', 1000, 1000, 3, 80, 90, 1350, 30);
+select public.save_narrative_settings(true, true, 'fake-local-provider', '[]', 1000, 1000, 3, 80, 90, 1350, 30);
 \\echo SETTINGS_LOCKED
 select pg_sleep(2);
 commit;

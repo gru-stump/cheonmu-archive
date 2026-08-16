@@ -43,7 +43,7 @@ export const localPreviewApi: NarrativeApi = {
     unresolved: [{ id: 'local-preview-unresolved', memoryType: 'unresolved', content: '젖은 매듭 장식의 출처가 남아 있다.', enabled: true, createdAt: '2026-08-15T00:00:00.000Z', correctionHistory: [] }],
   }),
   getSchedules: async () => ({ schedules: [{ id: 'local-preview-schedule', scheduleKey: 'daily', scheduleType: 'automatic', enabled: true, seoulTime: '09:00', weekday: null, specialDate: null, minimumIntervalMinutes: 1_440, kind: 'daily_event', lastRunAt: '2026-08-15T00:00:00.000Z', nextRunAt: '2026-08-16T00:00:00.000Z' }] }),
-  getSettings: async () => ({ automationEnabled: false, pricingValidDays: 30, providers: [], budget: { monthlyLimitMicros: 100_000_000, dailyLimitMicros: 20_000_000, spentMicros: 8_400, reservedMicros: 300, manualCallLimit: 3, warningThresholdPercent: 80, riskThresholdPercent: 95, krwPerUsd: 1_380 }, secrets: { openai: false, anthropic: false, github: false } }),
+  getSettings: async () => ({ manualGenerationEnabled: true, scheduleAutomationEnabled: false, pricingValidDays: 30, providers: [{ providerKey: 'fake-local-provider', enabled: true, modelKey: 'fake-local-model', maxInputTokens: 4096, maxOutputTokens: 1024, maxRevisionOutputTokens: 256, inputPriceMicrosPerMillion: 0, outputPriceMicrosPerMillion: 0, pricingVerifiedAt: '2026-08-16' }], budget: { monthlyLimitMicros: 100_000_000, dailyLimitMicros: 20_000_000, spentMicros: 8_400, reservedMicros: 300, manualCallLimit: 3, warningThresholdPercent: 80, riskThresholdPercent: 95, krwPerUsd: 1_380 }, secrets: { openai: false, anthropic: false, github: false } }),
   generate: readOnly,
   saveManualVersion: readOnly,
   review: readOnly,

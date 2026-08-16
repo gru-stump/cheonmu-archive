@@ -42,8 +42,38 @@ from unnest(array[
   '81000000-0000-0000-0000-000000000006'::uuid
 ]) with ordinality as fixture(id, ordinality);
 
-insert into public.narrative_admin_settings (owner_id, manual_call_limit)
-values ('81000000-0000-0000-0000-000000000004', 1);
+insert into public.narrative_admin_settings (owner_id, schedule_automation_enabled, manual_call_limit)
+select fixture.id, true, case when fixture.id = '81000000-0000-0000-0000-000000000004' then 1 else 3 end
+from unnest(array[
+  '81000000-0000-0000-0000-000000000001'::uuid,
+  '81000000-0000-0000-0000-000000000002'::uuid,
+  '81000000-0000-0000-0000-000000000003'::uuid,
+  '81000000-0000-0000-0000-000000000004'::uuid,
+  '81000000-0000-0000-0000-000000000005'::uuid,
+  '81000000-0000-0000-0000-000000000006'::uuid
+]) as fixture(id);
+
+insert into public.provider_settings (
+  id, owner_id, provider_key, enabled, configuration, model_key,
+  max_input_tokens, max_output_tokens, max_revision_output_tokens,
+  input_cost_micros_per_million, output_cost_micros_per_million, fixed_cost_micros,
+  pricing_verified_at
+)
+select ('88000000-0000-0000-0000-' || lpad(fixture.ordinality::text, 12, '0'))::uuid,
+  fixture.id, 'fake-local-provider', true, '{"mode":"fixture"}'::jsonb, 'fake-local-model',
+  4096, 1024, 256, 0, 0, 0, date '2026-08-14'
+from unnest(array[
+  '81000000-0000-0000-0000-000000000001'::uuid,
+  '81000000-0000-0000-0000-000000000002'::uuid,
+  '81000000-0000-0000-0000-000000000003'::uuid,
+  '81000000-0000-0000-0000-000000000004'::uuid,
+  '81000000-0000-0000-0000-000000000005'::uuid,
+  '81000000-0000-0000-0000-000000000006'::uuid
+]) with ordinality as fixture(id, ordinality);
+
+update public.narrative_admin_settings
+set schedule_automation_enabled = true
+where owner_id = '10000000-0000-0000-0000-000000000001';
 
 update public.schedules
 set enabled = true, last_queued_at = null

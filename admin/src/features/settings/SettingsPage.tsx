@@ -47,10 +47,12 @@ export function SettingsPage({ api, readOnly = false }: { api: NarrativeApi; rea
   };
   const save = async (event: FormEvent) => {
     event.preventDefault(); if (!settings) return; setMessage(null);
-    const activeProviderKey = settings.automationEnabled ? settings.providers.find((provider) => provider.enabled)?.providerKey ?? null : null;
+    const activeProviderKey = settings.providers.find((provider) => provider.enabled)?.providerKey ?? null;
     try {
       await api.saveSettings({
-        automationEnabled: settings.automationEnabled, activeProviderKey, pricingValidDays: settings.pricingValidDays,
+        manualGenerationEnabled: settings.manualGenerationEnabled,
+        scheduleAutomationEnabled: settings.scheduleAutomationEnabled,
+        activeProviderKey, pricingValidDays: settings.pricingValidDays,
         providers: settings.providers
           .filter((provider) => !syntheticProviderKeys.has(provider.providerKey) || touchedSyntheticProviderKeys.has(provider.providerKey))
           .map(({ enabled: _enabled, ...provider }) => provider),
@@ -72,17 +74,19 @@ export function SettingsPage({ api, readOnly = false }: { api: NarrativeApi; rea
     } catch { setMessage('비밀을 저장하지 못했습니다.'); }
   };
 
-  const header = <AdminPageHeader eyebrow="운영 기준" title="설정" description="자동화, 제공자, 예산, 비밀 연결을 분리해 관리합니다." />;
+  const header = <AdminPageHeader eyebrow="운영 기준" title="설정" description="수동 생성, 자동 일정, 제공자, 예산, 비밀 연결을 각각 관리합니다." />;
   if (error) return <section>{header}<AdminNotice tone="danger" action={<button type="button" onClick={() => void load()}>다시 시도</button>}>설정을 불러오지 못했습니다.</AdminNotice></section>;
   if (!settings) return <section>{header}<AdminNotice>설정을 불러오는 중입니다.</AdminNotice></section>;
   return <section>
     {header}
     <form onSubmit={save} className="settings-form">
-      <fieldset><legend>자동화와 제공자</legend>
-        <label className="control-target"><input type="checkbox" checked={settings.automationEnabled} disabled={readOnly} onChange={(event) => setSettings({ ...settings, automationEnabled: event.target.checked, providers: event.target.checked ? settings.providers : settings.providers.map((provider) => ({ ...provider, enabled: false })) })} /> 자동화 사용</label>
+      <fieldset><legend>생성 정책과 제공자</legend>
+        <label className="control-target"><input type="checkbox" checked={settings.manualGenerationEnabled} disabled={readOnly} onChange={(event) => setSettings({ ...settings, manualGenerationEnabled: event.target.checked })} /> 수동 생성 허용</label>
+        <label className="control-target"><input type="checkbox" checked={settings.scheduleAutomationEnabled} disabled={readOnly} onChange={(event) => setSettings({ ...settings, scheduleAutomationEnabled: event.target.checked })} /> 자동 일정 허용</label>
+        <p>활성 제공자는 두 정책과 독립적으로 유지됩니다. 정책을 하나라도 켜려면 활성 제공자 하나가 필요합니다.</p>
         <label htmlFor="pricing-valid-days">단가 유효 기간(일)</label><input id="pricing-valid-days" type="number" min="1" max="365" value={settings.pricingValidDays} disabled={readOnly} onChange={(event) => setSettings({ ...settings, pricingValidDays: Number(event.target.value) })} />
         <div className="settings-grid">{settings.providers.map((provider) => { const label = providerName(provider.providerKey); return <fieldset key={provider.providerKey} className="settings-card"><legend>{label}</legend>
-          <label className="control-target"><input type="radio" name="active-provider" aria-label={`${label} 활성 제공자`} checked={provider.enabled} disabled={readOnly || !settings.automationEnabled} onChange={() => { touchSyntheticProvider(provider.providerKey); setSettings({ ...settings, providers: settings.providers.map((candidate) => ({ ...candidate, enabled: candidate.providerKey === provider.providerKey })) }); }} /> 활성 제공자</label>
+          <label className="control-target"><input type="radio" name="active-provider" aria-label={`${label} 활성 제공자`} checked={provider.enabled} disabled={readOnly} onChange={() => { touchSyntheticProvider(provider.providerKey); setSettings({ ...settings, providers: settings.providers.map((candidate) => ({ ...candidate, enabled: candidate.providerKey === provider.providerKey })) }); }} /> 활성 제공자</label>
           <label htmlFor={`${provider.providerKey}-model`}>모델</label><input id={`${provider.providerKey}-model`} value={provider.modelKey} disabled={readOnly} onChange={(event) => updateProvider(provider.providerKey, { modelKey: event.target.value })} />
           <label htmlFor={`${provider.providerKey}-input-price`}>{label} 입력 단가 USD / 1M</label><input id={`${provider.providerKey}-input-price`} type="number" min="0" step="0.000001" value={microsToUsd(provider.inputPriceMicrosPerMillion)} disabled={readOnly} onChange={(event) => updateProvider(provider.providerKey, { inputPriceMicrosPerMillion: usdToMicros(Number(event.target.value)) })} />
           <label htmlFor={`${provider.providerKey}-output-price`}>{label} 출력 단가 USD / 1M</label><input id={`${provider.providerKey}-output-price`} type="number" min="0" step="0.000001" value={microsToUsd(provider.outputPriceMicrosPerMillion)} disabled={readOnly} onChange={(event) => updateProvider(provider.providerKey, { outputPriceMicrosPerMillion: usdToMicros(Number(event.target.value)) })} />

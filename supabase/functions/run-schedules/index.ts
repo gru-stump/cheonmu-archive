@@ -95,7 +95,7 @@ export function createScheduleHandler(deps: ScheduleDependencies, dispatchToken?
     try { return respond(Response.json(await evaluateAccessTrigger(deps, token), { status: 202 })); }
     catch (error) {
       const code = error instanceof ScheduleError ? error.code : 'internal_error';
-      const status = code === 'authentication_required' ? 401 : ['access_interval_not_elapsed', 'daily_access_limit', 'budget_risk'].includes(code) ? 409 : 500;
+      const status = code === 'authentication_required' ? 401 : ['access_interval_not_elapsed', 'daily_access_limit', 'budget_risk', 'schedule_automation_disabled'].includes(code) ? 409 : 500;
       return respond(Response.json({ error: code }, { status }));
     }
   };
@@ -113,7 +113,7 @@ export function createSupabaseScheduleDependencies(config: SupabaseScheduleConfi
       if (path === '/auth/v1/user' && (response.status === 401 || response.status === 403)) throw new ScheduleError('authentication_required');
       const databaseCode = value && typeof value === 'object' && 'code' in value ? String((value as { code: unknown }).code) : '';
       const message = value && typeof value === 'object' && 'message' in value ? String((value as { message: unknown }).message) : '';
-      if (databaseCode === 'P0001' && ['access_interval_not_elapsed', 'daily_access_limit', 'budget_risk'].includes(message)) throw new ScheduleError(message);
+      if (databaseCode === 'P0001' && ['access_interval_not_elapsed', 'daily_access_limit', 'budget_risk', 'schedule_automation_disabled'].includes(message)) throw new ScheduleError(message);
       throw new ScheduleError('persistence_failed');
     }
     return value;

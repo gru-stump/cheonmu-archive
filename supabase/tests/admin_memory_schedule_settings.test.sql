@@ -15,7 +15,7 @@ select has_function('public', 'get_narrative_schedules', array[]::text[], 'sched
 select has_function('public', 'save_narrative_schedule', array['uuid', 'text', 'text', 'boolean', 'text', 'integer', 'date', 'integer', 'text'], 'schedule writes use one validated owner command');
 select has_function('public', 'queue_due_narrative_schedule_job', array['uuid', 'uuid', 'timestamp with time zone'], 'due schedule queueing has one atomic policy boundary');
 select has_function('public', 'get_narrative_settings', array[]::text[], 'settings reads have a secret-free owner command');
-select has_function('public', 'save_narrative_settings', array['boolean', 'text', 'jsonb', 'bigint', 'bigint', 'integer', 'integer', 'integer', 'numeric', 'integer'], 'provider and budget policy save atomically');
+select has_function('public', 'save_narrative_settings', array['boolean', 'boolean', 'text', 'jsonb', 'bigint', 'bigint', 'integer', 'integer', 'integer', 'numeric', 'integer'], 'provider and split generation policies save atomically');
 select ok(
   not has_function_privilege('authenticated', 'public.store_narrative_secret(uuid,text,text)', 'EXECUTE')
   and has_function_privilege('service_role', 'public.store_narrative_secret(uuid,text,text)', 'EXECUTE'),
@@ -86,7 +86,7 @@ select throws_ok(
 
 select lives_ok($$
   select public.save_narrative_settings(
-    true, 'openai',
+    true, true, 'openai',
     jsonb_build_array(
       jsonb_build_object('providerKey', 'openai', 'modelKey', 'gpt-test', 'maxInputTokens', 4096, 'maxOutputTokens', 1024, 'maxRevisionOutputTokens', 256, 'inputPriceMicrosPerMillion', 1250000, 'outputPriceMicrosPerMillion', 5000000, 'pricingVerifiedAt', (current_timestamp at time zone 'Asia/Seoul')::date),
       jsonb_build_object('providerKey', 'anthropic', 'modelKey', 'claude-test', 'maxInputTokens', 4096, 'maxOutputTokens', 1024, 'maxRevisionOutputTokens', 256, 'inputPriceMicrosPerMillion', 2000000, 'outputPriceMicrosPerMillion', 6000000, 'pricingVerifiedAt', (current_timestamp at time zone 'Asia/Seoul')::date)
@@ -99,7 +99,7 @@ select is((select provider_key from public.provider_settings where owner_id = au
 
 select throws_ok($$
   select public.save_narrative_settings(
-    true, 'anthropic',
+    true, true, 'anthropic',
     jsonb_build_array(
       jsonb_build_object('providerKey', 'openai', 'modelKey', 'gpt-test', 'maxInputTokens', 4096, 'maxOutputTokens', 1024, 'maxRevisionOutputTokens', 256, 'inputPriceMicrosPerMillion', 1250000, 'outputPriceMicrosPerMillion', 5000000, 'pricingVerifiedAt', (current_timestamp at time zone 'Asia/Seoul')::date),
       jsonb_build_object('providerKey', 'anthropic', 'modelKey', 'claude-test', 'maxInputTokens', 4096, 'maxOutputTokens', 1024, 'maxRevisionOutputTokens', 256, 'inputPriceMicrosPerMillion', 2000000, 'outputPriceMicrosPerMillion', 6000000, 'pricingVerifiedAt', (current_timestamp at time zone 'Asia/Seoul')::date - 31)
@@ -111,7 +111,7 @@ select is((select provider_key from public.provider_settings where owner_id = au
 
 select throws_ok($$
   select public.save_narrative_settings(
-    true, 'openai',
+    true, true, 'openai',
     jsonb_build_array(jsonb_build_object('providerKey', 'openai', 'modelKey', 'gpt-test', 'maxInputTokens', 4096, 'maxOutputTokens', 1024, 'maxRevisionOutputTokens', 256, 'inputPriceMicrosPerMillion', 1250000, 'outputPriceMicrosPerMillion', 5000000, 'pricingVerifiedAt', (current_timestamp at time zone 'Asia/Seoul')::date)),
     100, 100, 3, 80, 95, 1380.5, 30
   )
@@ -204,7 +204,7 @@ select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000001
 set local role authenticated;
 
 select lives_ok($$
-  select public.save_narrative_settings(true, 'openai', '[]', 4000, 4000, 0, 10, 20, 1380.5, 30)
+  select public.save_narrative_settings(true, true, 'openai', '[]', 4000, 4000, 0, 10, 20, 1380.5, 30)
 $$, 'non-default manual, warning, and risk policy can be saved');
 reset role;
 select set_config('request.jwt.claim.role', 'service_role', true);
@@ -236,7 +236,7 @@ select set_config('request.jwt.claim.role', 'authenticated', true);
 select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000001', true);
 set local role authenticated;
 select lives_ok($$
-  select public.save_narrative_settings(true, 'openai', '[]', 200000000, 20000000, 3, 80, 95, 1380.5, 30)
+  select public.save_narrative_settings(true, true, 'openai', '[]', 200000000, 20000000, 3, 80, 95, 1380.5, 30)
 $$, 'runtime policy can be restored after non-default threshold checks');
 
 reset role;
@@ -265,7 +265,7 @@ select set_config('request.jwt.claim.role', 'authenticated', true);
 select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000001', true);
 set local role authenticated;
 
-select lives_ok($$ select public.save_narrative_settings(false, null, '[]', 200000000, 20000000, 4, 80, 95, 1380.5, 30) $$, 'automation can be disabled explicitly');
+select lives_ok($$ select public.save_narrative_settings(false, false, null, '[]', 200000000, 20000000, 4, 80, 95, 1380.5, 30) $$, 'both generation policies can be disabled explicitly');
 select is((select count(*) from public.provider_settings where owner_id = auth.uid() and enabled), 0::bigint, 'disabled automation permits no active provider');
 select ok(public.get_narrative_settings()::text not like '%configuration%', 'settings response never returns provider secret configuration');
 

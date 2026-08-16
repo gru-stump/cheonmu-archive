@@ -48,7 +48,7 @@ async function createMajorJob(session: LocalOwnerSession, draftId: string, label
     schedule_key: `e2e-major-${label}-${randomUUID()}`,
     scheduled_for: new Date().toISOString(),
     status: 'queued',
-    payload: { kind: 'major_event_proposal', source: 'e2e-owner-journey' },
+    payload: { kind: 'major_event_proposal', source: 'manual' },
   });
   return job!.id;
 }
@@ -87,6 +87,7 @@ test('authenticated owner journey persists budget, private approval, rejection f
     await page.goto('/?real-owner=1');
     await expect(page.getByRole('button', { name: '로그아웃' })).toBeVisible();
     await expect(page.getByLabel('상태: 소유자 세션 · E2E')).toHaveCount(0);
+    await servicePatch(session.config, `narrative_admin_settings?owner_id=eq.${seedOwnerId}`, { schedule_automation_enabled: true, manual_call_limit: 10 });
 
     const accessJob = await edgeJson<{ id: string }>(await edgePost(session, 'run-schedules', { action: 'access' }), 202);
     accessJobId = accessJob.id;
@@ -169,7 +170,7 @@ test('authenticated owner journey persists budget, private approval, rejection f
       schedule_key: `e2e-reject-${rejectedDraftId}`,
       scheduled_for: new Date().toISOString(),
       status: 'queued',
-      payload: { kind: 'short_dialogue', source: 'e2e-owner-journey' },
+      payload: { kind: 'short_dialogue', source: 'manual' },
     });
     const rejectedGenerated = await edgeJson<{ versionId: string; continuityLevel: string }>(await edgePost(session, 'generate-draft', {
       jobId: rejectedJob!.id,
@@ -293,6 +294,7 @@ test('authenticated owner journey persists budget, private approval, rejection f
       max_input_tokens: 4096, max_output_tokens: 1024, max_revision_output_tokens: 256,
       input_cost_micros_per_million: 0, output_cost_micros_per_million: 0, fixed_cost_micros: 100,
     }).catch(() => undefined);
+    await servicePatch(session.config, `narrative_admin_settings?owner_id=eq.${seedOwnerId}`, { schedule_automation_enabled: false, manual_call_limit: 3 }).catch(() => undefined);
     await serviceDelete(session.config, 'schedules?schedule_key=eq.special-date').catch(() => undefined);
     await functions.stop();
   }
@@ -338,8 +340,10 @@ test('private styles stay scoped and compact toggles expose keyboard-reachable 4
     expect(box).not.toBeNull();
     expect(box!.height).toBeGreaterThanOrEqual(44);
   }
-  await page.getByRole('checkbox', { name: '자동화 사용' }).focus();
-  await expect(page.getByRole('checkbox', { name: '자동화 사용' })).toBeFocused();
+  await page.getByRole('checkbox', { name: '수동 생성 허용' }).focus();
+  await expect(page.getByRole('checkbox', { name: '수동 생성 허용' })).toBeFocused();
+  await page.getByRole('checkbox', { name: '자동 일정 허용' }).focus();
+  await expect(page.getByRole('checkbox', { name: '자동 일정 허용' })).toBeFocused();
   const provider = page.getByRole('radio', { name: '로컬 테스트 활성 제공자' });
   await provider.focus();
   await expect(provider).toBeFocused();

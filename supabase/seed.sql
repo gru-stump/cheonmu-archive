@@ -82,10 +82,13 @@ set enabled = excluded.enabled,
     fixed_cost_micros = excluded.fixed_cost_micros,
     pricing_verified_at = excluded.pricing_verified_at;
 
-insert into public.narrative_admin_settings (owner_id, automation_enabled)
-values ('10000000-0000-0000-0000-000000000001', true)
+insert into public.narrative_admin_settings (
+  owner_id, automation_enabled, manual_generation_enabled, schedule_automation_enabled
+)
+values ('10000000-0000-0000-0000-000000000001', true, true, false)
 on conflict (owner_id) do update
-set automation_enabled = excluded.automation_enabled,
+set manual_generation_enabled = excluded.manual_generation_enabled,
+    schedule_automation_enabled = excluded.schedule_automation_enabled,
     updated_at = now();
 
 insert into public.memory_items (

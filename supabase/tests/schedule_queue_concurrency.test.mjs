@@ -23,6 +23,9 @@ function runPsql(sql, onStdout) {
 }
 
 const setup = await runPsql(`
+update public.narrative_admin_settings
+set schedule_automation_enabled = true
+where owner_id = '10000000-0000-0000-0000-000000000001';
 insert into public.schedules (
   id, owner_id, schedule_key, schedule_type, cron_expression, enabled, payload,
   seoul_time, minimum_interval_minutes
@@ -87,6 +90,9 @@ const cleanup = await runPsql(`
 delete from public.generation_jobs
 where schedule_key = '${persistedScheduleKey}' and scheduled_for = '${scheduledFor}';
 delete from public.schedules where id = '${scheduleId}';
+update public.narrative_admin_settings
+set schedule_automation_enabled = false
+where owner_id = '10000000-0000-0000-0000-000000000001';
 `);
 if (cleanup.code !== 0) throw new Error(`schedule race fixture cleanup failed\n${cleanup.stdout}\n${cleanup.stderr}`);
 console.log('PASS: atomic due-schedule queue race returns one identical persisted row from both connections.');

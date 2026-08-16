@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto';
 const container = 'supabase_db_cheonmu-narrative';
 const ownerId = randomUUID();
 const periodId = randomUUID();
+const providerId = randomUUID();
 
 function runPsql(sql, onStdout) {
   return new Promise((resolve, reject) => {
@@ -31,6 +32,17 @@ insert into auth.users (
 );
 insert into public.budget_periods (id, owner_id, currency, period_start, period_end, limit_micros, daily_limit_micros)
 values ('${periodId}', '${ownerId}', 'USD', '2026-08-01', '2026-08-31', 100, 100);
+insert into public.narrative_admin_settings (owner_id, schedule_automation_enabled)
+values ('${ownerId}', true);
+insert into public.provider_settings (
+  id, owner_id, provider_key, enabled, configuration, model_key,
+  max_input_tokens, max_output_tokens, max_revision_output_tokens,
+  input_cost_micros_per_million, output_cost_micros_per_million, fixed_cost_micros,
+  pricing_verified_at
+) values (
+  '${providerId}', '${ownerId}', 'fake-local-provider', true, '{"mode":"fixture"}', 'fake-local-model',
+  4096, 1024, 256, 0, 0, 0, public.narrative_business_date(now())
+);
 `);
 if (setup.code !== 0) throw new Error(`access concurrency setup failed\n${setup.stdout}\n${setup.stderr}`);
 

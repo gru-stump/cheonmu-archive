@@ -101,7 +101,7 @@ describe('NarrativeApi', () => {
     await api.setMemoryEnabled({ memoryId: 'memory-1', enabled: false });
     await api.correctMemory({ memoryId: 'memory-1', content: '교정본', note: '사유' });
     await api.saveSchedule({ scheduleId: 'schedule-1', scheduleKey: 'daily', scheduleType: 'automatic', enabled: true, seoulTime: '09:00', weekday: null, specialDate: null, minimumIntervalMinutes: 60, kind: 'daily_event' });
-    await api.saveSettings({ automationEnabled: false, activeProviderKey: null, pricingValidDays: 30, providers: [], monthlyLimitMicros: 10_000_000, dailyLimitMicros: 1_000_000, manualCallLimit: 3, warningThresholdPercent: 80, riskThresholdPercent: 95, krwPerUsd: 1380 });
+    await api.saveSettings({ manualGenerationEnabled: true, scheduleAutomationEnabled: false, activeProviderKey: 'openai', pricingValidDays: 30, providers: [], monthlyLimitMicros: 10_000_000, dailyLimitMicros: 1_000_000, manualCallLimit: 3, warningThresholdPercent: 80, riskThresholdPercent: 95, krwPerUsd: 1380 });
     await api.saveSecret({ kind: 'github', value: 'one-time-value' });
 
     expect(fetch.mock.calls.map(([path]) => path)).toEqual([

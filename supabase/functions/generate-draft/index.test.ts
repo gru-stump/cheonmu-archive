@@ -318,7 +318,7 @@ describe('runGeneration', () => {
     await expect(runGeneration(h.deps, baseCommand)).rejects.toMatchObject({ status: 500, code: 'internal_error' });
   });
 
-  it.each(['duplicate_generation', 'stale_transition', 'stale_version', 'stale_attempt', 'workflow_phase_not_approved', 'mode_kind_mismatch', 'active_provider_setting_required', 'context_budget_too_small'])('maps the explicit database conflict %s to 409', async (code) => {
+  it.each(['duplicate_generation', 'stale_transition', 'stale_version', 'stale_attempt', 'workflow_phase_not_approved', 'mode_kind_mismatch', 'active_provider_setting_required', 'context_budget_too_small', 'manual_generation_disabled', 'schedule_automation_disabled', 'manual_call_limit_reached', 'invalid_generation_source'])('maps the explicit database conflict %s to 409', async (code) => {
     const h = harness({ freezeContext: async () => { throw new PersistenceError(code); } });
     await expect(runGeneration(h.deps, baseCommand)).rejects.toMatchObject({ status: 409, code });
   });

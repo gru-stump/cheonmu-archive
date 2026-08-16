@@ -31,6 +31,18 @@ describe('manage-settings secret boundary', () => {
     expect(h.stored).toEqual([]);
   });
 
+  it('rejects policy fields smuggled through the secret-only boundary', async () => {
+    const h = harness();
+    const response = await createManageSettingsHandler(h.deps)(new Request('http://local/manage-settings', {
+      method: 'POST', headers: { authorization: 'Bearer owner-token', 'content-type': 'application/json' },
+      body: JSON.stringify({ kind: 'openai', value: 'write-only-value', manualGenerationEnabled: true, scheduleAutomationEnabled: true }),
+    }));
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({ error: 'invalid_command' });
+    expect(h.stored).toEqual([]);
+  });
+
   it('uses the user credential for identity/owner membership and service role only for the Vault RPC', async () => {
     const calls: Array<{ path: string; authorization: string | null; body: unknown }> = [];
     const fetch: typeof globalThis.fetch = vi.fn(async (input, init) => {

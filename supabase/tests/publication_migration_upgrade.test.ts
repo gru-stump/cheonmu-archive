@@ -81,7 +81,7 @@ values ('${publishJobId}', '${ownerId}', '${draftId}', '${versionId}', 'queued')
 
   await success('publication migration failed over the pre-Task-2 schema', runProcess(npx, ['supabase', 'migration', 'up', '--local', '--yes']));
   headApplied = true;
-  assert.equal(await scalar('select max(version) from supabase_migrations.schema_migrations;'), '202608140018');
+  assert.equal(await scalar('select max(version) from supabase_migrations.schema_migrations;'), '202608140019');
   assert.equal(
     await scalar(`select concat(approval_action_id, '|', publication_details ->> 'id', '|', status, '|', attempt_count)
       from public.publish_jobs where id = '${publishJobId}';`),
@@ -121,7 +121,7 @@ reset role;
 } finally {
   try {
     await success('database restoration after publication upgrade test failed', runProcess(npx, [
-      'supabase', 'db', 'reset', '--local', '--yes', ...(headApplied ? [] : ['--version', '202608140016']),
+      'supabase', 'db', 'reset', '--local', '--yes', ...(headApplied ? [] : ['--version', '202608140016', '--no-seed']),
     ]));
   } catch (restoreError) {
     primaryError = new AggregateError([primaryError, restoreError].filter((value) => value !== undefined), 'publication upgrade and restoration failed');
@@ -129,4 +129,4 @@ reset role;
 }
 
 if (primaryError) throw primaryError;
-console.log('PASS: migrations 017-018 upgrade a pre-publication queue additively and initialize exact-commit deployment observation.');
+console.log('PASS: migrations 017-019 upgrade a pre-publication queue additively and initialize exact-commit deployment observation.');

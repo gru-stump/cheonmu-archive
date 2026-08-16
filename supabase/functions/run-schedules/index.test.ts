@@ -228,7 +228,7 @@ describe('evaluateAccessTrigger', () => {
     expect(seen.some(({ path }) => path === '/rest/v1/rpc/queue_narrative_schedule_job')).toBe(false);
   });
 
-  it.each(['access_interval_not_elapsed', 'daily_access_limit', 'budget_risk'])('preserves the atomic RPC conflict %s without exposing persistence details', async (code) => {
+  it.each(['access_interval_not_elapsed', 'daily_access_limit', 'budget_risk', 'schedule_automation_disabled'])('preserves the atomic RPC conflict %s without exposing persistence details', async (code) => {
     const fetch: typeof globalThis.fetch = async (input) => new URL(String(input)).pathname === '/auth/v1/user'
       ? Response.json({ id: 'owner-1' })
       : Response.json({ code: 'P0001', message: code, details: 'private database detail' }, { status: 409 });

@@ -7,7 +7,8 @@ import { SettingsPage } from './SettingsPage';
 function api() {
   return {
     getSettings: vi.fn().mockResolvedValue({
-      automationEnabled: true,
+      manualGenerationEnabled: true,
+      scheduleAutomationEnabled: false,
       pricingValidDays: 30,
       providers: [
         { providerKey: 'openai', enabled: true, modelKey: 'gpt-test', maxInputTokens: 4096, maxOutputTokens: 1024, maxRevisionOutputTokens: 256, inputPriceMicrosPerMillion: 1_250_000, outputPriceMicrosPerMillion: 5_000_000, pricingVerifiedAt: '2026-08-10' },
@@ -28,7 +29,8 @@ function apiWithProviders(providers: Awaited<ReturnType<NarrativeApi['getSetting
 }
 
 const awaitedSettings = {
-  automationEnabled: false,
+  manualGenerationEnabled: false,
+  scheduleAutomationEnabled: false,
   pricingValidDays: 30,
   providers: [],
   budget: { monthlyLimitMicros: 20_000_000, dailyLimitMicros: 2_000_000, spentMicros: 0, reservedMicros: 0, manualCallLimit: 3, warningThresholdPercent: 80, riskThresholdPercent: 95, krwPerUsd: 1380.5 },
@@ -107,6 +109,31 @@ describe('SettingsPage', () => {
     expect(screen.getByLabelText('주의 기준 %')).toHaveValue(80);
     expect(screen.getByLabelText('위험 기준 %')).toHaveValue(95);
     expect(screen.getByLabelText('참고 환율 KRW / USD')).toHaveValue(1380.5);
+  });
+
+  it('keeps provider selection independent while saving separate manual and schedule policies', async () => {
+    const client = api();
+    const user = userEvent.setup();
+    render(<SettingsPage api={client} />);
+
+    const manual = await screen.findByRole('checkbox', { name: '수동 생성 허용' });
+    const schedule = screen.getByRole('checkbox', { name: '자동 일정 허용' });
+    const provider = screen.getByRole('radio', { name: 'OpenAI 활성 제공자' });
+    expect(manual).toBeChecked();
+    expect(schedule).not.toBeChecked();
+    expect(provider).toBeChecked();
+    expect(provider).toBeEnabled();
+
+    await user.click(manual);
+    expect(provider).toBeChecked();
+    await user.click(screen.getByRole('button', { name: '설정 저장' }));
+
+    await waitFor(() => expect(client.saveSettings).toHaveBeenCalled());
+    expect(vi.mocked(client.saveSettings).mock.calls[0][0]).toMatchObject({
+      manualGenerationEnabled: false,
+      scheduleAutomationEnabled: false,
+      activeProviderKey: 'openai',
+    });
   });
 
   it('never prefills secrets, clears them after save, and renders only connection state', async () => {

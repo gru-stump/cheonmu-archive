@@ -60,7 +60,7 @@ async function scalar(sql: string): Promise<string> {
 
 async function resetTo(version?: string): Promise<void> {
   const args = ['supabase', 'db', 'reset', '--local', '--yes'];
-  if (version) args.push('--version', version);
+  if (version) args.push('--version', version, '--no-seed');
   await requireSuccess(`database reset${version ? ` to ${version}` : ''} failed`, runProcess(npx, args));
 }
 
@@ -119,7 +119,7 @@ insert into public.provider_settings (
   headApplied = true;
   assert.equal(
     await scalar('select max(version) from supabase_migrations.schema_migrations;'),
-    '202608140018',
+    '202608140019',
     'upgrade fixture must apply migrations 011 through publication tracking at current head',
   );
   assert.equal(
@@ -138,16 +138,16 @@ insert into public.provider_settings (
     'upgrade installs owner-only restore while keeping the shared next-run helper private',
   );
   assert.equal(
-    await scalar("select concat(to_regprocedure('public.save_narrative_settings(boolean,text,jsonb,bigint,bigint,integer,integer,integer,numeric,integer)') is not null, '|', has_function_privilege('authenticated', 'public.save_narrative_settings(boolean,text,jsonb,bigint,bigint,integer,integer,integer,numeric,integer)', 'EXECUTE'), '|', not has_function_privilege('anon', 'public.save_narrative_settings(boolean,text,jsonb,bigint,bigint,integer,integer,integer,numeric,integer)', 'EXECUTE'), '|', has_function_privilege('service_role', 'public.store_narrative_secret(uuid,text,text)', 'EXECUTE'), '|', not has_function_privilege('authenticated', 'public.store_narrative_secret(uuid,text,text)', 'EXECUTE'));"),
-    't|t|t|t|t',
+    await scalar("select concat(to_regprocedure('public.save_narrative_settings(boolean,boolean,text,jsonb,bigint,bigint,integer,integer,integer,numeric,integer)') is not null, '|', to_regprocedure('public.save_narrative_settings(boolean,text,jsonb,bigint,bigint,integer,integer,integer,numeric,integer)') is null, '|', has_function_privilege('authenticated', 'public.save_narrative_settings(boolean,boolean,text,jsonb,bigint,bigint,integer,integer,integer,numeric,integer)', 'EXECUTE'), '|', not has_function_privilege('anon', 'public.save_narrative_settings(boolean,boolean,text,jsonb,bigint,bigint,integer,integer,integer,numeric,integer)', 'EXECUTE'), '|', has_function_privilege('service_role', 'public.store_narrative_secret(uuid,text,text)', 'EXECUTE'), '|', not has_function_privilege('authenticated', 'public.store_narrative_secret(uuid,text,text)', 'EXECUTE'));"),
+    't|t|t|t|t|t',
     'upgrade must install owner settings commands while keeping Vault writes service-only',
   );
   assert.equal(
-    await scalar(`select concat(provider.enabled, '|', provider.pricing_verified_at, '|', admin.automation_enabled)
+    await scalar(`select concat(provider.enabled, '|', provider.pricing_verified_at, '|', admin.automation_enabled, '|', admin.manual_generation_enabled, '|', admin.schedule_automation_enabled)
       from public.provider_settings as provider
       join public.narrative_admin_settings as admin on admin.owner_id = provider.owner_id
       where provider.owner_id = '${ownerId}' and provider.provider_key = 'openai';`),
-    'f|1970-01-01|f',
+    'f|1970-01-01|f|f|f',
     'legacy prices must migrate stale with automation disabled until the owner verifies them',
   );
   await requireSuccess('upgraded provider Vault rotation failed', runPsql(`

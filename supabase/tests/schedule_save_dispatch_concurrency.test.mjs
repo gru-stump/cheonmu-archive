@@ -41,6 +41,7 @@ async function waitForLock(applicationName) {
 let primaryError;
 try {
   const setup = await runPsql(`
+update public.narrative_admin_settings set schedule_automation_enabled = true where owner_id = '${ownerId}';
 insert into public.schedules (id, owner_id, schedule_key, schedule_type, cron_expression, enabled, payload, special_date, seoul_time, minimum_interval_minutes)
 values ('${scheduleId}', '${ownerId}', '${scheduleKey}', 'special', null, true, '{"kind":"short_dialogue"}', '${specialDate}', '${seoulTime}', 60);
 `);
@@ -104,6 +105,7 @@ group by schedule.enabled, schedule.special_date, schedule.seoul_time;
   const cleanup = await runPsql(`
 delete from public.generation_jobs where owner_id = '${ownerId}' and split_part(schedule_key, ':', 2) = '${scheduleKey}';
 delete from public.schedules where id = '${scheduleId}';
+update public.narrative_admin_settings set schedule_automation_enabled = false where owner_id = '${ownerId}';
 `);
   if (cleanup.code !== 0) primaryError = new AggregateError([primaryError, new Error(`schedule save/dispatch cleanup failed\n${cleanup.stdout}\n${cleanup.stderr}`)].filter(Boolean));
 }

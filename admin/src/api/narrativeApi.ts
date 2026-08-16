@@ -115,7 +115,8 @@ export interface ProviderSetting {
   pricingVerifiedAt: string;
 }
 export interface NarrativeSettings {
-  automationEnabled: boolean;
+  manualGenerationEnabled: boolean;
+  scheduleAutomationEnabled: boolean;
   pricingValidDays: number;
   providers: ProviderSetting[];
   budget: {
@@ -131,7 +132,8 @@ export interface NarrativeSettings {
   secrets: Record<'openai' | 'anthropic' | 'github', boolean>;
 }
 export interface SaveSettingsInput {
-  automationEnabled: boolean;
+  manualGenerationEnabled: boolean;
+  scheduleAutomationEnabled: boolean;
   activeProviderKey: ProviderSetting['providerKey'] | null;
   pricingValidDays: number;
   providers: Array<Omit<ProviderSetting, 'enabled'>>;

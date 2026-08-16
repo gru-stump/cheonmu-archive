@@ -51,7 +51,7 @@ export function createE2EFixture() {
     unresolved: [{ id: 'unresolved-1', memoryType: 'unresolved', content: '젖은 매듭 장식의 출처가 남아 있다.', enabled: false, createdAt, correctionHistory: [] }],
   };
   const settings: NarrativeSettings = {
-    automationEnabled: true, pricingValidDays: 30,
+    manualGenerationEnabled: true, scheduleAutomationEnabled: false, pricingValidDays: 30,
     providers: [{ providerKey: 'fake-local-provider', enabled: true, modelKey: 'deterministic-local', maxInputTokens: 4096, maxOutputTokens: 1024, maxRevisionOutputTokens: 256, inputPriceMicrosPerMillion: 1000, outputPriceMicrosPerMillion: 2000, pricingVerifiedAt: '2026-08-15' }],
     budget: { monthlyLimitMicros: 100_000_000, dailyLimitMicros: 20_000_000, spentMicros: 2_700, reservedMicros: 0, manualCallLimit: 3, warningThresholdPercent: 80, riskThresholdPercent: 95, krwPerUsd: 1380 },
     secrets: { openai: false, anthropic: false, github: false },

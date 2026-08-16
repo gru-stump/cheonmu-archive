@@ -259,7 +259,7 @@ describe('same-origin narrative server boundary', () => {
       const path = new URL(String(input)).pathname;
       if (path === '/auth/v1/user') return Response.json({ id: 'owner-1' });
       if (path === '/rest/v1/owner_profiles') return Response.json([{ owner_id: 'owner-1' }]);
-      return Response.json({ automationEnabled: false, providers: [], budget: {}, secrets: { openai: false, anthropic: false, github: false } });
+      return Response.json({ manualGenerationEnabled: true, scheduleAutomationEnabled: false, providers: [], budget: {}, secrets: { openai: false, anthropic: false, github: false } });
     });
     const handler = createNarrativeHandler({ supabaseUrl: 'https://db.example.test', supabaseAnonKey: 'anon', fetch });
     const response = await handler(new Request('https://admin.example.test/api/narrative/settings', { headers: { authorization: 'Bearer owner-token' } }));
@@ -267,6 +267,33 @@ describe('same-origin narrative server boundary', () => {
 
     expect(response.status).toBe(200);
     expect(JSON.stringify(value)).not.toMatch(/api.?key|token|secret.?value/i);
+  });
+
+  it('maps split policy settings to the owner RPC without deriving provider selection from schedule state', async () => {
+    const calls: Array<{ path: string; body: unknown }> = [];
+    const fetch: typeof globalThis.fetch = vi.fn(async (input, init) => {
+      const path = new URL(String(input)).pathname;
+      calls.push({ path, body: init?.body ? JSON.parse(String(init.body)) : null });
+      if (path === '/auth/v1/user') return Response.json({ id: 'owner-1' });
+      if (path === '/rest/v1/owner_profiles') return Response.json([{ owner_id: 'owner-1' }]);
+      return Response.json({ saved: true });
+    });
+    const handler = createNarrativeHandler({ supabaseUrl: 'https://db.example.test', supabaseAnonKey: 'anon', fetch });
+    const response = await handler(new Request('https://admin.example.test/api/narrative/settings', {
+      method: 'POST', headers: { authorization: 'Bearer owner-token', 'content-type': 'application/json' },
+      body: JSON.stringify({
+        manualGenerationEnabled: true, scheduleAutomationEnabled: false, activeProviderKey: 'openai', providers: [],
+        monthlyLimitMicros: 10, dailyLimitMicros: 10, manualCallLimit: 1,
+        warningThresholdPercent: 80, riskThresholdPercent: 95, krwPerUsd: 1380, pricingValidDays: 30,
+      }),
+    }));
+
+    expect(response.status).toBe(200);
+    expect(calls[2]).toEqual({ path: '/rest/v1/rpc/save_narrative_settings', body: {
+      p_manual_generation_enabled: true, p_schedule_automation_enabled: false, p_active_provider_key: 'openai',
+      p_provider_updates: [], p_monthly_limit_micros: 10, p_daily_limit_micros: 10, p_manual_call_limit: 1,
+      p_warning_threshold_percent: 80, p_risk_threshold_percent: 95, p_krw_per_usd: 1380, p_pricing_valid_days: 30,
+    } });
   });
 
   it('forwards secret writes only to manage-settings and returns only configured state', async () => {

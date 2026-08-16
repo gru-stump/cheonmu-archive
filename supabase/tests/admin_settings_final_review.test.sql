@@ -58,7 +58,7 @@ select ok(
 
 select throws_ok($$
   select public.save_narrative_settings(
-    false, null,
+    false, false, null,
     jsonb_build_array(jsonb_build_object(
       'providerKey', 'openai', 'modelKey', 'future-price',
       'maxInputTokens', 4096, 'maxOutputTokens', 1024, 'maxRevisionOutputTokens', 256,
@@ -136,7 +136,7 @@ set period_start = public.narrative_business_date(now()) - 1,
 where owner_id = '10000000-0000-0000-0000-000000000001';
 delete from public.budget_entries where owner_id = '10000000-0000-0000-0000-000000000001';
 update public.narrative_admin_settings
-set automation_enabled = true, pricing_valid_days = 30,
+set manual_generation_enabled = true, schedule_automation_enabled = true, pricing_valid_days = 30,
     warning_threshold_percent = 80, risk_threshold_percent = 90
 where owner_id = '10000000-0000-0000-0000-000000000001';
 update public.provider_settings
@@ -171,7 +171,7 @@ insert into public.generation_jobs (
 ) values
   ('c6000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001', 'c2000000-0000-0000-0000-000000000002', 'future-reserve', now(), '{"kind":"daily_event","source":"schedule","budgetPolicy":"block_at_risk"}', 'future-reserve-key', '12000000-0000-0000-0000-000000000001', 10, 'c7000000-0000-4000-8000-000000000001'),
   ('c6000000-0000-0000-0000-000000000002', '10000000-0000-0000-0000-000000000001', 'c2000000-0000-0000-0000-000000000003', 'risk-reserve', now(), '{"kind":"daily_event","source":"access","budgetPolicy":"block_at_risk"}', 'risk-reserve-key', '12000000-0000-0000-0000-000000000001', 10, 'c7000000-0000-4000-8000-000000000002'),
-  ('c6000000-0000-0000-0000-000000000003', '10000000-0000-0000-0000-000000000001', 'c2000000-0000-0000-0000-000000000004', 'confirmed-manual', now(), '{"kind":"daily_event","mode":"revise_selection","maximumCostConfirmed":true}', 'manual-reserve-key', '12000000-0000-0000-0000-000000000001', 10, 'c7000000-0000-4000-8000-000000000003');
+  ('c6000000-0000-0000-0000-000000000003', '10000000-0000-0000-0000-000000000001', 'c2000000-0000-0000-0000-000000000004', 'confirmed-manual', now(), '{"kind":"daily_event","mode":"revise_selection","source":"manual","maximumCostConfirmed":true}', 'manual-reserve-key', '12000000-0000-0000-0000-000000000001', 10, 'c7000000-0000-4000-8000-000000000003');
 insert into public.generation_jobs (
   id, owner_id, draft_id, schedule_key, scheduled_for, payload, idempotency_key,
   provider_setting_id, worst_case_cost_micros, attempt_token
@@ -233,7 +233,7 @@ select throws_ok($$ select public.correct_narrative_memory('c4000000-0000-0000-0
 select throws_ok($$ select public.get_narrative_schedules() $$, '42501', 'owner_access_required', 'non-owner cannot call schedule read RPC directly');
 select throws_ok($$ select public.save_narrative_schedule(null, 'x', 'automatic', false, '09:00', null, null, 60, 'daily_event') $$, '42501', 'owner_access_required', 'non-owner cannot call schedule write RPC directly');
 select throws_ok($$ select public.get_narrative_settings() $$, '42501', 'owner_access_required', 'non-owner cannot call settings read RPC directly');
-select throws_ok($$ select public.save_narrative_settings(false, null, '[]', 1, 1, 1, 80, 95, 1300, 30) $$, '42501', 'owner_access_required', 'non-owner cannot call settings write RPC directly');
+select throws_ok($$ select public.save_narrative_settings(false, false, null, '[]', 1, 1, 1, 80, 95, 1300, 30) $$, '42501', 'owner_access_required', 'non-owner cannot call settings write RPC directly');
 
 reset role;
 

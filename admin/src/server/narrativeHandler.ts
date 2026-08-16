@@ -3,7 +3,8 @@ type ServerConfig = { supabaseUrl: string; supabaseAnonKey: string; fetch?: type
 const conflicts = new Set([
   'stale_review', 'stale_review_submission', 'stale_manual_version', 'stale_revision', 'stale_archive', 'stale_restore', 'stale_publish_retry',
   'blocked_version_reject_only', 'revision_cost_changed', 'duplicate_review', 'version_not_approvable', 'duplicate_generation',
-  'fixed_canon_read_only', 'stale_memory', 'stale_provider_pricing', 'automation_disabled',
+  'fixed_canon_read_only', 'stale_memory', 'stale_provider_pricing', 'manual_generation_disabled', 'schedule_automation_disabled',
+  'manual_call_limit_reached', 'invalid_generation_source',
   'budget_limit_below_committed', 'duplicate_schedule_key', 'active_provider_setting_required',
   'publication_in_progress', 'publication_queue_busy', 'publication_idempotency_mismatch',
   'publication_not_approved', 'publication_attempt_mismatch', 'publication_already_finalized', 'publication_not_configured',
@@ -166,7 +167,8 @@ export function createNarrativeHandler({ supabaseUrl, supabaseAnonKey, fetch = g
       if (request.method === 'POST' && path.join('/') === 'settings') {
         const input = await body(); if (!input) return json({ error: 'invalid_command' }, 400);
         return json(await rpc('save_narrative_settings', {
-          p_automation_enabled: input.automationEnabled,
+          p_manual_generation_enabled: input.manualGenerationEnabled,
+          p_schedule_automation_enabled: input.scheduleAutomationEnabled,
           p_active_provider_key: input.activeProviderKey ?? null,
           p_provider_updates: input.providers,
           p_monthly_limit_micros: input.monthlyLimitMicros,
