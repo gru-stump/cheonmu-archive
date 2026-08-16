@@ -13,16 +13,22 @@ describe('NarrativeApi', () => {
     }));
   });
 
-  it('triggers owner access with a bodyless same-origin POST carrying only the current bearer token', async () => {
-    const fetch = vi.fn().mockResolvedValue(Response.json({ id: 'access-job-1', scheduledFor: '2026-08-16T09:00:00Z' }, { status: 202 }));
+  it('quotes, confirms, and cancels owner access through exact same-origin contracts', async () => {
+    const fetch = vi.fn()
+      .mockResolvedValueOnce(Response.json({ maximumCostMicros: 4200, maximumCostKrw: 6, modelLabel: 'GPT-5 mini' }))
+      .mockResolvedValueOnce(Response.json({ id: 'access-job-1', scheduledFor: '2026-08-16T09:00:00Z', dispatchState: 'started' }, { status: 202 }))
+      .mockResolvedValueOnce(Response.json({ status: 'cancelled' }));
     const api = createNarrativeApi({ tokenProvider: async () => 'owner-token', fetch });
 
-    await expect(api.triggerAccess()).resolves.toEqual({ id: 'access-job-1', scheduledFor: '2026-08-16T09:00:00Z' });
+    await expect(api.estimateAccess()).resolves.toMatchObject({ maximumCostMicros: 4200, maximumCostKrw: 6 });
+    await expect(api.triggerAccess({ maximumCostConfirmed: true, confirmedMaximumCostMicros: 4200 })).resolves.toMatchObject({ id: 'access-job-1', dispatchState: 'started' });
+    await expect(api.cancelGenerationJob('access-job-1')).resolves.toEqual({ status: 'cancelled' });
 
-    expect(fetch).toHaveBeenCalledWith('/api/narrative/access', {
-      method: 'POST',
-      headers: { accept: 'application/json', authorization: 'Bearer owner-token' },
-    });
+    expect(fetch.mock.calls).toEqual([
+      ['/api/narrative/access/estimate', expect.objectContaining({ headers: expect.objectContaining({ authorization: 'Bearer owner-token' }) })],
+      ['/api/narrative/access', expect.objectContaining({ method: 'POST', body: JSON.stringify({ maximumCostConfirmed: true, confirmedMaximumCostMicros: 4200 }) })],
+      ['/api/narrative/jobs/access-job-1/cancel', expect.objectContaining({ method: 'POST' })],
+    ]);
   });
 
   it('sends immutable-version and focused-revision concurrency fields', async () => {

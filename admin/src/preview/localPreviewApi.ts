@@ -34,7 +34,9 @@ export const localPreviewApi: NarrativeApi = {
     failures: [],
     queue: [{ id: 'local-preview-worker', source: 'schedule', state: 'queued', attemptCount: 0, retryAt: null, leaseExpiresAt: null, failureCode: null, scheduledFor: '2026-08-16T00:00:00.000Z' }],
   }),
+  estimateAccess: async () => ({ maximumCostMicros: 4_200, maximumCostKrw: 6, modelLabel: '둘러보기용 모델' }),
   triggerAccess: readOnly,
+  cancelGenerationJob: readOnly,
   listDrafts: async () => [{ id: draftId, kind: 'short_dialogue', status: 'generated', title: detail.title, updatedAt: version.createdAt, latestVersionId: version.id, continuityLevel: 'pass' }],
   getDraft: async (requestedId) => requestedId === draftId ? detail : Promise.reject(new Error('local_preview_draft_not_found')),
   getMemory: async () => ({
@@ -57,5 +59,11 @@ export const localPreviewApi: NarrativeApi = {
   saveSettings: readOnly,
   saveSecret: readOnly,
   deleteSecret: readOnly,
-  listModels: async (providerKey) => ({ providerKey, configured: false, live: false, models: [] }),
+  listModels: async (providerKey) => ({ providerKey, configured: false, live: false, models: [{
+    id: providerKey === 'openai' ? 'gpt-5-mini' : 'claude-sonnet-4-5',
+    label: providerKey === 'openai' ? 'GPT-5 mini' : 'Claude Sonnet 4.5',
+    description: '비용과 품질의 균형이 좋은 추천 모델입니다.', quality: 'standard', speed: 'fast', cost: 'low', recommended: true,
+    availability: 'unverified', maxInputTokens: 16_384, maxOutputTokens: 2_048, maxRevisionOutputTokens: 512,
+    inputPriceMicrosPerMillion: 1_000_000, outputPriceMicrosPerMillion: 4_000_000, pricingVerifiedAt: '2026-08-16',
+  }] }),
 };

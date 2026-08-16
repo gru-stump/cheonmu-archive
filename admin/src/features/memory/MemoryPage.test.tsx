@@ -24,13 +24,13 @@ describe('MemoryPage', () => {
   it('keeps fixed canon read-only and separates every memory class with correction history', async () => {
     render(<MemoryPage api={api()} />);
 
-    const canon = await screen.findByRole('region', { name: '고정 정사' });
+    const canon = await screen.findByRole('region', { name: '확정 설정' });
     expect(within(canon).getByText('고정된 관계 단계')).toBeInTheDocument();
     expect(within(canon).queryByRole('button')).not.toBeInTheDocument();
-    expect(screen.getByRole('region', { name: '연속성 장부' })).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: '이어지는 사실' })).toBeInTheDocument();
     expect(screen.getByRole('region', { name: '최근 기억' })).toBeInTheDocument();
-    expect(screen.getByRole('region', { name: '금지·피드백 기억' })).toBeInTheDocument();
-    expect(screen.getByRole('region', { name: '미회수 요소' })).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: '수정 지침' })).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: '아직 정하지 않은 설정' })).toBeInTheDocument();
     expect(screen.getByText('이전 약속')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /삭제/ })).not.toBeInTheDocument();
   });

@@ -12,13 +12,15 @@ describe('localPreviewApi', () => {
     await expect(localPreviewApi.getMemory()).resolves.toMatchObject({
       continuity: [{ content: '비 오는 날 다시 만나기로 약속했다.' }],
     });
+    await expect(localPreviewApi.estimateAccess()).resolves.toMatchObject({ maximumCostMicros: 4200, maximumCostKrw: 6 });
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
   it('fails every mutation locally without making a network call', async () => {
     const fetchSpy = vi.spyOn(globalThis, 'fetch');
     const calls = [
-      localPreviewApi.triggerAccess(),
+      localPreviewApi.triggerAccess({ maximumCostConfirmed: true, confirmedMaximumCostMicros: 4200 }),
+      localPreviewApi.cancelGenerationJob('local-preview-worker'),
       localPreviewApi.generate({} as never),
       localPreviewApi.saveManualVersion({} as never),
       localPreviewApi.review({} as never),
@@ -32,7 +34,7 @@ describe('localPreviewApi', () => {
     ];
 
     const results = await Promise.allSettled(calls);
-    expect(results).toHaveLength(11);
+    expect(results).toHaveLength(12);
     for (const result of results) {
       expect(result).toMatchObject({ status: 'rejected', reason: expect.objectContaining({ message: 'local_preview_read_only' }) });
     }

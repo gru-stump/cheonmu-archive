@@ -116,6 +116,7 @@ export interface AccessEstimate {
 export interface AccessJob {
   id: string;
   scheduledFor: string;
+  dispatchState: 'started' | 'delayed';
 }
 
 export type MemoryType = 'canon' | 'continuity' | 'summary' | 'feedback' | 'unresolved';
@@ -231,7 +232,9 @@ export interface ReviewInput {
 
 export interface NarrativeApi {
   getDashboard(): Promise<DashboardData>;
-  triggerAccess(): Promise<AccessJob>;
+  estimateAccess(): Promise<AccessEstimate>;
+  triggerAccess(input: { maximumCostConfirmed: true; confirmedMaximumCostMicros: number }): Promise<AccessJob>;
+  cancelGenerationJob(jobId: string): Promise<{ status: 'cancelled' }>;
   listDrafts(input?: { status?: DraftStatus | 'active' }): Promise<DraftSummary[]>;
   getDraft(draftId: string): Promise<DraftDetail>;
   generate(input: GenerateInput): Promise<{ draftId: string; versionId: string; status: 'generated'; continuityLevel: 'pass' | 'review' | 'block' }>;
@@ -277,7 +280,9 @@ export function createNarrativeApi({ tokenProvider, fetch = globalThis.fetch }: 
 
   return {
     getDashboard: () => request<DashboardData>('dashboard'),
-    triggerAccess: () => request<AccessJob>('access', { method: 'POST' }),
+    estimateAccess: () => request<AccessEstimate>('access/estimate'),
+    triggerAccess: (input) => post<AccessJob>('access', input),
+    cancelGenerationJob: (jobId) => request(`jobs/${encodeURIComponent(jobId)}/cancel`, { method: 'POST' }),
     listDrafts: async (input = {}) => {
       const result = await request<{ drafts: DraftSummary[] }>(`drafts${input.status ? `?status=${encodeURIComponent(input.status)}` : ''}`);
       return result.drafts;

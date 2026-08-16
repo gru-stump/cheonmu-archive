@@ -145,7 +145,7 @@ describe('evaluateAccessTrigger', () => {
     const headers = new Headers({ origin: 'https://admin.example.test', 'content-type': 'application/json' });
     if (authorization !== undefined) headers.set('authorization', authorization);
     const response = await createScheduleHandler(h.deps, undefined, createCorsPolicy(['https://admin.example.test']))(new Request('http://local/run-schedules', {
-      method: 'POST', headers, body: JSON.stringify({ action: 'access' }),
+      method: 'POST', headers, body: JSON.stringify({ action: 'access', maximumCostConfirmed: true, confirmedMaximumCostMicros: 4200 }),
     }));
     expect(response.status).toBe(401);
     expect(response.headers.get('access-control-allow-origin')).toBe('https://admin.example.test');
@@ -185,7 +185,7 @@ describe('evaluateAccessTrigger', () => {
     const cors = createCorsPolicy(['https://admin.example.test']);
     const deps = createSupabaseScheduleDependencies({ url: 'http://supabase', anonKey: 'anon', serviceRoleKey: 'service-secret', fetch: async () => Response.json({ message: 'invalid JWT' }, { status: 401 }) }, 'expired-token');
     const response = await createScheduleHandler(deps, undefined, cors)(new Request('http://local/run-schedules', {
-      method: 'POST', headers: { origin: 'https://admin.example.test', authorization: 'Bearer expired-token', 'content-type': 'application/json' }, body: JSON.stringify({ action: 'access' }),
+      method: 'POST', headers: { origin: 'https://admin.example.test', authorization: 'Bearer expired-token', 'content-type': 'application/json' }, body: JSON.stringify({ action: 'access', maximumCostConfirmed: true, confirmedMaximumCostMicros: 4200 }),
     }));
     expect(response.status).toBe(401);
     expect(response.headers.get('access-control-allow-origin')).toBe('https://admin.example.test');
@@ -194,21 +194,62 @@ describe('evaluateAccessTrigger', () => {
 
   it('authenticates once, then delegates repeated access loads to one atomic queue operation', async () => {
     const h = harness();
-    await expect(evaluateAccessTrigger(h.deps, 'token')).resolves.toMatchObject({ scheduleKey: 'access:owner-1', payload: { kind: 'short_dialogue', source: 'access' } });
-    await expect(evaluateAccessTrigger(h.deps, 'token')).resolves.toMatchObject({ scheduleKey: 'access:owner-1' });
+    await expect(evaluateAccessTrigger(h.deps, 'token', 4200)).resolves.toMatchObject({ scheduleKey: 'access:owner-1', payload: { kind: 'short_dialogue', source: 'access' } });
+    await expect(evaluateAccessTrigger(h.deps, 'token', 4200)).resolves.toMatchObject({ scheduleKey: 'access:owner-1' });
     expect(h.inserted).toHaveLength(1);
     expect(h.events).toEqual(['authenticate', 'queue-access', 'authenticate', 'queue-access']);
-    await expect(evaluateAccessTrigger(h.deps, 'nope')).rejects.toMatchObject({ code: 'authentication_required' });
+    await expect(evaluateAccessTrigger(h.deps, 'nope', 4200)).rejects.toMatchObject({ code: 'authentication_required' });
   });
 
   it('exposes access triggering only through an authenticated HTTP command', async () => {
     const h = harness();
     const handler = createScheduleHandler(h.deps);
-    const unauthorized = await handler(new Request('http://local/run-schedules', { method: 'POST', body: JSON.stringify({ action: 'access' }) }));
+    const unauthorized = await handler(new Request('http://local/run-schedules', { method: 'POST', body: JSON.stringify({ action: 'access', maximumCostConfirmed: true, confirmedMaximumCostMicros: 4200 }) }));
     expect(unauthorized.status).toBe(401);
-    const access = await handler(new Request('http://local/run-schedules', { method: 'POST', headers: { authorization: 'Bearer token', 'content-type': 'application/json' }, body: JSON.stringify({ action: 'access' }) }));
+    const access = await handler(new Request('http://local/run-schedules', { method: 'POST', headers: { authorization: 'Bearer token', 'content-type': 'application/json' }, body: JSON.stringify({ action: 'access', maximumCostConfirmed: true, confirmedMaximumCostMicros: 4200 }) }));
     expect(access.status).toBe(202);
     await expect(access.json()).resolves.toMatchObject({ scheduleKey: 'access:owner-1' });
+  });
+
+  it('queues the exact confirmed access cost once and wakes the worker without exposing its token', async () => {
+    const events: unknown[] = [];
+    const deps: ScheduleDependencies = {
+      now: () => new Date('2026-08-16T00:00:00Z'), authenticate: async () => ({ ownerId: 'owner-1' }),
+      listSchedules: async () => [], budgetState: async () => 'normal',
+      queueScheduleJob: async () => { throw new Error('not used'); },
+      queueAccessJob: async (ownerId, now, confirmedMaximumCostMicros) => {
+        events.push(['queue', ownerId, now.toISOString(), confirmedMaximumCostMicros]);
+        return { id: 'job-1', ownerId, scheduleKey: `access:${ownerId}`, scheduledFor: now.toISOString(), payload: { kind: 'short_dialogue', source: 'access' } };
+      },
+      wakeGenerationWorker: async (job) => { events.push(['wake', job.id]); return true; },
+    };
+    const response = await createScheduleHandler(deps)(new Request('http://local/run-schedules', {
+      method: 'POST', headers: { authorization: 'Bearer owner-token', 'content-type': 'application/json' },
+      body: JSON.stringify({ action: 'access', maximumCostConfirmed: true, confirmedMaximumCostMicros: 4200 }),
+    }));
+
+    expect(response.status).toBe(202);
+    const payload = await response.json();
+    expect(payload).toMatchObject({ id: 'job-1', dispatchState: 'started' });
+    expect(events).toEqual([['queue', 'owner-1', '2026-08-16T00:00:00.000Z', 4200], ['wake', 'job-1']]);
+    expect(JSON.stringify(payload)).not.toContain('token');
+  });
+
+  it('keeps the same queued job when the worker wake is delayed', async () => {
+    let queueCalls = 0;
+    const deps: ScheduleDependencies = {
+      now: () => new Date('2026-08-16T00:00:00Z'), authenticate: async () => ({ ownerId: 'owner-1' }),
+      listSchedules: async () => [], budgetState: async () => 'normal', queueScheduleJob: async () => { throw new Error('not used'); },
+      queueAccessJob: async (ownerId, now) => { queueCalls += 1; return { id: 'same-job', ownerId, scheduleKey: `access:${ownerId}`, scheduledFor: now.toISOString(), payload: { kind: 'short_dialogue', source: 'access' } }; },
+      wakeGenerationWorker: async () => false,
+    };
+    const response = await createScheduleHandler(deps)(new Request('http://local/run-schedules', {
+      method: 'POST', headers: { authorization: 'Bearer owner-token', 'content-type': 'application/json' },
+      body: JSON.stringify({ action: 'access', maximumCostConfirmed: true, confirmedMaximumCostMicros: 4200 }),
+    }));
+    expect(response.status).toBe(202);
+    await expect(response.json()).resolves.toMatchObject({ id: 'same-job', dispatchState: 'delayed' });
+    expect(queueCalls).toBe(1);
   });
 
   it('uses the user token only for identity and the service role only for the atomic access RPC', async () => {
@@ -222,10 +263,10 @@ describe('evaluateAccessTrigger', () => {
       return Response.json({ message: 'unexpected split access RPC' }, { status: 500 });
     };
     const deps = createSupabaseScheduleDependencies({ url: 'http://supabase', anonKey: 'anon', serviceRoleKey: 'service-secret', fetch }, 'user-token');
-    await expect(evaluateAccessTrigger(deps, 'user-token')).resolves.toEqual({ id: 'persisted-job', ownerId: 'owner-1', scheduleKey: 'access:owner-1', scheduledFor: '2026-08-14T00:00:00+00:00', payload: { kind: 'short_dialogue', source: 'access' } });
+    await expect(evaluateAccessTrigger(deps, 'user-token', 4200)).resolves.toEqual({ id: 'persisted-job', ownerId: 'owner-1', scheduleKey: 'access:owner-1', scheduledFor: '2026-08-14T00:00:00+00:00', payload: { kind: 'short_dialogue', source: 'access' }, dispatchState: 'delayed' });
     expect(seen).toEqual([
       { path: '/auth/v1/user', authorization: 'Bearer user-token', body: null },
-      { path: '/rest/v1/rpc/queue_narrative_access_job', authorization: 'Bearer service-secret', body: { p_owner_id: 'owner-1', p_now: expect.any(String) } },
+      { path: '/rest/v1/rpc/queue_narrative_access_job', authorization: 'Bearer service-secret', body: { p_owner_id: 'owner-1', p_now: expect.any(String), p_confirmed_maximum_cost_micros: 4200 } },
     ]);
   });
 
@@ -255,7 +296,7 @@ describe('evaluateAccessTrigger', () => {
       ? Response.json({ id: 'owner-1' })
       : Response.json({ code: 'P0001', message: code, details: 'private database detail' }, { status: 409 });
     const handler = createScheduleHandler(createSupabaseScheduleDependencies({ url: 'http://supabase', anonKey: 'anon', serviceRoleKey: 'service-secret', fetch }, 'user-token'));
-    const response = await handler(new Request('http://local/run-schedules', { method: 'POST', headers: { authorization: 'Bearer user-token', 'content-type': 'application/json' }, body: JSON.stringify({ action: 'access', ownerId: 'other-owner', dailyLimit: 999 }) }));
+    const response = await handler(new Request('http://local/run-schedules', { method: 'POST', headers: { authorization: 'Bearer user-token', 'content-type': 'application/json' }, body: JSON.stringify({ action: 'access', maximumCostConfirmed: true, confirmedMaximumCostMicros: 4200 }) }));
     expect(response.status).toBe(409);
     await expect(response.json()).resolves.toEqual({ error: code });
   });

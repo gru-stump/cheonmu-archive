@@ -76,6 +76,15 @@ body { margin: 0; min-width: 320px; background: var(--admin-paper); font-family:
 .admin-shell .incident-list, .admin-shell .draft-list, .admin-shell .memory-list, .admin-shell .finding-list, .admin-shell .source-list, .admin-shell .phase-list{ margin: 0; padding: 0; list-style: none; }
 .admin-shell .incident-list li{ display: flex; justify-content: space-between; gap: 1rem; padding: .9rem .25rem; border-top: 1px solid var(--admin-rule); }
 .admin-shell .incident-list time{ color: var(--admin-muted); }
+.admin-shell .generation-status-list{ display: grid; gap: .75rem; margin: 0; padding: 0; list-style: none; }
+.admin-shell .generation-status-list > li{ display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: .5rem 1.25rem; padding: 1rem; border: 1px solid var(--admin-rule); border-left: 3px solid var(--admin-green); border-radius: 3px; background: var(--admin-surface); }
+.admin-shell .generation-status-list strong{ font-family: var(--admin-prose); font-size: 1.02rem; }
+.admin-shell .generation-status-list p{ margin: .3rem 0 0; color: var(--admin-muted); line-height: 1.55; }
+.admin-shell .generation-status-list time{ display: grid; align-content: start; color: var(--admin-ink); font-size: .82rem; font-variant-numeric: tabular-nums; text-align: right; }
+.admin-shell .generation-status-list .exact-time{ margin-top: .2rem; color: var(--admin-muted); font-size: .74rem; }
+.admin-shell .generation-status-list details{ grid-column: 1 / -1; color: var(--admin-muted); font-size: .78rem; }
+.admin-shell .generation-status-list details summary{ min-height: 44px; width: fit-content; cursor: pointer; }
+.admin-shell .generation-status-list > li > button{ grid-column: 2; grid-row: 2 / span 2; align-self: end; }
 
 .admin-shell .draft-list{ border-top: 1px solid var(--admin-ink); }
 .admin-shell .draft-list__filters{ display: inline-flex; gap: .35rem; }
@@ -209,6 +218,9 @@ body { margin: 0; min-width: 320px; background: var(--admin-paper); font-family:
   .admin-shell .dashboard-grid{ grid-template-columns: 1fr; }
   .admin-shell .dashboard-grid .admin-section, .admin-shell .dashboard-grid .admin-section:nth-child(odd), .admin-shell .dashboard-grid .admin-section:nth-last-child(-n+2){ min-height: auto; border-right: 0; border-bottom: 1px solid var(--admin-rule); }
   .admin-shell .dashboard-grid .admin-section:last-child{ border-bottom: 0; }
+  .admin-shell .generation-status-list > li{ grid-template-columns: minmax(0, 1fr); }
+  .admin-shell .generation-status-list time{ text-align: left; }
+  .admin-shell .generation-status-list > li > button{ grid-column: 1; grid-row: auto; width: 100%; }
   .admin-shell .draft-list a{ grid-template-columns: minmax(0, 1fr) auto; gap: .45rem .75rem; }
   .admin-shell .draft-list__title{ grid-column: 1 / -1; }
   .admin-shell .draft-list__continuity{ text-align: right; }

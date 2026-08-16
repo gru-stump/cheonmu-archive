@@ -5,9 +5,21 @@ import { AdminNotice } from '../../components/AdminNotice';
 import { AdminPageHeader } from '../../components/AdminPageHeader';
 import { AdminSection } from '../../components/AdminSection';
 import { AdminStatusBadge } from '../../components/AdminStatusBadge';
+import { formatSeoulTimestamp } from '../../lib/narrativeDisplay';
 
 type DialogKind = 'manual' | 'revision' | 'reject' | null;
-const seoulDate = (value: string) => new Intl.DateTimeFormat('ko-KR', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Seoul' }).format(new Date(value));
+const seoulDate = (value: string) => formatSeoulTimestamp(value).exact;
+const kindLabels: Record<string, string> = {
+  short_dialogue: '짧은 대화', daily_event: '일상 사건', major_event_proposal: '큰 사건 제안',
+};
+const statusLabels: Record<string, string> = {
+  queued: '대기 중', generating: '만드는 중', generated: '검토 필요', reviewing: '검토 중',
+  rejected: '수정 필요', archived: '보관됨', approved_private: '비공개 승인', approved: '게시 승인',
+  publishing: '게시 중', published: '공개 완료', publish_failed: '게시 실패',
+};
+const continuityLabels: Record<string, string> = {
+  pass: '문제 없음', review: '확인 필요', block: '승인 불가',
+};
 const staleConflictCodes = new Set(['stale_review', 'stale_review_submission', 'stale_manual_version', 'stale_revision', 'stale_archive', 'stale_publish_retry', 'stale_restore']);
 const operationalConflictMessages: Record<string, string> = {
   stale_provider_pricing: '제공자 단가 확인일이 만료되었습니다. 설정에서 단가를 다시 확인해 주세요.',
@@ -72,12 +84,12 @@ function publicationLink(detail: DraftDetail, kind: 'commit' | 'workflow' | 'pag
 }
 
 const workflowLabels = {
-  pending: 'Workflow pending', queued: 'Workflow queued', in_progress: 'Workflow running',
-  success: 'Workflow succeeded', failure: 'Workflow failed', timed_out: 'Workflow observation timed out',
+  pending: '사이트 만들기 대기', queued: '사이트 만들기 대기', in_progress: '사이트 만드는 중',
+  success: '사이트 만들기 완료', failure: '사이트 만들기 실패', timed_out: '사이트 만들기 상태 확인 중단',
 } as const;
 const pagesLabels = {
-  pending: 'GitHub Pages pending', queued: 'GitHub Pages queued', in_progress: 'GitHub Pages deploying',
-  success: 'GitHub Pages deployed', failure: 'GitHub Pages failed', timed_out: 'GitHub Pages observation timed out',
+  pending: '공개 배포 대기', queued: '공개 배포 대기', in_progress: '공개 사이트 배포 중',
+  success: '공개 사이트 배포 완료', failure: '공개 사이트 배포 실패', timed_out: '공개 배포 상태 확인 중단',
 } as const;
 
 function PublicationStatus({ detail }: { detail: DraftDetail }) {
@@ -86,13 +98,13 @@ function PublicationStatus({ detail }: { detail: DraftDetail }) {
   const commitUrl = publicationLink(detail, 'commit');
   const workflowUrl = publicationLink(detail, 'workflow');
   const pagesUrl = publicationLink(detail, 'pages');
-  const commitLabel = publication.commit.status === 'created' ? 'Commit created' : publication.commit.status === 'failed' ? 'Commit failed' : 'Commit pending';
-  return <section className="publication-status" role="region" aria-label="Publication status">
-    <h2>Publication status</h2>
+  const commitLabel = publication.commit.status === 'created' ? '저장소 반영 완료' : publication.commit.status === 'failed' ? '저장소 반영 실패' : '저장소 반영 대기';
+  return <section className="publication-status" role="region" aria-label="게시 진행 상태">
+    <h2>게시 진행 상태</h2>
     <dl>
-      <div><dt>Commit</dt><dd>{commitLabel}{commitUrl && <> · <a href={commitUrl} target="_blank" rel="noreferrer noopener">View commit</a></>}</dd></div>
-      <div><dt>Workflow</dt><dd>{workflowLabels[publication.workflow.status]}{workflowUrl && <> · <a href={workflowUrl} target="_blank" rel="noreferrer noopener">View workflow</a></>}</dd></div>
-      <div><dt>GitHub Pages</dt><dd>{pagesLabels[publication.pages.status]}{pagesUrl && <> · <a href={pagesUrl} target="_blank" rel="noreferrer noopener">Open Pages site</a></>}</dd></div>
+      <div><dt>저장소 반영</dt><dd>{commitLabel}{commitUrl && <> · <a href={commitUrl} target="_blank" rel="noreferrer noopener">변경 기록 보기</a></>}</dd></div>
+      <div><dt>사이트 만들기</dt><dd>{workflowLabels[publication.workflow.status]}{workflowUrl && <> · <a href={workflowUrl} target="_blank" rel="noreferrer noopener">사이트 만들기 기록 보기</a></>}</dd></div>
+      <div><dt>공개 사이트</dt><dd>{pagesLabels[publication.pages.status]}{pagesUrl && <> · <a href={pagesUrl} target="_blank" rel="noreferrer noopener">공개 사이트 열기</a></>}</dd></div>
     </dl>
   </section>;
 }
@@ -187,7 +199,7 @@ export function DraftReviewPage({ api, draftId, readOnly = false }: { api: Narra
 
   return (
     <article className="draft-review">
-      <AdminPageHeader eyebrow={detail.kind} title={detail.title} description="최종 본문과 검사 근거를 확인한 뒤 편입 범위를 결정합니다." action={<AdminStatusBadge tone={blocked ? 'danger' : detail.status === 'approved_private' ? 'plum' : 'green'}>{detail.status}</AdminStatusBadge>} />
+      <AdminPageHeader eyebrow={kindLabels[detail.kind] ?? '이야기'} title={detail.title} description="이야기를 읽고 이어짐 문제가 없는지 확인한 뒤 승인합니다." action={<AdminStatusBadge tone={blocked ? 'danger' : detail.status === 'approved_private' ? 'plum' : 'green'}>{statusLabels[detail.status] ?? '상태 확인 필요'}</AdminStatusBadge>} />
       {blocked && <AdminNotice tone="danger"><strong>차단된 버전</strong> · {reviewable ? '이 버전은 사유를 남겨 거절만 할 수 있습니다.' : '검토가 종료되어 추가 작업을 할 수 없습니다.'}</AdminNotice>}
       {!dialog && message && <AdminNotice tone={stale || problem ? 'danger' : 'success'}>{message}</AdminNotice>}
       {!dialog && stale && <button type="button" onClick={() => void load()}>새로 불러오기</button>}
@@ -195,9 +207,9 @@ export function DraftReviewPage({ api, draftId, readOnly = false }: { api: Narra
       <div className="draft-review__layout">
         <section className="draft-reader" aria-labelledby="final-text"><h2 id="final-text">최종 본문</h2><pre className="draft-body">{version.content.body}</pre><span data-testid="reader-end" aria-hidden="true" /></section>
         <aside className="draft-review__rail" aria-label="검토 근거">
-          <AdminSection title="자동 검사">{version.continuityFindings.length ? <ul className="finding-list">{version.continuityFindings.map((finding) => <li key={`${finding.code}-${finding.message}`}><strong>{finding.message}</strong><span>{finding.code} · {finding.level}</span>{finding.sourceIds.length > 0 && <span>출처: {finding.sourceIds.join(', ')}</span>}</li>)}</ul> : <p className="empty-copy">검사 결과 없음</p>}</AdminSection>
-          <AdminSection title="사용한 문맥 버전"><ul className="source-list">{version.contextVersionIds.map((id) => <li key={id}>{id}</li>)}</ul></AdminSection>
-          <AdminSection title="정사 변경 후보">{version.content.canonChangeCandidates.length ? <ul>{version.content.canonChangeCandidates.map((candidate) => <li key={candidate}>{candidate}</li>)}</ul> : <p className="empty-copy">후보 없음</p>}</AdminSection>
+          <AdminSection title="이어짐 검사">{version.continuityFindings.length ? <ul className="finding-list">{version.continuityFindings.map((finding) => <li key={`${finding.code}-${finding.message}`}><strong>{finding.message}</strong><span>이어짐 {continuityLabels[finding.level] ?? '확인 필요'}</span>{finding.sourceIds.length > 0 && <span>참고한 기억: {finding.sourceIds.join(', ')}</span>}</li>)}</ul> : <p className="empty-copy">이어짐 문제 없음</p>}</AdminSection>
+          <AdminSection title="참고한 이야기"><ul className="source-list">{version.contextVersionIds.map((id) => <li key={id}>{id}</li>)}</ul></AdminSection>
+          <AdminSection title="새로 확정할 설정 후보">{version.content.canonChangeCandidates.length ? <ul>{version.content.canonChangeCandidates.map((candidate) => <li key={candidate}>{candidate}</li>)}</ul> : <p className="empty-copy">후보 없음</p>}</AdminSection>
         </aside>
       </div>
       <details className="version-history"><summary>버전 이력 · {detail.versions.length}개</summary><ol>{detail.versions.map((item: DraftVersion) => <li key={item.id}><strong>버전 {item.versionNumber}</strong> <time dateTime={item.createdAt}>{seoulDate(item.createdAt)}</time><p>{item.content.body}</p></li>)}</ol></details>

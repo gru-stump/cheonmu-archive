@@ -19,11 +19,13 @@ describe('SchedulesPage', () => {
     render(<SchedulesPage api={api()} />);
 
     expect(await screen.findByRole('heading', { name: '일정' })).toBeInTheDocument();
+    expect(screen.getByText('모든 시각은 한국 시간으로 표시됩니다.')).toBeInTheDocument();
     expect(screen.getByDisplayValue('09:00')).toBeInTheDocument();
     expect(screen.getByDisplayValue('2026-09-07')).toBeInTheDocument();
-    expect(screen.getAllByText('최소 간격(분)').length).toBeGreaterThan(0);
-    expect(screen.getByText(/2026\. 8\. 14\. 오전 9:00/)).toBeInTheDocument();
-    expect(screen.getByText(/2026\. 9\. 7\. 오후 9:30/)).toBeInTheDocument();
+    expect(screen.getAllByText('다시 만들기까지 기다릴 시간(분)').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('일정 이름').length).toBeGreaterThan(0);
+    expect(screen.getByText('2026.08.14 09:00')).toBeInTheDocument();
+    expect(screen.getByText('2026.09.07 21:30')).toBeInTheDocument();
   });
 
   it('saves the displayed local time without converting it in the browser', async () => {

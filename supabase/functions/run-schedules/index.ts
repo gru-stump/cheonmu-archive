@@ -18,7 +18,8 @@ export interface ScheduleRecord {
 }
 export interface ScheduleDependencies {
   now(): Date; authenticate(token: string): Promise<{ ownerId: string } | null>; listSchedules(): Promise<ScheduleRecord[]>; budgetState(ownerId: string): Promise<BudgetState>;
-  queueScheduleJob(schedule: ScheduleRecord, scheduledFor: string): Promise<QueuedJob>; queueAccessJob(ownerId: string, now: Date): Promise<QueuedJob>;
+  queueScheduleJob(schedule: ScheduleRecord, scheduledFor: string): Promise<QueuedJob>; queueAccessJob(ownerId: string, now: Date, confirmedMaximumCostMicros: number): Promise<QueuedJob>;
+  wakeGenerationWorker?(job: QueuedJob): Promise<boolean>;
 }
 export class ScheduleError extends Error { constructor(public readonly code: string) { super(code); this.name = 'ScheduleError'; } }
 
@@ -72,9 +73,12 @@ export async function runSchedules(deps: ScheduleDependencies): Promise<QueuedJo
   return jobs;
 }
 
-export async function evaluateAccessTrigger(deps: ScheduleDependencies, authToken: string): Promise<QueuedJob> {
+export async function evaluateAccessTrigger(deps: ScheduleDependencies, authToken: string, confirmedMaximumCostMicros: number): Promise<QueuedJob & { dispatchState: 'started' | 'delayed' }> {
   const owner = await deps.authenticate(authToken); if (!owner) throw new ScheduleError('authentication_required');
-  return deps.queueAccessJob(owner.ownerId, deps.now());
+  const job = await deps.queueAccessJob(owner.ownerId, deps.now(), confirmedMaximumCostMicros);
+  let started = false;
+  try { started = await deps.wakeGenerationWorker?.(job) === true; } catch { started = false; }
+  return { ...job, dispatchState: started ? 'started' : 'delayed' };
 }
 
 const noCorsPolicy = createCorsPolicy([]);
@@ -85,7 +89,7 @@ export function createScheduleHandler(deps: ScheduleDependencies, dispatchToken?
     if (gated) return gated;
     const respond = (response: Response) => withCorsHeaders(request, response, cors);
     if (request.method !== 'POST') return respond(Response.json({ error: 'method_not_allowed' }, { status: 405 }));
-    let body: { action?: unknown }; try { body = await request.json(); } catch { return respond(Response.json({ error: 'invalid_command' }, { status: 400 })); }
+    let body: Record<string, unknown>; try { body = await request.json(); } catch { return respond(Response.json({ error: 'invalid_command' }, { status: 400 })); }
     if (body.action === 'dispatch') {
       if (!dispatchToken || request.headers.get('x-schedule-dispatch-token') !== dispatchToken) return respond(Response.json({ error: 'dispatch_not_authorized' }, { status: 401 }));
       try {
@@ -97,16 +101,21 @@ export function createScheduleHandler(deps: ScheduleDependencies, dispatchToken?
     if (body.action !== 'access') return respond(Response.json({ error: 'invalid_command' }, { status: 400 }));
     const token = bearerToken(request);
     if (!token) return respond(Response.json({ error: 'authentication_required' }, { status: 401 }));
-    try { return respond(Response.json(await evaluateAccessTrigger(deps, token), { status: 202 })); }
+    if (Object.keys(body).sort().join(',') !== 'action,confirmedMaximumCostMicros,maximumCostConfirmed'
+      || body.maximumCostConfirmed !== true || typeof body.confirmedMaximumCostMicros !== 'number'
+      || !Number.isSafeInteger(body.confirmedMaximumCostMicros) || body.confirmedMaximumCostMicros < 0) {
+      return respond(Response.json({ error: 'invalid_command' }, { status: 400 }));
+    }
+    try { return respond(Response.json(await evaluateAccessTrigger(deps, token, body.confirmedMaximumCostMicros), { status: 202 })); }
     catch (error) {
       const code = error instanceof ScheduleError ? error.code : 'internal_error';
-      const status = code === 'authentication_required' ? 401 : ['access_interval_not_elapsed', 'daily_access_limit', 'budget_risk', 'schedule_automation_disabled'].includes(code) ? 409 : 500;
+      const status = code === 'authentication_required' ? 401 : ['access_interval_not_elapsed', 'daily_access_limit', 'budget_risk', 'schedule_automation_disabled', 'stale_cost_confirmation'].includes(code) ? 409 : 500;
       return respond(Response.json({ error: code }, { status }));
     }
   };
 }
 
-export interface SupabaseScheduleConfig { url: string; anonKey: string; serviceRoleKey: string; fetch?: typeof globalThis.fetch }
+export interface SupabaseScheduleConfig { url: string; anonKey: string; serviceRoleKey: string; dispatchToken?: string; fetch?: typeof globalThis.fetch }
 export function createSupabaseScheduleDependencies(config: SupabaseScheduleConfig, authToken: string): ScheduleDependencies {
   const request = config.fetch ?? globalThis.fetch;
   const userHeaders = { apikey: config.anonKey, authorization: `Bearer ${authToken}`, 'content-type': 'application/json' };
@@ -118,7 +127,7 @@ export function createSupabaseScheduleDependencies(config: SupabaseScheduleConfi
       if (path === '/auth/v1/user' && (response.status === 401 || response.status === 403)) throw new ScheduleError('authentication_required');
       const databaseCode = value && typeof value === 'object' && 'code' in value ? String((value as { code: unknown }).code) : '';
       const message = value && typeof value === 'object' && 'message' in value ? String((value as { message: unknown }).message) : '';
-      if (databaseCode === 'P0001' && ['access_interval_not_elapsed', 'daily_access_limit', 'budget_risk', 'schedule_automation_disabled'].includes(message)) throw new ScheduleError(message);
+      if (databaseCode === 'P0001' && ['access_interval_not_elapsed', 'daily_access_limit', 'budget_risk', 'schedule_automation_disabled', 'stale_cost_confirmation'].includes(message)) throw new ScheduleError(message);
       throw new ScheduleError('persistence_failed');
     }
     return value;
@@ -157,7 +166,17 @@ export function createSupabaseScheduleDependencies(config: SupabaseScheduleConfi
       if (!schedule.id) throw new ScheduleError('invalid_schedule_configuration');
       return queuedJob(await rpc('queue_due_narrative_schedule_job', { p_owner_id: schedule.ownerId, p_schedule_id: schedule.id, p_scheduled_for: scheduledFor }));
     },
-    queueAccessJob: async (ownerId, now) => queuedJob(await rpc('queue_narrative_access_job', { p_owner_id: ownerId, p_now: now.toISOString() }), ownerId),
+    queueAccessJob: async (ownerId, now, confirmedMaximumCostMicros) => queuedJob(await rpc('queue_narrative_access_job', { p_owner_id: ownerId, p_now: now.toISOString(), p_confirmed_maximum_cost_micros: confirmedMaximumCostMicros }), ownerId),
+    wakeGenerationWorker: async () => {
+      if (!config.dispatchToken) return false;
+      try {
+        const response = await request(`${config.url}/functions/v1/run-generation-worker`, {
+          method: 'POST', headers: { 'content-type': 'application/json', 'x-schedule-dispatch-token': config.dispatchToken, connection: 'close' },
+          body: JSON.stringify({ action: 'dispatch' }),
+        });
+        return response.status === 202;
+      } catch { return false; }
+    },
   };
 }
 
@@ -169,6 +188,6 @@ if (typeof Deno !== 'undefined' && (import.meta as ImportMeta & { main?: boolean
   const cors = corsPolicyFromEnvironment(Deno.env.get('NARRATIVE_ADMIN_ORIGINS'));
   Deno.serve((request) => {
     const token = bearerToken(request) ?? '';
-    return createScheduleHandler(createSupabaseScheduleDependencies({ url, anonKey, serviceRoleKey }, token), dispatchToken, cors)(request);
+    return createScheduleHandler(createSupabaseScheduleDependencies({ url, anonKey, serviceRoleKey, dispatchToken }, token), dispatchToken, cors)(request);
   });
 }

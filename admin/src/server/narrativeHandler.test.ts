@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { createNarrativeHandler } from './narrativeHandler';
 
 describe('same-origin narrative server boundary', () => {
-  it('invokes the authenticated access scheduler with a server-owned command and returns only the persisted job projection', async () => {
+  it('quotes access cost and queues only the exact confirmed amount', async () => {
     const calls: Array<{ path: string; authorization: string | null; body: unknown }> = [];
     const fetch: typeof globalThis.fetch = vi.fn(async (input, init) => {
       const path = new URL(String(input)).pathname;
@@ -13,29 +13,37 @@ describe('same-origin narrative server boundary', () => {
       });
       if (path === '/auth/v1/user') return Response.json({ id: 'owner-1' });
       if (path === '/rest/v1/owner_profiles') return Response.json([{ owner_id: 'owner-1' }]);
+      if (path === '/rest/v1/rpc/quote_narrative_access_cost') return Response.json({ maximumCostMicros: 4200, maximumCostKrw: 6, modelLabel: 'GPT-5 mini', ignored: 'drop' });
       return Response.json({
         id: 'persisted-access-job', ownerId: 'owner-1', scheduleKey: 'access:owner-1',
-        scheduledFor: '2026-08-16T09:00:00Z', payload: { kind: 'short_dialogue', source: 'access' },
+        scheduledFor: '2026-08-16T09:00:00Z', dispatchState: 'started', payload: { kind: 'short_dialogue', source: 'access' },
         attemptToken: 'must-not-pass', providerSettingId: 'must-not-pass',
       }, { status: 202 });
     });
     const handler = createNarrativeHandler({ supabaseUrl: 'https://db.example.test', supabaseAnonKey: 'anon', fetch });
 
+    const estimate = await handler(new Request('https://admin.example.test/api/narrative/access/estimate', { headers: { authorization: 'Bearer owner-token' } }));
+    expect(estimate.status).toBe(200);
+    await expect(estimate.json()).resolves.toEqual({ maximumCostMicros: 4200, maximumCostKrw: 6, modelLabel: 'GPT-5 mini' });
     const response = await handler(new Request('https://admin.example.test/api/narrative/access', {
-      method: 'POST', headers: { authorization: 'Bearer owner-token' },
+      method: 'POST', headers: { authorization: 'Bearer owner-token', 'content-type': 'application/json' },
+      body: JSON.stringify({ maximumCostConfirmed: true, confirmedMaximumCostMicros: 4200 }),
     }));
 
     expect(response.status).toBe(202);
-    await expect(response.json()).resolves.toEqual({ id: 'persisted-access-job', scheduledFor: '2026-08-16T09:00:00Z' });
+    await expect(response.json()).resolves.toEqual({ id: 'persisted-access-job', scheduledFor: '2026-08-16T09:00:00Z', dispatchState: 'started' });
     expect(calls).toEqual([
       { path: '/auth/v1/user', authorization: 'Bearer owner-token', body: null },
       { path: '/rest/v1/owner_profiles', authorization: 'Bearer owner-token', body: null },
-      { path: '/functions/v1/run-schedules', authorization: 'Bearer owner-token', body: { action: 'access' } },
+      { path: '/rest/v1/rpc/quote_narrative_access_cost', authorization: 'Bearer owner-token', body: {} },
+      { path: '/auth/v1/user', authorization: 'Bearer owner-token', body: null },
+      { path: '/rest/v1/owner_profiles', authorization: 'Bearer owner-token', body: null },
+      { path: '/functions/v1/run-schedules', authorization: 'Bearer owner-token', body: { action: 'access', maximumCostConfirmed: true, confirmedMaximumCostMicros: 4200 } },
     ]);
   });
 
   it.each([
-    ['body', 'https://admin.example.test/api/narrative/access', JSON.stringify({ ownerId: 'other-owner', jobId: 'browser-job', provider: 'browser-provider', price: 1, mode: 'new', kind: 'daily_event', idempotencyKey: 'browser-key' })],
+    ['body', 'https://admin.example.test/api/narrative/access', JSON.stringify({ maximumCostConfirmed: true, confirmedMaximumCostMicros: 4200, ownerId: 'other-owner' })],
     ['query', 'https://admin.example.test/api/narrative/access?ownerId=other-owner&scheduleId=browser-schedule', undefined],
   ])('rejects access trigger %s input before invoking the scheduler', async (_label, url, requestBody) => {
     const calls: string[] = [];
@@ -56,6 +64,23 @@ describe('same-origin narrative server boundary', () => {
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toEqual({ error: 'access_input_not_allowed' });
     expect(calls).toEqual(['/auth/v1/user', '/rest/v1/owner_profiles']);
+  });
+
+  it('cancels one queued owner job through the owner-only RPC', async () => {
+    const calls: Array<{ path: string; body: unknown }> = [];
+    const fetch: typeof globalThis.fetch = vi.fn(async (input, init) => {
+      const path = new URL(String(input)).pathname;
+      calls.push({ path, body: init?.body ? JSON.parse(String(init.body)) : null });
+      if (path === '/auth/v1/user') return Response.json({ id: 'owner-1' });
+      if (path === '/rest/v1/owner_profiles') return Response.json([{ owner_id: 'owner-1' }]);
+      return Response.json({ status: 'cancelled', private: 'drop' });
+    });
+    const handler = createNarrativeHandler({ supabaseUrl: 'https://db.example.test', supabaseAnonKey: 'anon', fetch });
+    const response = await handler(new Request('https://admin.example.test/api/narrative/jobs/job-1/cancel', { method: 'POST', headers: { authorization: 'Bearer owner-token' } }));
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ status: 'cancelled' });
+    expect(calls[2]).toEqual({ path: '/rest/v1/rpc/cancel_queued_generation_job', body: { p_job_id: 'job-1' } });
   });
 
   it('returns only the sanitized queue projection from the dashboard RPC', async () => {

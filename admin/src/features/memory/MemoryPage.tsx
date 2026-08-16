@@ -55,11 +55,11 @@ function MemoryList({ api, items, readOnly, onChanged }: { api: NarrativeApi; it
 }
 
 const sections: Array<{ key: keyof MemoryData; title: string; readOnly?: boolean }> = [
-  { key: 'fixedCanon', title: '고정 정사', readOnly: true },
-  { key: 'continuity', title: '연속성 장부' },
+  { key: 'fixedCanon', title: '확정 설정', readOnly: true },
+  { key: 'continuity', title: '이어지는 사실' },
   { key: 'recent', title: '최근 기억' },
-  { key: 'feedback', title: '금지·피드백 기억' },
-  { key: 'unresolved', title: '미회수 요소' },
+  { key: 'feedback', title: '수정 지침' },
+  { key: 'unresolved', title: '아직 정하지 않은 설정' },
 ];
 
 export function MemoryPage({ api, readOnly = false }: { api: NarrativeApi; readOnly?: boolean }) {
@@ -68,8 +68,8 @@ export function MemoryPage({ api, readOnly = false }: { api: NarrativeApi; readO
   const load = async (propagate = false) => { setError(false); try { setData(await api.getMemory()); } catch (loadError) { if (!propagate) setError(true); if (propagate) throw loadError; } };
   useEffect(() => { let active = true; void api.getMemory().then((value) => { if (active) setData(value); }).catch(() => { if (active) setError(true); }); return () => { active = false; }; }, [api]);
   return <section>
-    <AdminPageHeader eyebrow="연속성 장부" title="기억" description="확정 정사와 최근 서사, 피드백, 미회수 요소를 구분해 관리합니다." />
-    <AdminNotice tone="info" live={false}>고정 정사는 이 화면에서 바꿀 수 없습니다. 다른 기억은 사용 상태를 전환하거나 새 교정 이력을 추가합니다.</AdminNotice>
+    <AdminPageHeader eyebrow="이야기 기억" title="기억" description="두 사람의 설정과 앞 이야기에서 이어져야 할 내용을 관리합니다." />
+    <AdminNotice tone="info" live={false}>확정 설정은 이 화면에서 바꿀 수 없습니다. 다른 기억은 사용 여부를 바꾸거나 잘못된 내용을 바로잡을 수 있습니다.</AdminNotice>
     {error ? <AdminNotice tone="danger" action={<button type="button" onClick={() => void load()}>다시 시도</button>}>기억을 불러오지 못했습니다.</AdminNotice> : !data ? <AdminNotice>기억을 불러오는 중입니다.</AdminNotice> : sections.map((section) => <AdminSection key={section.key} title={section.title} description={`${data[section.key].length}개 항목`}>
       <MemoryList api={api} items={data[section.key]} readOnly={readOnly || section.readOnly} onChanged={() => load(true)} />
     </AdminSection>)}

@@ -13,6 +13,11 @@ describe('DraftListPage', () => {
     render(<MemoryRouter><DraftListPage api={{ listDrafts } as unknown as NarrativeApi} /></MemoryRouter>);
 
     expect(await screen.findByRole('link', { name: /검토 중 초안/ })).toBeInTheDocument();
+    expect(screen.getByText('짧은 대화')).toBeInTheDocument();
+    expect(screen.getByText('검토 필요')).toBeInTheDocument();
+    expect(screen.getByText('이어짐 확인 필요')).toBeInTheDocument();
+    expect(screen.getByText('2026.08.15 12:00')).toBeInTheDocument();
+    expect(screen.queryByText(/short_dialogue|generated|continuity|review/)).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: '보관됨' }));
 
     expect(await screen.findByRole('link', { name: /보관된 초안/ })).toBeInTheDocument();

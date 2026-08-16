@@ -4,8 +4,19 @@ import type { DraftSummary, NarrativeApi } from '../../api/narrativeApi';
 import { AdminNotice } from '../../components/AdminNotice';
 import { AdminPageHeader } from '../../components/AdminPageHeader';
 import { AdminStatusBadge } from '../../components/AdminStatusBadge';
+import { formatSeoulTimestamp } from '../../lib/narrativeDisplay';
 
-const seoulDate = (value: string) => new Intl.DateTimeFormat('ko-KR', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Seoul' }).format(new Date(value));
+const kindLabels: Record<string, string> = {
+  short_dialogue: '짧은 대화', daily_event: '일상 사건', major_event_proposal: '큰 사건 제안',
+};
+const statusLabels: Record<string, string> = {
+  queued: '대기 중', generating: '만드는 중', generated: '검토 필요', reviewing: '검토 중',
+  rejected: '수정 필요', archived: '보관됨', approved_private: '비공개 승인', approved: '게시 승인',
+  publishing: '게시 중', published: '공개 완료', publish_failed: '게시 실패',
+};
+const continuityLabels: Record<string, string> = {
+  pass: '문제 없음', review: '확인 필요', block: '승인 불가',
+};
 
 export function DraftListPage({ api }: { api: NarrativeApi }) {
   const [view, setView] = useState<'active' | 'archived'>('active');
@@ -18,5 +29,5 @@ export function DraftListPage({ api }: { api: NarrativeApi }) {
   };
   useEffect(() => { let active = true; setDrafts(null); setError(false); void api.listDrafts({ status: view }).then((rows) => { if (active) setDrafts(rows); }).catch(() => { if (active) setError(true); }); return () => { active = false; }; }, [api, view]);
   const filters = <div className="draft-list__filters" role="group" aria-label="초안 범위"><button type="button" aria-pressed={view === 'active'} onClick={() => setView('active')}>진행 중</button><button type="button" aria-pressed={view === 'archived'} onClick={() => setView('archived')}>보관됨</button></div>;
-  return <section><AdminPageHeader eyebrow="검토 대기실" title="초안" description="생성된 기록을 상태와 연속성 수준에 따라 검토합니다." action={filters} />{error ? <AdminNotice tone="danger" action={<button type="button" onClick={() => void load()}>다시 시도</button>}>초안 목록을 불러오지 못했습니다.</AdminNotice> : drafts === null ? <AdminNotice>초안을 불러오는 중입니다.</AdminNotice> : drafts.length === 0 ? <AdminNotice>{view === 'archived' ? '보관된 초안이 없습니다.' : '검토할 초안이 없습니다.'}</AdminNotice> : <ul className="draft-list">{drafts.map((draft) => <li key={draft.id}><Link to={`/drafts/${draft.id}`}><strong className="draft-list__title">{draft.title}</strong><span className="draft-list__kind">{draft.kind}</span><AdminStatusBadge tone={draft.continuityLevel === 'block' ? 'danger' : draft.status === 'archived' ? 'neutral' : 'green'}>{draft.continuityLevel === 'block' ? 'blocked' : draft.status}</AdminStatusBadge><span className="draft-list__continuity">연속성 {draft.continuityLevel ?? '미검사'}</span><time dateTime={draft.updatedAt}>{seoulDate(draft.updatedAt)}</time></Link></li>)}</ul>}</section>;
+  return <section><AdminPageHeader eyebrow="검토 대기실" title="초안" description="만들어진 이야기를 읽고 승인하거나 수정합니다." action={filters} />{error ? <AdminNotice tone="danger" action={<button type="button" onClick={() => void load()}>다시 시도</button>}>초안 목록을 불러오지 못했습니다.</AdminNotice> : drafts === null ? <AdminNotice>초안을 불러오는 중입니다.</AdminNotice> : drafts.length === 0 ? <AdminNotice>{view === 'archived' ? '보관된 초안이 없습니다.' : '검토할 초안이 없습니다.'}</AdminNotice> : <ul className="draft-list">{drafts.map((draft) => <li key={draft.id}><Link to={`/drafts/${draft.id}`}><strong className="draft-list__title">{draft.title}</strong><span className="draft-list__kind">{kindLabels[draft.kind] ?? '이야기'}</span><AdminStatusBadge tone={draft.continuityLevel === 'block' ? 'danger' : draft.status === 'archived' ? 'neutral' : 'green'}>{statusLabels[draft.status] ?? '상태 확인 필요'}</AdminStatusBadge><span className="draft-list__continuity">이어짐 {draft.continuityLevel ? continuityLabels[draft.continuityLevel] ?? '확인 필요' : '아직 검사하지 않음'}</span><time dateTime={draft.updatedAt}>{formatSeoulTimestamp(draft.updatedAt).exact}</time></Link></li>)}</ul>}</section>;
 }

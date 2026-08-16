@@ -62,13 +62,13 @@ describe('DraftReviewPage', () => {
     };
     render(<DraftReviewPage api={api({ getDraft: vi.fn().mockResolvedValue(published) })} draftId="draft-1" />);
 
-    const status = await screen.findByRole('region', { name: 'Publication status' });
-    expect(status).toHaveTextContent('Commit created');
-    expect(status).toHaveTextContent('Workflow succeeded');
-    expect(status).toHaveTextContent('GitHub Pages deployed');
-    expect(within(status).getByRole('link', { name: 'View commit' })).toHaveAttribute('href', published.publication?.commit.url);
-    expect(within(status).getByRole('link', { name: 'View workflow' })).toHaveAttribute('href', published.publication?.workflow.url);
-    expect(within(status).getByRole('link', { name: 'Open Pages site' })).toHaveAttribute('href', published.publication?.pages.url);
+    const status = await screen.findByRole('region', { name: '게시 진행 상태' });
+    expect(status).toHaveTextContent('저장소 반영 완료');
+    expect(status).toHaveTextContent('사이트 만들기 완료');
+    expect(status).toHaveTextContent('공개 사이트 배포 완료');
+    expect(within(status).getByRole('link', { name: '변경 기록 보기' })).toHaveAttribute('href', published.publication?.commit.url);
+    expect(within(status).getByRole('link', { name: '사이트 만들기 기록 보기' })).toHaveAttribute('href', published.publication?.workflow.url);
+    expect(within(status).getByRole('link', { name: '공개 사이트 열기' })).toHaveAttribute('href', published.publication?.pages.url);
   });
 
   it('renders phase text but never links attacker-controlled GitHub or Pages URLs', async () => {
@@ -87,8 +87,8 @@ describe('DraftReviewPage', () => {
     };
     render(<DraftReviewPage api={api({ getDraft: vi.fn().mockResolvedValue(attacked) })} draftId="draft-1" />);
 
-    const status = await screen.findByRole('region', { name: 'Publication status' });
-    expect(within(status).getByText('Workflow failed')).toBeInTheDocument();
+    const status = await screen.findByRole('region', { name: '게시 진행 상태' });
+    expect(within(status).getByText('사이트 만들기 실패')).toBeInTheDocument();
     expect(within(status).queryByRole('link')).not.toBeInTheDocument();
   });
 
@@ -96,6 +96,8 @@ describe('DraftReviewPage', () => {
     render(<DraftReviewPage api={api()} draftId="draft-1" />);
 
     expect(await screen.findByRole('heading', { name: '빗소리 아래' })).toBeInTheDocument();
+    expect(screen.getByText('검토 필요')).toBeInTheDocument();
+    expect(screen.getByText('이어짐 확인 필요')).toBeInTheDocument();
     expect(screen.getByText('호칭 확인 필요')).toBeInTheDocument();
     expect(screen.getAllByText('canon-v7').length).toBeGreaterThan(0);
     expect(screen.getByText('memory-v3')).toBeInTheDocument();
