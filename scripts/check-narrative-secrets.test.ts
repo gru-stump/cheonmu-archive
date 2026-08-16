@@ -107,6 +107,8 @@ describe('scanNarrativeSecrets', () => {
       'rawPrompt: undefined',
       [['user', 'Prompt'].join(''), ': ""'].join(''),
       [['raw', 'Prompt'].join(''), ': `   `'].join(''),
+      [['raw', 'Prompt'].join(''), ': "\\n"'].join(''),
+      [['system', 'Prompt'].join(''), ': "\\u0020"'].join(''),
       'fixture-github-token',
     ].join('\n'));
 

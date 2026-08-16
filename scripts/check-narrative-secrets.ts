@@ -178,6 +178,14 @@ function recognizedCredential(pattern: RegExp, candidate: string): boolean {
   return recognized;
 }
 
+function hasPromptContent(value: string): boolean {
+  const withoutEscapedWhitespace = value.replace(
+    /\\(?:[nrtvf]|x(?:09|0a|0b|0c|0d|20)|u(?:0009|000a|000b|000c|000d|0020))/giu,
+    '',
+  );
+  return withoutEscapedWhitespace.trim().length > 0;
+}
+
 function matches(source: string): RuleMatch[] {
   const found: RuleMatch[] = [];
   for (const match of source.matchAll(providerKeyPattern)) {
@@ -199,7 +207,7 @@ function matches(source: string): RuleMatch[] {
   }
   for (const match of source.matchAll(rawPromptPattern)) {
     const value = match[1] ?? match[2] ?? match[3] ?? '';
-    if (value.trim().length > 0) found.push({ rule: 'raw-prompt-field', value });
+    if (hasPromptContent(value)) found.push({ rule: 'raw-prompt-field', value });
   }
   return found;
 }
