@@ -70,7 +70,7 @@ export interface DashboardData {
   queue: Array<{
     id: string;
     source: 'manual' | 'schedule' | 'access' | 'unknown';
-    state: 'queued' | 'running' | 'retry-wait' | 'completed' | 'failed/dead-letter';
+    state: 'queued' | 'running' | 'retry-wait' | 'completed' | 'cancelled' | 'failed/dead-letter';
     attemptCount: number;
     retryAt: string | null;
     leaseExpiresAt: string | null;
