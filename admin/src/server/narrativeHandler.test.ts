@@ -105,6 +105,33 @@ describe('same-origin narrative server boundary', () => {
     expect(fetch).toHaveBeenCalledTimes(2);
   });
 
+  it('omits drafts that have no generated version from the draft list', async () => {
+    const fetch: typeof globalThis.fetch = vi.fn(async (input) => {
+      const path = new URL(String(input)).pathname;
+      if (path === '/auth/v1/user') return Response.json({ id: 'owner-1' });
+      if (path === '/rest/v1/owner_profiles') return Response.json([{ owner_id: 'owner-1' }]);
+      if (path === '/rest/v1/drafts') return Response.json([
+        { id: 'empty-draft', kind: 'short_dialogue', status: 'queued', title: 'failed generation', updated_at: '2026-08-16T12:00:00Z' },
+        { id: 'ready-draft', kind: 'short_dialogue', status: 'generated', title: 'ready generation', updated_at: '2026-08-16T11:00:00Z' },
+      ]);
+      if (path === '/rest/v1/draft_versions') return Response.json([
+        { id: 'version-1', draft_id: 'ready-draft', version_number: 1, continuity_level: 'pass' },
+      ]);
+      return Response.json({ error: 'unexpected_request' }, { status: 500 });
+    });
+    const handler = createNarrativeHandler({ supabaseUrl: 'https://db.example.test', supabaseAnonKey: 'anon', fetch });
+
+    const response = await handler(new Request('https://admin.example.test/api/narrative/drafts?status=active', {
+      headers: { authorization: 'Bearer owner-token' },
+    }));
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ drafts: [{
+      id: 'ready-draft', kind: 'short_dialogue', status: 'generated', title: 'ready generation',
+      updatedAt: '2026-08-16T11:00:00Z', latestVersionId: 'version-1', continuityLevel: 'pass',
+    }] });
+  });
+
   it('submits generated latest version before invoking guarded review', async () => {
     const calls: Array<{ path: string; body: Record<string, unknown> }> = [];
     const fetch: typeof globalThis.fetch = vi.fn(async (input, init) => {

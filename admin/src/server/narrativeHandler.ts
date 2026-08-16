@@ -144,7 +144,7 @@ export function createNarrativeHandler({ supabaseUrl, supabaseAnonKey, fetch = g
         const versions = await upstream('/rest/v1/draft_versions?select=id,draft_id,version_number,continuity_level&order=version_number.desc') as unknown as Array<Record<string, unknown>>;
         const latest = new Map<string, Record<string, unknown>>();
         for (const version of versions) if (!latest.has(String(version.draft_id))) latest.set(String(version.draft_id), version);
-        return json({ drafts: rows.map((row) => ({ id: row.id, kind: row.kind, status: row.status, title: row.title, updatedAt: row.updated_at, latestVersionId: latest.get(String(row.id))?.id ?? null, continuityLevel: latest.get(String(row.id))?.continuity_level ?? null })) });
+        return json({ drafts: rows.filter((row) => latest.has(String(row.id))).map((row) => ({ id: row.id, kind: row.kind, status: row.status, title: row.title, updatedAt: row.updated_at, latestVersionId: latest.get(String(row.id))!.id, continuityLevel: latest.get(String(row.id))!.continuity_level ?? null })) });
       }
       if (request.method === 'GET' && path.length === 2 && path[0] === 'drafts') {
         const draftRows = await upstream(`/rest/v1/drafts?select=id,kind,status,title,updated_at&id=eq.${encodeURIComponent(path[1]!)}`) as unknown as Array<Record<string, unknown>>;
