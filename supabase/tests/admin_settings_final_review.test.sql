@@ -181,6 +181,10 @@ insert into public.generation_jobs (
   '{"kind":"daily_event","source":"schedule","budgetPolicy":"block_at_warning"}', 'weekly-warning-reserve-key',
   '12000000-0000-0000-0000-000000000001', 10, 'c7000000-0000-4000-8000-000000000004'
 );
+update public.generation_jobs
+set schedule_key = 'manual-reserve-key', generation_mode = 'new',
+    payload = '{"kind":"daily_event","mode":"new","source":"manual","manualRequestKey":"manual-reserve-key","maximumCostConfirmed":true}'
+where id = 'c6000000-0000-0000-0000-000000000003';
 select set_config('request.jwt.claim.role', 'service_role', true);
 set local role service_role;
 select throws_ok(

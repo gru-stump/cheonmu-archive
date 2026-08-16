@@ -52,11 +52,11 @@ insert into public.drafts (id, owner_id, kind, title) values
   ('${quotaDraftB}', '${ownerId}', 'daily_event', 'quota race B');
 insert into public.generation_jobs (
   id, owner_id, draft_id, schedule_key, scheduled_for, payload, idempotency_key,
-  provider_setting_id, worst_case_cost_micros, attempt_token
+  generation_mode, provider_setting_id, worst_case_cost_micros, attempt_token
 ) values
-  ('${policyJob}', '${ownerId}', '${policyDraft}', 'policy-race', now(), '{"source":"manual"}', '${policyJob}', '${providerId}', 1, '${policyToken}'),
-  ('${quotaJobA}', '${ownerId}', '${quotaDraftA}', 'quota-race-a', now(), '{"source":"manual"}', '${quotaJobA}', '${providerId}', 1, '${quotaTokenA}'),
-  ('${quotaJobB}', '${ownerId}', '${quotaDraftB}', 'quota-race-b', now(), '{"source":"manual"}', '${quotaJobB}', '${providerId}', 1, '${quotaTokenB}');
+  ('${policyJob}', '${ownerId}', '${policyDraft}', '${policyJob}', now(), '{"source":"manual","mode":"new","kind":"daily_event","manualRequestKey":"${policyJob}"}', '${policyJob}', 'new', '${providerId}', 1, '${policyToken}'),
+  ('${quotaJobA}', '${ownerId}', '${quotaDraftA}', '${quotaJobA}', now(), '{"source":"manual","mode":"new","kind":"daily_event","manualRequestKey":"${quotaJobA}"}', '${quotaJobA}', 'new', '${providerId}', 1, '${quotaTokenA}'),
+  ('${quotaJobB}', '${ownerId}', '${quotaDraftB}', '${quotaJobB}', now(), '{"source":"manual","mode":"new","kind":"daily_event","manualRequestKey":"${quotaJobB}"}', '${quotaJobB}', 'new', '${providerId}', 1, '${quotaTokenB}');
 `);
 if (setup.code !== 0) throw failure('automation policy race setup failed', setup);
 

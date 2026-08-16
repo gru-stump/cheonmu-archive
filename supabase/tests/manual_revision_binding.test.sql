@@ -1,6 +1,6 @@
 begin;
 
-select plan(12);
+select plan(16);
 
 insert into public.drafts (id, owner_id, kind, title)
 values ('ab100000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001', 'short_dialogue', 'revision binding');
@@ -114,6 +114,47 @@ select throws_ok(
     '12000000-0000-0000-0000-000000000001', 'ab300000-0000-4000-8000-000000000007'
   ) $$,
   'P0001', 'manual_generation_binding_changed', 'manual freeze fails closed when server key binding is missing'
+);
+
+reset role;
+insert into public.drafts (id, owner_id, kind, status, title)
+values ('ab100000-0000-0000-0000-000000000004', '10000000-0000-0000-0000-000000000001', 'short_dialogue', 'queued', 'corrupt frozen manual');
+insert into public.generation_jobs (
+  id, owner_id, draft_id, schedule_key, scheduled_for, payload, provider_setting_id,
+  idempotency_key, generation_mode, attempt_token, worst_case_cost_micros
+) values (
+  'ab400000-0000-0000-0000-000000000004', '10000000-0000-0000-0000-000000000001',
+  'ab100000-0000-0000-0000-000000000004', 'corrupt-frozen-key', now(),
+  '{"source":"manual","mode":"new","kind":"short_dialogue"}',
+  '12000000-0000-0000-0000-000000000001', 'corrupt-frozen-key', 'new',
+  'ab500000-0000-4000-8000-000000000004', 100
+);
+set local role service_role;
+select throws_ok(
+  $$ select public.reserve_and_start_generation(
+    'ab400000-0000-0000-0000-000000000004', 'ab500000-0000-4000-8000-000000000004', 100
+  ) $$,
+  'P0001', 'manual_generation_binding_changed',
+  'reserve rejects an incomplete frozen manual identity before budget or status mutation'
+);
+select is(
+  (select concat(status, '|', attempt_token, '|',
+    (select count(*) from public.budget_entries where generation_job_id = 'ab400000-0000-0000-0000-000000000004'))
+   from public.generation_jobs where id = 'ab400000-0000-0000-0000-000000000004'),
+  'queued|ab500000-0000-4000-8000-000000000004|0',
+  'failed binding validation preserves attempt evidence and creates no reservation'
+);
+select is(
+  public.abort_generation_attempt(
+    'ab400000-0000-0000-0000-000000000004', 'ab500000-0000-4000-8000-000000000004',
+    'corrupt-frozen-key', 'freeze_failed'
+  ) ->> 'outcome',
+  'aborted', 'incomplete frozen manual state can still be cleaned up safely'
+);
+select is(
+  (select concat(status, '|', coalesce(attempt_token::text, '<null>'), '|', coalesce(provider_setting_id::text, '<null>'))
+   from public.generation_jobs where id = 'ab400000-0000-0000-0000-000000000004'),
+  'queued|<null>|<null>', 'abort never restores a provider for an incomplete manual binding'
 );
 select lives_ok(
   $$ select public.freeze_generation_context(

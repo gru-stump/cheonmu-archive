@@ -126,6 +126,16 @@ insert into public.generation_jobs (
   ('d8400000-0000-0000-0000-000000000006', '10000000-0000-0000-0000-000000000001', 'd8300000-0000-0000-0000-000000000006', 'manual-one', now(), '{"kind":"daily_event","source":"manual"}', 'manual-one', '12000000-0000-0000-0000-000000000001', 100, 'd8500000-0000-4000-8000-000000000006'),
   ('d8400000-0000-0000-0000-000000000007', '10000000-0000-0000-0000-000000000001', 'd8300000-0000-0000-0000-000000000007', 'manual-two', now(), '{"kind":"daily_event","source":"manual"}', 'manual-two', '12000000-0000-0000-0000-000000000001', 100, 'd8500000-0000-4000-8000-000000000007');
 
+update public.generation_jobs
+set generation_mode = 'new',
+    payload = payload || jsonb_build_object('mode', 'new', 'manualRequestKey', schedule_key)
+where id in (
+  'd8400000-0000-0000-0000-000000000001',
+  'd8400000-0000-0000-0000-000000000005',
+  'd8400000-0000-0000-0000-000000000006',
+  'd8400000-0000-0000-0000-000000000007'
+);
+
 update public.narrative_admin_settings set manual_generation_enabled = false, schedule_automation_enabled = false, manual_call_limit = 1
 where owner_id = '10000000-0000-0000-0000-000000000001';
 select set_config('request.jwt.claim.role', 'service_role', true);

@@ -8,6 +8,8 @@ const revisionDraft = '99000000-0000-0000-0000-000000000011';
 const revisionVersion = '99000000-0000-0000-0000-000000000012';
 const revisionJob = '99000000-0000-0000-0000-000000000013';
 const ambiguousJob = '99000000-0000-0000-0000-000000000014';
+const backfillableRevisionJob = '99000000-0000-0000-0000-000000000015';
+const legacyAttemptToken = '99000000-0000-4000-8000-000000000099';
 const npx = process.platform === 'win32' ? 'npx.cmd' : 'npx';
 
 interface ProcessResult { code: number | null; stdout: string; stderr: string }
@@ -74,6 +76,8 @@ insert into public.provider_settings (
 ) values
   ('99000000-0000-0000-0000-000000000021', '${trueOwner}', 'openai', false, '{}', 'legacy-off', 4096, 1024, 256, 0, 0, 0, current_date),
   ('99000000-0000-0000-0000-000000000022', '${falseOwner}', 'anthropic', true, '{}', 'legacy-on', 4096, 1024, 256, 0, 0, 0, current_date);
+insert into public.budget_periods (id, owner_id, period_start, period_end, limit_micros, daily_limit_micros, currency)
+values ('99000000-0000-0000-0000-000000000031', '${trueOwner}', current_date - 1, current_date + 1, 1000000, 1000000, 'USD');
 insert into public.drafts (id, owner_id, kind, title)
 values ('${revisionDraft}', '${trueOwner}', 'daily_event', 'legacy revision');
 insert into public.draft_versions (id, owner_id, draft_id, version_number, content)
@@ -81,8 +85,30 @@ values ('${revisionVersion}', '${trueOwner}', '${revisionDraft}', 1, '{"body":"l
 insert into public.generation_jobs (id, owner_id, draft_id, source_draft_version_id, schedule_key, scheduled_for, payload)
 values
   ('${revisionJob}', '${trueOwner}', '${revisionDraft}', '${revisionVersion}', 'legacy-revision', current_timestamp, '{"mode":"revise_selection"}'),
+  ('${backfillableRevisionJob}', '${trueOwner}', '${revisionDraft}', '${revisionVersion}', 'legacy-backfillable-revision', current_timestamp, '{"mode":"revise_selection"}'),
   ('${ambiguousJob}', '${trueOwner}', '${revisionDraft}', null, 'legacy-ambiguous', current_timestamp, '{"kind":"daily_event"}');
 `));
+
+  await success('migration-018 substituted revision freeze failed', runPsql(`
+begin;
+update public.provider_settings set enabled = true where id = '99000000-0000-0000-0000-000000000021';
+select set_config('request.jwt.claim.role', 'service_role', true);
+set local role service_role;
+select public.freeze_generation_context(
+  '${revisionJob}', '${revisionDraft}', 'new', 'browser-substituted-key',
+  array['legacy-context'], '[{"versionId":"legacy-context","memoryType":"canon","content":"frozen","tokenCount":1}]',
+  '99000000-0000-0000-0000-000000000021', '${legacyAttemptToken}'
+);
+reset role;
+update public.provider_settings set enabled = false where id = '99000000-0000-0000-0000-000000000021';
+commit;
+`));
+  assert.equal(
+    await scalar(`select concat(generation_mode, '|', idempotency_key, '|', attempt_token, '|', worst_case_cost_micros)
+      from public.generation_jobs where id = '${revisionJob}';`),
+    `new|browser-substituted-key|${legacyAttemptToken}|0`,
+    'migration 018 must contain the queued browser-substituted frozen attempt before 019 is applied',
+  );
 
   await success('migration 019 failed over migration 018 data', runProcess(npx, ['supabase', 'migration', 'up', '--local', '--yes']));
   headApplied = true;
@@ -97,17 +123,40 @@ values
       from public.provider_settings where owner_id in ('${trueOwner}', '${falseOwner}');`),
     'openai|f,anthropic|t', 'policy migration must not select, clear, or otherwise mutate providers',
   );
+  await success('enable frozen legacy provider for reserve-bypass proof failed', runPsql(
+    `update public.provider_settings set enabled = true where id = '99000000-0000-0000-0000-000000000021';`,
+  ));
+  const frozenLegacyReserve = await runPsql(`
+begin;
+select set_config('request.jwt.claim.role', 'service_role', true);
+set local role service_role;
+select public.reserve_and_start_generation('${revisionJob}', '${legacyAttemptToken}', 0);
+`);
+  assert.notEqual(frozenLegacyReserve.code, 0,
+    'an 018 browser-substituted frozen revision must not reserve or start after migration 019');
+  assert.match(frozenLegacyReserve.stderr, /invalid_generation_source|manual_generation_binding_changed/);
+  assert.equal(
+    await scalar(`select concat(status, '|', attempt_token, '|',
+      (select count(*) from public.budget_entries where generation_job_id = '${revisionJob}'))
+      from public.generation_jobs where id = '${revisionJob}';`),
+    `queued|${legacyAttemptToken}|0`,
+    'failed post-upgrade reserve preserves attempt evidence and creates no budget entry',
+  );
+  await success('restore provider independence fixture after reserve proof failed', runPsql(
+    `update public.provider_settings set enabled = false where id = '99000000-0000-0000-0000-000000000021';`,
+  ));
   assert.equal(
     await scalar(`select string_agg(concat(id, '|', coalesce(payload ->> 'source', '<missing>')), ',' order by id)
-      from public.generation_jobs where id in ('${revisionJob}', '${ambiguousJob}');`),
-    `${revisionJob}|manual,${ambiguousJob}|<missing>`, 'only unambiguous queued legacy revisions may receive the server-owned manual source',
+      from public.generation_jobs where id in ('${revisionJob}', '${ambiguousJob}', '${backfillableRevisionJob}');`),
+    `${revisionJob}|<missing>,${ambiguousJob}|<missing>,${backfillableRevisionJob}|manual`,
+    'only unfrozen unambiguous queued legacy revisions may receive the server-owned manual source',
   );
   const substitutedLegacyRevision = await runPsql(`
 begin;
 select set_config('request.jwt.claim.role', 'service_role', true);
 set local role service_role;
 select public.freeze_generation_context(
-  '${revisionJob}', '${revisionDraft}', 'new', 'browser-substituted-key',
+  '${backfillableRevisionJob}', '${revisionDraft}', 'new', 'browser-substituted-key',
   array['legacy-context'], '[{"versionId":"legacy-context","memoryType":"canon","content":"frozen","tokenCount":1}]',
   '99000000-0000-0000-0000-000000000022', '99000000-0000-4000-8000-000000000099'
 );

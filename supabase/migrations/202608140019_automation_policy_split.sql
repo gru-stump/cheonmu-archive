@@ -19,7 +19,55 @@ set payload = payload || jsonb_build_object('source', 'manual')
 where status = 'queued'
   and source_draft_version_id is not null
   and payload ->> 'mode' = 'revise_selection'
+  and attempt_token is null
+  and provider_setting_id is null
+  and idempotency_key is null
+  and generation_mode is null
   and not (payload ? 'source');
+
+create function narrative_private.manual_generation_binding_valid(
+  p_job public.generation_jobs,
+  p_expected_draft_id uuid,
+  p_expected_mode text,
+  p_expected_key text,
+  p_expected_provider_setting_id uuid
+)
+returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select coalesce(
+    p_job.payload ->> 'source' = 'manual'
+    and p_job.draft_id is not null
+    and p_job.provider_setting_id is not null
+    and nullif(btrim(p_job.payload ->> 'manualRequestKey'), '') is not null
+    and nullif(btrim(p_job.payload ->> 'mode'), '') is not null
+    and nullif(btrim(p_job.payload ->> 'kind'), '') is not null
+    and p_expected_draft_id is not null
+    and nullif(btrim(p_expected_mode), '') is not null
+    and nullif(btrim(p_expected_key), '') is not null
+    and p_expected_provider_setting_id is not null
+    and p_job.schedule_key = p_job.payload ->> 'manualRequestKey'
+    and p_job.draft_id = p_expected_draft_id
+    and p_job.payload ->> 'mode' = p_expected_mode
+    and p_job.payload ->> 'manualRequestKey' = p_expected_key
+    and p_job.provider_setting_id = p_expected_provider_setting_id
+    and exists (
+      select 1 from public.drafts as draft
+      where draft.id = p_job.draft_id
+        and draft.owner_id = p_job.owner_id
+        and draft.kind = p_job.payload ->> 'kind'
+    )
+    and exists (
+      select 1 from public.provider_settings as provider
+      where provider.id = p_job.provider_setting_id
+        and provider.owner_id = p_job.owner_id
+    ),
+    false
+  );
+$$;
 
 create function narrative_private.generation_budget_state_at(
   p_owner_id uuid,
@@ -540,7 +588,6 @@ set search_path = ''
 as $$
 declare
   locked_job public.generation_jobs;
-  bound_draft public.drafts;
   frozen_job public.generation_jobs;
   confirmed_cost bigint;
 begin
@@ -549,23 +596,10 @@ begin
   select job.* into locked_job from public.generation_jobs as job where job.id = p_job_id for update;
   if locked_job.id is null then raise exception 'generation target not found' using errcode = 'P0002'; end if;
   if locked_job.attempt_token is not null then raise exception 'duplicate_generation' using errcode = 'P0001'; end if;
-  if locked_job.payload ->> 'source' = 'manual' then
-    select draft.* into bound_draft from public.drafts as draft where draft.id = locked_job.draft_id;
-    if locked_job.draft_id is null
-      or locked_job.provider_setting_id is null
-      or nullif(btrim(locked_job.payload ->> 'manualRequestKey'), '') is null
-      or nullif(btrim(locked_job.payload ->> 'mode'), '') is null
-      or nullif(btrim(locked_job.payload ->> 'kind'), '') is null
-      or bound_draft.id is null
-      or bound_draft.owner_id is distinct from locked_job.owner_id
-      or locked_job.schedule_key is distinct from locked_job.payload ->> 'manualRequestKey'
-      or locked_job.payload ->> 'kind' is distinct from bound_draft.kind
-      or locked_job.draft_id is distinct from p_draft_id
-      or locked_job.payload ->> 'mode' is distinct from p_generation_mode
-      or locked_job.payload ->> 'manualRequestKey' is distinct from p_idempotency_key
-      or locked_job.provider_setting_id is distinct from p_provider_setting_id then
-      raise exception 'manual_generation_binding_changed' using errcode = 'P0001';
-    end if;
+  if locked_job.payload ->> 'source' = 'manual' and not narrative_private.manual_generation_binding_valid(
+    locked_job, p_draft_id, p_generation_mode, p_idempotency_key, p_provider_setting_id
+  ) then
+    raise exception 'manual_generation_binding_changed' using errcode = 'P0001';
   end if;
 
   perform public.generation_internal_freeze_context_v1(
@@ -602,6 +636,7 @@ as $$
 declare
   locked_job public.generation_jobs;
   bound_provider_setting_id uuid;
+  manual_binding_valid boolean := false;
   result jsonb;
 begin
   if auth.role() is distinct from 'service_role' then
@@ -614,12 +649,16 @@ begin
     return jsonb_build_object('outcome', 'stale');
   end if;
   bound_provider_setting_id := locked_job.provider_setting_id;
+  manual_binding_valid := narrative_private.manual_generation_binding_valid(
+    locked_job, locked_job.draft_id, locked_job.generation_mode,
+    locked_job.idempotency_key, locked_job.provider_setting_id
+  );
   result := public.generation_internal_abort_attempt_v1(p_job_id, p_idempotency_key, p_failure_code);
   if result ->> 'outcome' = 'aborted' then
     update public.generation_jobs
     set attempt_token = null,
         provider_setting_id = case
-          when payload ->> 'source' = 'manual' and result ->> 'jobStatus' = 'queued'
+          when manual_binding_valid and result ->> 'jobStatus' = 'queued'
             then bound_provider_setting_id
           else provider_setting_id
         end
@@ -818,6 +857,7 @@ declare
   admin_settings public.narrative_admin_settings;
   active_provider public.provider_settings;
   bound_provider_setting_id uuid;
+  manual_binding_valid boolean := false;
   budget_state text;
   budget_policy text;
   job_source text;
@@ -832,6 +872,15 @@ begin
   bound_provider_setting_id := locked_job.provider_setting_id;
   job_source := locked_job.payload ->> 'source';
   budget_policy := locked_job.payload ->> 'budgetPolicy';
+  if job_source = 'manual' then
+    manual_binding_valid := narrative_private.manual_generation_binding_valid(
+      locked_job, locked_job.draft_id, locked_job.generation_mode,
+      locked_job.idempotency_key, locked_job.provider_setting_id
+    );
+    if not manual_binding_valid then
+      raise exception 'manual_generation_binding_changed' using errcode = 'P0001';
+    end if;
+  end if;
   if job_source is null or job_source not in ('manual', 'schedule', 'access')
     or (job_source = 'schedule' and budget_policy not in ('block_at_risk', 'block_at_warning'))
     or (job_source = 'access' and budget_policy is distinct from 'block_at_risk') then
@@ -864,7 +913,7 @@ begin
     update public.generation_jobs
     set attempt_token = null,
         provider_setting_id = case
-          when payload ->> 'source' = 'manual' then bound_provider_setting_id
+          when manual_binding_valid then bound_provider_setting_id
           else provider_setting_id
         end
     where id = p_job_id;
@@ -875,6 +924,7 @@ $$;
 
 revoke all on function narrative_private.generation_budget_state_at(uuid, timestamptz, text) from public, anon, authenticated, service_role;
 revoke all on function narrative_private.schedule_budget_state_at(uuid, timestamptz) from public, anon, authenticated, service_role;
+revoke all on function narrative_private.manual_generation_binding_valid(public.generation_jobs, uuid, text, text, uuid) from public, anon, authenticated, service_role;
 revoke all on function public.get_narrative_settings() from public, anon, authenticated, service_role;
 revoke all on function public.save_narrative_settings(boolean, boolean, text, jsonb, bigint, bigint, integer, integer, integer, numeric, integer) from public, anon, authenticated, service_role;
 revoke all on function public.queue_draft_revision(uuid, uuid, text, text, integer, bigint) from public, anon, authenticated, service_role;
