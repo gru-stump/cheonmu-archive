@@ -397,6 +397,185 @@ begin
 end;
 $$;
 
+create function public.queue_manual_generation(
+  p_draft_id uuid,
+  p_requested_mode text,
+  p_kind text,
+  p_title text,
+  p_seed text,
+  p_tags text[]
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  request_owner_id uuid;
+  locked_draft public.drafts;
+  locked_workflow public.major_event_workflows;
+  locked_setting public.provider_settings;
+  admin_settings public.narrative_admin_settings;
+  created_job public.generation_jobs;
+  generation_key text := 'manual-' || gen_random_uuid()::text;
+  derived_mode text;
+  derived_kind text;
+  stored_seed text;
+  stored_tags text[];
+begin
+  perform narrative_private.require_narrative_owner();
+  request_owner_id := auth.uid();
+  if p_requested_mode is null or p_requested_mode not in ('new', 'major_event_scene_plan', 'major_event_draft') then
+    raise exception 'invalid_manual_generation_request' using errcode = '22023';
+  end if;
+
+  if p_draft_id is null then
+    if p_requested_mode <> 'new' then
+      raise exception 'manual_generation_mode_mismatch' using errcode = 'P0001';
+    end if;
+    if p_kind is null or p_kind not in ('short_dialogue', 'daily_event', 'major_event_proposal')
+      or nullif(btrim(p_title), '') is null or length(p_title) > 200
+      or (p_seed is not null and length(p_seed) > 2000)
+      or coalesce(cardinality(p_tags), 0) > 10
+      or exists (select 1 from unnest(coalesce(p_tags, array[]::text[])) as tag where nullif(btrim(tag), '') is null or length(tag) > 64) then
+      raise exception 'invalid_manual_generation_request' using errcode = '22023';
+    end if;
+    derived_mode := 'new';
+    derived_kind := p_kind;
+    stored_seed := nullif(btrim(p_seed), '');
+    select coalesce(array_agg(btrim(tag)), array[]::text[]) into stored_tags
+    from unnest(coalesce(p_tags, array[]::text[])) as tag;
+  else
+    if p_requested_mode not in ('major_event_scene_plan', 'major_event_draft')
+      or p_kind is not null or p_title is not null or p_seed is not null or p_tags is not null then
+      raise exception 'invalid_manual_generation_request' using errcode = '22023';
+    end if;
+    select draft.* into locked_draft from public.drafts as draft where draft.id = p_draft_id for update;
+    if locked_draft.id is null or locked_draft.owner_id is distinct from request_owner_id
+      or locked_draft.kind <> 'major_event_proposal' then
+      raise exception 'manual generation target not found' using errcode = 'P0002';
+    end if;
+    select workflow.* into locked_workflow from public.major_event_workflows as workflow
+    where workflow.owner_id = request_owner_id and workflow.draft_id = locked_draft.id for update;
+    if locked_workflow.id is null then
+      raise exception 'workflow_phase_not_approved' using errcode = 'P0001';
+    end if;
+    derived_mode := case locked_workflow.phase
+      when 'proposal_approved' then 'major_event_scene_plan'
+      when 'scene_plan_approved' then 'major_event_draft'
+      else null
+    end;
+    if derived_mode is null or locked_draft.status <> 'approved_private' then
+      raise exception 'workflow_phase_not_approved' using errcode = 'P0001';
+    end if;
+    if p_requested_mode <> derived_mode then
+      raise exception 'manual_generation_mode_mismatch' using errcode = 'P0001';
+    end if;
+    derived_kind := locked_draft.kind;
+    stored_seed := locked_draft.metadata ->> 'seed';
+    select coalesce(array_agg(tag), array[]::text[]) into stored_tags
+    from jsonb_array_elements_text(coalesce(locked_draft.metadata -> 'tags', '[]'::jsonb)) as tag;
+  end if;
+
+  select setting.* into locked_setting from public.provider_settings as setting
+  where setting.owner_id = request_owner_id and setting.enabled for share;
+  select admin.* into admin_settings from public.narrative_admin_settings as admin
+  where admin.owner_id = request_owner_id for share;
+  if admin_settings.owner_id is null or not admin_settings.manual_generation_enabled then
+    raise exception 'manual_generation_disabled' using errcode = 'P0001';
+  end if;
+  if locked_setting.id is null then
+    raise exception 'active_provider_setting_required' using errcode = 'P0001';
+  end if;
+  if locked_setting.pricing_verified_at > public.narrative_business_date(current_timestamp) then
+    raise exception 'invalid_provider_pricing' using errcode = 'P0001';
+  end if;
+  if locked_setting.pricing_verified_at < public.narrative_business_date(current_timestamp) - admin_settings.pricing_valid_days then
+    raise exception 'stale_provider_pricing' using errcode = 'P0001';
+  end if;
+
+  if p_draft_id is null then
+    insert into public.drafts (owner_id, kind, status, title, metadata)
+    values (request_owner_id, derived_kind, 'queued', btrim(p_title), jsonb_build_object('seed', stored_seed, 'tags', stored_tags))
+    returning * into locked_draft;
+    if derived_kind = 'major_event_proposal' then
+      insert into public.major_event_workflows (owner_id, draft_id, phase, context)
+      values (request_owner_id, locked_draft.id, 'proposal', jsonb_build_object('source', 'manual', 'seed', stored_seed, 'tags', stored_tags));
+    end if;
+  else
+    perform public.transition_draft(locked_draft.id, 'approved_private', 'archived');
+    perform public.transition_draft(locked_draft.id, 'archived', 'queued');
+  end if;
+
+  insert into public.generation_jobs (
+    owner_id, draft_id, schedule_key, scheduled_for, status, payload, provider_setting_id
+  ) values (
+    request_owner_id, locked_draft.id, generation_key, now(), 'queued',
+    jsonb_strip_nulls(jsonb_build_object(
+      'source', 'manual', 'mode', derived_mode, 'kind', derived_kind,
+      'manualRequestKey', generation_key, 'seed', stored_seed, 'tags', stored_tags
+    )), locked_setting.id
+  ) returning * into created_job;
+  insert into public.audit_events (owner_id, event_type, entity_type, entity_id, payload)
+  values (request_owner_id, 'manual_generation_queued', 'draft', locked_draft.id, jsonb_build_object(
+    'generationJobId', created_job.id, 'mode', derived_mode, 'kind', derived_kind));
+  return jsonb_build_object(
+    'job_id', created_job.id, 'draft_id', locked_draft.id, 'idempotency_key', generation_key,
+    'mode', derived_mode, 'kind', derived_kind, 'seed', stored_seed, 'tags', stored_tags
+  );
+end;
+$$;
+
+create or replace function public.freeze_generation_context(
+  p_job_id uuid, p_draft_id uuid, p_generation_mode text, p_idempotency_key text,
+  p_context_version_ids text[], p_context_snapshot jsonb, p_provider_setting_id uuid, p_attempt_token uuid
+)
+returns public.generation_jobs
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  locked_job public.generation_jobs;
+  frozen_job public.generation_jobs;
+  confirmed_cost bigint;
+begin
+  if auth.role() is distinct from 'service_role' then raise exception 'generation freeze caller is not authorized' using errcode = '42501'; end if;
+  if p_attempt_token is null then raise exception 'invalid_attempt_token' using errcode = '22023'; end if;
+  select job.* into locked_job from public.generation_jobs as job where job.id = p_job_id for update;
+  if locked_job.id is null then raise exception 'generation target not found' using errcode = 'P0002'; end if;
+  if locked_job.attempt_token is not null then raise exception 'duplicate_generation' using errcode = 'P0001'; end if;
+  if locked_job.payload ->> 'source' = 'manual' and locked_job.provider_setting_id is not null
+    and (locked_job.draft_id is distinct from p_draft_id
+      or locked_job.payload ->> 'mode' is distinct from p_generation_mode
+      or locked_job.payload ->> 'manualRequestKey' is distinct from p_idempotency_key
+      or locked_job.provider_setting_id is distinct from p_provider_setting_id) then
+    raise exception 'manual_generation_binding_changed' using errcode = 'P0001';
+  end if;
+
+  perform public.generation_internal_freeze_context_v1(
+    p_job_id, p_draft_id, p_generation_mode, p_idempotency_key,
+    p_context_version_ids, p_context_snapshot, p_provider_setting_id
+  );
+  if p_generation_mode = 'revise_selection' and locked_job.requested_max_output_tokens is not null then
+    update public.generation_jobs
+    set max_revision_output_tokens = least(max_output_tokens, max_revision_output_tokens, locked_job.requested_max_output_tokens),
+        worst_case_cost_micros = fixed_cost_micros
+          + ceil(max_input_tokens::numeric * input_cost_micros_per_million / 1000000)::bigint
+          + ceil(least(max_output_tokens, max_revision_output_tokens, locked_job.requested_max_output_tokens)::numeric * output_cost_micros_per_million / 1000000)::bigint
+    where id = p_job_id returning * into frozen_job;
+    confirmed_cost := frozen_job.worst_case_cost_micros;
+    if confirmed_cost is distinct from locked_job.confirmed_maximum_cost_micros then
+      raise exception 'revision_cost_changed' using errcode = 'P0001';
+    end if;
+  end if;
+  update public.generation_jobs set attempt_token = p_attempt_token where id = p_job_id returning * into frozen_job;
+  return frozen_job;
+exception when unique_violation then
+  raise exception 'duplicate_generation' using errcode = 'P0001';
+end;
+$$;
+
 create or replace function public.save_narrative_schedule(
   p_schedule_id uuid,
   p_schedule_key text,
@@ -636,6 +815,7 @@ revoke all on function narrative_private.schedule_budget_state_at(uuid, timestam
 revoke all on function public.get_narrative_settings() from public, anon, authenticated, service_role;
 revoke all on function public.save_narrative_settings(boolean, boolean, text, jsonb, bigint, bigint, integer, integer, integer, numeric, integer) from public, anon, authenticated, service_role;
 revoke all on function public.queue_draft_revision(uuid, uuid, text, text, integer, bigint) from public, anon, authenticated, service_role;
+revoke all on function public.queue_manual_generation(uuid, text, text, text, text, text[]) from public, anon, authenticated, service_role;
 revoke all on function public.save_narrative_schedule(uuid, text, text, boolean, text, integer, date, integer, text) from public, anon, authenticated, service_role;
 revoke all on function public.queue_narrative_access_job(uuid, timestamptz) from public, anon, authenticated, service_role;
 revoke all on function public.queue_due_narrative_schedule_job(uuid, uuid, timestamptz) from public, anon, authenticated, service_role;
@@ -644,6 +824,7 @@ revoke all on function public.reserve_and_start_generation(uuid, uuid, bigint) f
 grant execute on function public.get_narrative_settings() to authenticated;
 grant execute on function public.save_narrative_settings(boolean, boolean, text, jsonb, bigint, bigint, integer, integer, integer, numeric, integer) to authenticated;
 grant execute on function public.queue_draft_revision(uuid, uuid, text, text, integer, bigint) to authenticated;
+grant execute on function public.queue_manual_generation(uuid, text, text, text, text, text[]) to authenticated;
 grant execute on function public.save_narrative_schedule(uuid, text, text, boolean, text, integer, date, integer, text) to authenticated;
 grant execute on function public.queue_narrative_access_job(uuid, timestamptz) to service_role;
 grant execute on function public.queue_due_narrative_schedule_job(uuid, uuid, timestamptz) to service_role;

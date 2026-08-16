@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createScheduleHandler, createSupabaseScheduleDependencies, evaluateAccessTrigger, runSchedules, type QueuedJob, type ScheduleDependencies } from './index.ts';
+import { createScheduleHandler, createSupabaseScheduleDependencies, evaluateAccessTrigger, runSchedules, ScheduleError, type QueuedJob, type ScheduleDependencies } from './index.ts';
 import { createCorsPolicy } from '../_shared/cors.ts';
 
 function harness(overrides: Partial<ScheduleDependencies> = {}) {
@@ -114,6 +114,28 @@ describe('runSchedules', () => {
     ] });
     await expect(runSchedules(h.deps)).resolves.toHaveLength(1);
     expect(h.inserted.map((job) => job.scheduleKey)).toEqual(['owner-1:daily:2026-08-14']);
+  });
+
+  it('continues the dispatch batch when automation is disabled atomically while one schedule queues', async () => {
+    const h = harness({
+      listSchedules: async () => [
+        { ownerId: 'owner-1', scheduleKey: 'racing-off', scheduleType: 'automatic', cronExpression: '0 9 * * *', enabled: true, payload: { kind: 'daily_event' } },
+        { ownerId: 'owner-2', scheduleKey: 'still-on', scheduleType: 'automatic', cronExpression: '0 9 * * *', enabled: true, payload: { kind: 'short_dialogue' } },
+      ],
+      queueScheduleJob: async (schedule, scheduledFor) => {
+        if (schedule.scheduleKey === 'racing-off') throw new ScheduleError('schedule_automation_disabled');
+        return { id: 'job-owner-2', ownerId: schedule.ownerId, scheduleKey: schedule.scheduleKey, scheduledFor, payload: { kind: schedule.payload.kind, source: 'schedule' } };
+      },
+    });
+    const response = await createScheduleHandler(h.deps, 'dispatch-secret')(new Request('http://local/run-schedules', {
+      method: 'POST', headers: { 'x-schedule-dispatch-token': 'dispatch-secret', 'content-type': 'application/json' }, body: JSON.stringify({ action: 'dispatch' }),
+    }));
+
+    expect(response.status).toBe(202);
+    await expect(response.json()).resolves.toEqual({ jobs: [{
+      id: 'job-owner-2', ownerId: 'owner-2', scheduleKey: 'still-on', scheduledFor: '2026-08-14T00:00:00.000Z',
+      payload: { kind: 'short_dialogue', source: 'schedule' },
+    }] });
   });
 });
 

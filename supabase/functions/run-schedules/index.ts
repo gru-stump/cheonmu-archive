@@ -62,7 +62,12 @@ export async function runSchedules(deps: ScheduleDependencies): Promise<QueuedJo
     if (!time || !scheduleDue(schedule, time, now)) continue;
     const budget = await deps.budgetState(schedule.ownerId);
     if (budget === 'risk' || (budget === 'warning' && schedule.scheduleType === 'automatic' && time.weekday !== null)) continue;
-    jobs.push(await deps.queueScheduleJob(schedule, scheduledInstant(now)));
+    try {
+      jobs.push(await deps.queueScheduleJob(schedule, scheduledInstant(now)));
+    } catch (error) {
+      if (error instanceof ScheduleError && error.code === 'schedule_automation_disabled') continue;
+      throw error;
+    }
   }
   return jobs;
 }

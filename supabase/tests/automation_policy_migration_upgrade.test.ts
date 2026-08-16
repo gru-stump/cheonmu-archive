@@ -106,6 +106,33 @@ values
     await scalar("select concat(to_regprocedure('public.save_narrative_settings(boolean,boolean,text,jsonb,bigint,bigint,integer,integer,integer,numeric,integer)') is not null, '|', to_regprocedure('public.save_narrative_settings(boolean,text,jsonb,bigint,bigint,integer,integer,integer,numeric,integer)') is null, '|', has_function_privilege('authenticated', 'public.save_narrative_settings(boolean,boolean,text,jsonb,bigint,bigint,integer,integer,integer,numeric,integer)', 'EXECUTE'), '|', not has_function_privilege('anon', 'public.save_narrative_settings(boolean,boolean,text,jsonb,bigint,bigint,integer,integer,integer,numeric,integer)', 'EXECUTE'));"),
     't|t|t|t', 'upgrade must replace the combined policy command with the narrow authenticated split signature',
   );
+  assert.equal(
+    await scalar("select concat(to_regprocedure('public.queue_manual_generation(uuid,text,text,text,text,text[])') is not null, '|', has_function_privilege('authenticated', 'public.queue_manual_generation(uuid,text,text,text,text,text[])', 'EXECUTE'), '|', not has_function_privilege('anon', 'public.queue_manual_generation(uuid,text,text,text,text,text[])', 'EXECUTE'), '|', not has_function_privilege('service_role', 'public.queue_manual_generation(uuid,text,text,text,text,text[])', 'EXECUTE'));") ,
+    't|t|t|t', 'upgrade must expose the new manual queue only to authenticated owners',
+  );
+  const enabledPolicyWithoutProvider = await runPsql(`
+begin;
+select set_config('request.jwt.claim.role', 'authenticated', true);
+select set_config('request.jwt.claim.sub', '${trueOwner}', true);
+set local role authenticated;
+select public.queue_manual_generation(null, 'new', 'daily_event', 'upgrade owner request', null, array[]::text[]);
+`);
+  assert.notEqual(enabledPolicyWithoutProvider.code, 0);
+  assert.match(enabledPolicyWithoutProvider.stderr, /active_provider_setting_required/);
+  const disabledPolicyWithProvider = await runPsql(`
+begin;
+select set_config('request.jwt.claim.role', 'authenticated', true);
+select set_config('request.jwt.claim.sub', '${falseOwner}', true);
+set local role authenticated;
+select public.queue_manual_generation(null, 'new', 'daily_event', 'upgrade disabled request', null, array[]::text[]);
+`);
+  assert.notEqual(disabledPolicyWithProvider.code, 0);
+  assert.match(disabledPolicyWithProvider.stderr, /manual_generation_disabled/);
+  assert.equal(
+    await scalar(`select string_agg(concat(provider_key, '|', enabled), ',' order by owner_id)
+      from public.provider_settings where owner_id in ('${trueOwner}', '${falseOwner}');`),
+    'openai|f,anthropic|t', 'new owner queue checks must not couple policy migration to provider selection',
+  );
 } catch (error) {
   primaryError = error;
 } finally {
@@ -119,4 +146,4 @@ values
 }
 
 if (primaryError) throw primaryError;
-console.log('PASS: migration 019 upgrades legacy true/false policies, preserves provider selection, backfills only unambiguous manual revisions, and replaces the settings RPC safely.');
+console.log('PASS: migration 019 upgrades legacy true/false policies, preserves provider selection, installs the authenticated manual queue, backfills only unambiguous revisions, and replaces the settings RPC safely.');

@@ -29,6 +29,22 @@ describe('NarrativeApi', () => {
     });
   });
 
+  it.each([
+    [{ mode: 'new', kind: 'short_dialogue', title: '새 대화', seed: '비', tags: ['약속'] }, 'new'],
+    [{ draftId: 'major-1', mode: 'major_event_scene_plan' }, 'major_event_scene_plan'],
+    [{ draftId: 'major-1', mode: 'major_event_draft' }, 'major_event_draft'],
+  ] as const)('sends an owner manual %s request through the authenticated same-origin boundary', async (command, mode) => {
+    const fetch = vi.fn().mockResolvedValue(Response.json({ draftId: 'd1', versionId: 'v1', status: 'generated', continuityLevel: 'review' }));
+    const api = createNarrativeApi({ tokenProvider: async () => 'owner-token', fetch });
+
+    await api.generate(command as never);
+
+    expect(fetch).toHaveBeenCalledWith('/api/narrative/generate', expect.objectContaining({
+      method: 'POST', body: JSON.stringify(command), headers: expect.objectContaining({ authorization: 'Bearer owner-token' }),
+    }));
+    expect(mode).toBe(command.mode);
+  });
+
   it('surfaces a stable 409 conflict without retrying or fetching replacement data', async () => {
     const fetch = vi.fn().mockResolvedValue(Response.json({ error: 'stale_review' }, { status: 409 }));
     const api = createNarrativeApi({ tokenProvider: async () => 'owner-token', fetch });
@@ -43,7 +59,7 @@ describe('NarrativeApi', () => {
     const api = createNarrativeApi({ tokenProvider: async () => 'owner-token', fetch });
 
     await expect(api.generate({
-      draftId: 'd1', mode: 'new', kind: 'short_dialogue', seed: 'seed',
+      draftId: 'd1', mode: 'browser_owned_mode', kind: 'short_dialogue', seed: 'seed',
     } as never)).rejects.toEqual(new NarrativeApiError(400, 'unsupported_generation_mode'));
     expect(fetch).not.toHaveBeenCalled();
   });

@@ -145,7 +145,7 @@ export interface SaveSettingsInput {
   krwPerUsd: number;
 }
 
-export interface GenerateInput {
+export interface RevisionGenerateInput {
   draftId: string;
   expectedVersionId: string;
   expectedState: 'generated' | 'reviewing';
@@ -156,6 +156,21 @@ export interface GenerateInput {
   maximumCostConfirmed: true;
   confirmedMaximumCostMicros: number;
 }
+
+export interface NewManualGenerateInput {
+  mode: 'new';
+  kind: DraftKind;
+  title: string;
+  seed?: string;
+  tags?: string[];
+}
+
+export interface MajorStageGenerateInput {
+  draftId: string;
+  mode: 'major_event_scene_plan' | 'major_event_draft';
+}
+
+export type GenerateInput = RevisionGenerateInput | NewManualGenerateInput | MajorStageGenerateInput;
 
 export interface ReviewInput {
   draftId: string;
@@ -215,7 +230,7 @@ export function createNarrativeApi({ tokenProvider, fetch = globalThis.fetch }: 
       return result.drafts;
     },
     getDraft: (draftId) => request<DraftDetail>(`drafts/${encodeURIComponent(draftId)}`),
-    generate: (input) => input.mode === 'revise_selection'
+    generate: (input) => ['new', 'major_event_scene_plan', 'major_event_draft', 'revise_selection'].includes(input.mode)
       ? post('generate', input)
       : Promise.reject(new NarrativeApiError(400, 'unsupported_generation_mode')),
     saveManualVersion: (input) => post(`drafts/${encodeURIComponent(input.draftId)}/manual-version`, input),

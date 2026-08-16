@@ -3,8 +3,9 @@ type ServerConfig = { supabaseUrl: string; supabaseAnonKey: string; fetch?: type
 const conflicts = new Set([
   'stale_review', 'stale_review_submission', 'stale_manual_version', 'stale_revision', 'stale_archive', 'stale_restore', 'stale_publish_retry',
   'blocked_version_reject_only', 'revision_cost_changed', 'duplicate_review', 'version_not_approvable', 'duplicate_generation',
-  'fixed_canon_read_only', 'stale_memory', 'stale_provider_pricing', 'manual_generation_disabled', 'schedule_automation_disabled',
-  'manual_call_limit_reached', 'invalid_generation_source',
+  'fixed_canon_read_only', 'stale_memory', 'stale_provider_pricing', 'invalid_provider_pricing', 'manual_generation_disabled', 'schedule_automation_disabled',
+  'manual_call_limit_reached', 'invalid_generation_source', 'workflow_phase_not_approved',
+  'manual_generation_mode_mismatch', 'manual_generation_binding_changed',
   'budget_limit_below_committed', 'duplicate_schedule_key', 'active_provider_setting_required',
   'publication_in_progress', 'publication_queue_busy', 'publication_idempotency_mismatch',
   'publication_not_approved', 'publication_attempt_mismatch', 'publication_already_finalized', 'publication_not_configured',
@@ -125,18 +126,54 @@ export function createNarrativeHandler({ supabaseUrl, supabaseAnonKey, fetch = g
       }
       if (request.method === 'POST' && path.join('/') === 'generate') {
         const command = await body(); if (!command) return json({ error: 'invalid_command' }, 400);
-        if (command.mode !== 'revise_selection') return json({ error: 'unsupported_generation_mode' }, 400);
-        const revision = command.revision as Record<string, unknown> | undefined;
-        if (!command.maximumCostConfirmed || !revision || !Number.isSafeInteger(command.requestedMaxOutputTokens) || !Number.isSafeInteger(command.confirmedMaximumCostMicros)) return json({ error: 'revision_confirmation_required' }, 400);
-        if (command.expectedState === 'generated') await rpc('submit_draft_for_review', { p_draft_id: command.draftId, p_expected_version_id: command.expectedVersionId, p_expected_state: 'generated' });
-        const queued = await rpc('queue_draft_revision', {
-          p_draft_id: command.draftId, p_expected_version_id: command.expectedVersionId,
-          p_selected_text: revision.selectedText, p_instruction: revision.instruction,
-          p_requested_max_output_tokens: command.requestedMaxOutputTokens, p_confirmed_maximum_cost_micros: command.confirmedMaximumCostMicros,
+        if (command.mode === 'revise_selection') {
+          const revision = command.revision as Record<string, unknown> | undefined;
+          if (!command.maximumCostConfirmed || !revision || !Number.isSafeInteger(command.requestedMaxOutputTokens) || !Number.isSafeInteger(command.confirmedMaximumCostMicros)) return json({ error: 'revision_confirmation_required' }, 400);
+          if (command.expectedState === 'generated') await rpc('submit_draft_for_review', { p_draft_id: command.draftId, p_expected_version_id: command.expectedVersionId, p_expected_state: 'generated' });
+          const queued = await rpc('queue_draft_revision', {
+            p_draft_id: command.draftId, p_expected_version_id: command.expectedVersionId,
+            p_selected_text: revision.selectedText, p_instruction: revision.instruction,
+            p_requested_max_output_tokens: command.requestedMaxOutputTokens, p_confirmed_maximum_cost_micros: command.confirmedMaximumCostMicros,
+          });
+          command.jobId = queued.job_id; command.idempotencyKey = queued.idempotency_key; command.draftId = queued.draft_id; command.kind = queued.kind;
+          delete command.expectedVersionId; delete command.expectedState; delete command.maximumCostConfirmed; delete command.confirmedMaximumCostMicros;
+          return json(await upstream('/functions/v1/generate-draft', { method: 'POST', body: JSON.stringify(command) }));
+        }
+        if (!['new', 'major_event_scene_plan', 'major_event_draft'].includes(String(command.mode))) return json({ error: 'unsupported_generation_mode' }, 400);
+        const allowed = command.mode === 'new'
+          ? new Set(['mode', 'kind', 'title', 'seed', 'tags'])
+          : new Set(['mode', 'draftId']);
+        if (Object.keys(command).some((key) => !allowed.has(key))) return json({ error: 'server_owned_generation_field' }, 400);
+        if (command.mode === 'new') {
+          if (typeof command.kind !== 'string' || typeof command.title !== 'string'
+            || (command.seed !== undefined && typeof command.seed !== 'string')
+            || (command.tags !== undefined && (!Array.isArray(command.tags) || command.tags.some((tag) => typeof tag !== 'string')))) {
+            return json({ error: 'invalid_command' }, 400);
+          }
+        } else if (typeof command.draftId !== 'string') {
+          return json({ error: 'invalid_command' }, 400);
+        }
+        const queued = await rpc('queue_manual_generation', {
+          p_draft_id: command.mode === 'new' ? null : command.draftId,
+          p_requested_mode: command.mode,
+          p_kind: command.mode === 'new' ? command.kind : null,
+          p_title: command.mode === 'new' ? command.title : null,
+          p_seed: command.mode === 'new' ? command.seed ?? null : null,
+          p_tags: command.mode === 'new' ? command.tags ?? null : null,
         });
-        command.jobId = queued.job_id; command.idempotencyKey = queued.idempotency_key; command.draftId = queued.draft_id; command.kind = queued.kind;
-        delete command.expectedVersionId; delete command.expectedState; delete command.maximumCostConfirmed; delete command.confirmedMaximumCostMicros;
-        return json(await upstream('/functions/v1/generate-draft', { method: 'POST', body: JSON.stringify(command) }));
+        if (typeof queued.job_id !== 'string' || typeof queued.draft_id !== 'string'
+          || typeof queued.idempotency_key !== 'string'
+          || !['new', 'major_event_scene_plan', 'major_event_draft'].includes(String(queued.mode))
+          || !['short_dialogue', 'daily_event', 'major_event_proposal'].includes(String(queued.kind))) {
+          throw { status: 500, code: 'request_failed' };
+        }
+        const edgeCommand: Record<string, unknown> = {
+          jobId: queued.job_id, draftId: queued.draft_id, idempotencyKey: queued.idempotency_key,
+          mode: queued.mode, kind: queued.kind,
+        };
+        if (typeof queued.seed === 'string') edgeCommand.seed = queued.seed;
+        if (Array.isArray(queued.tags) && queued.tags.every((tag) => typeof tag === 'string')) edgeCommand.tags = queued.tags;
+        return json(await upstream('/functions/v1/generate-draft', { method: 'POST', body: JSON.stringify(edgeCommand) }));
       }
       if (request.method === 'POST' && path.length === 3 && path[0] === 'memory') {
         const input = await body();

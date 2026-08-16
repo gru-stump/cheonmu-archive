@@ -94,22 +94,75 @@ describe('same-origin narrative server boundary', () => {
     expect(calls[3]?.body).toMatchObject({ jobId: 'job-3', idempotencyKey: 'revision-key', revision: command.revision, requestedMaxOutputTokens: 128 });
   });
 
-  it('rejects unsupported public generation modes before queueing or invoking generation', async () => {
+  it.each(['new', 'major_event_scene_plan', 'major_event_draft'] as const)('queues owner manual %s through the authoritative RPC and forwards only returned bindings', async (mode) => {
+    const calls: Array<{ path: string; body: Record<string, unknown> }> = [];
+    const fetch: typeof globalThis.fetch = vi.fn(async (input, init) => {
+      const path = new URL(String(input)).pathname;
+      const body = init?.body ? JSON.parse(String(init.body)) : {};
+      calls.push({ path, body });
+      if (path === '/auth/v1/user') return Response.json({ id: 'owner-1' });
+      if (path === '/rest/v1/owner_profiles') return Response.json([{ owner_id: 'owner-1' }]);
+      if (path.endsWith('/queue_manual_generation')) return Response.json({
+        job_id: 'server-job', draft_id: 'server-draft', idempotency_key: 'server-key',
+        mode, kind: mode === 'new' ? 'short_dialogue' : 'major_event_proposal', seed: 'server-seed', tags: ['server-tag'],
+      });
+      return Response.json({ draftId: 'server-draft', versionId: 'version-1', status: 'generated', continuityLevel: 'review' });
+    });
+    const handler = createNarrativeHandler({ supabaseUrl: 'https://db.example.test', supabaseAnonKey: 'anon', fetch });
+    const input = mode === 'new'
+      ? { mode, kind: 'short_dialogue', title: '새 대화', seed: 'owner-seed', tags: ['owner-tag'] }
+      : { mode, draftId: 'major-1' };
+    const response = await handler(new Request('https://admin.example.test/api/narrative/generate', {
+      method: 'POST', headers: { authorization: 'Bearer owner-token', 'content-type': 'application/json' },
+      body: JSON.stringify(input),
+    }));
+
+    expect(response.status).toBe(200);
+    expect(calls[2]).toEqual({ path: '/rest/v1/rpc/queue_manual_generation', body: {
+      p_draft_id: mode === 'new' ? null : 'major-1', p_requested_mode: mode,
+      p_kind: mode === 'new' ? 'short_dialogue' : null, p_title: mode === 'new' ? '새 대화' : null,
+      p_seed: mode === 'new' ? 'owner-seed' : null, p_tags: mode === 'new' ? ['owner-tag'] : null,
+    } });
+    expect(calls[3]).toEqual({ path: '/functions/v1/generate-draft', body: {
+      jobId: 'server-job', draftId: 'server-draft', idempotencyKey: 'server-key', mode,
+      kind: mode === 'new' ? 'short_dialogue' : 'major_event_proposal', seed: 'server-seed', tags: ['server-tag'],
+    } });
+  });
+
+  it('rejects browser attempts to smuggle server-owned manual generation fields', async () => {
     const fetch: typeof globalThis.fetch = vi.fn(async (input) => {
       const path = new URL(String(input)).pathname;
       if (path === '/auth/v1/user') return Response.json({ id: 'owner-1' });
       if (path === '/rest/v1/owner_profiles') return Response.json([{ owner_id: 'owner-1' }]);
-      return Response.json({ draftId: 'unexpected' });
+      return Response.json({ unexpected: true });
     });
     const handler = createNarrativeHandler({ supabaseUrl: 'https://db.example.test', supabaseAnonKey: 'anon', fetch });
     const response = await handler(new Request('https://admin.example.test/api/narrative/generate', {
       method: 'POST', headers: { authorization: 'Bearer owner-token', 'content-type': 'application/json' },
-      body: JSON.stringify({ draftId: 'draft-1', mode: 'new', kind: 'short_dialogue', seed: 'seed' }),
+      body: JSON.stringify({ mode: 'new', kind: 'short_dialogue', title: '위조', source: 'schedule', jobId: 'browser-job', providerSettingId: 'browser-provider' }),
     }));
 
     expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toEqual({ error: 'unsupported_generation_mode' });
+    await expect(response.json()).resolves.toEqual({ error: 'server_owned_generation_field' });
     expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it.each(['manual_generation_disabled', 'stale_provider_pricing', 'invalid_provider_pricing', 'workflow_phase_not_approved'])('preserves the owner manual queue conflict %s as a stable 409', async (code) => {
+    const fetch: typeof globalThis.fetch = vi.fn(async (input) => {
+      const path = new URL(String(input)).pathname;
+      if (path === '/auth/v1/user') return Response.json({ id: 'owner-1' });
+      if (path === '/rest/v1/owner_profiles') return Response.json([{ owner_id: 'owner-1' }]);
+      return Response.json({ code: 'P0001', message: code }, { status: 400 });
+    });
+    const handler = createNarrativeHandler({ supabaseUrl: 'https://db.example.test', supabaseAnonKey: 'anon', fetch });
+    const response = await handler(new Request('https://admin.example.test/api/narrative/generate', {
+      method: 'POST', headers: { authorization: 'Bearer owner-token', 'content-type': 'application/json' },
+      body: JSON.stringify({ mode: 'new', kind: 'daily_event', title: '정책 확인' }),
+    }));
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toEqual({ error: code });
+    expect(fetch).toHaveBeenCalledTimes(3);
   });
 
   it('rejects unsafe archive source states before invoking the database command', async () => {

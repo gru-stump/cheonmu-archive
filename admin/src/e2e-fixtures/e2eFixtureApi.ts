@@ -64,7 +64,15 @@ export function createE2EFixture() {
       if (!draft) throw new Error('draft_not_found');
       return structuredClone(draft);
     },
-    generate: async (input) => ({ draftId: input.draftId, versionId: store.drafts.get(input.draftId)!.latestVersionId, status: 'generated', continuityLevel: 'pass' }),
+    generate: async (input) => {
+      const draftId = 'draftId' in input ? input.draftId : `e2e-manual-${store.drafts.size + 1}`;
+      if (!('draftId' in input)) {
+        const draft = makeDraft(draftId, input.title);
+        draft.kind = input.kind;
+        store.drafts.set(draftId, draft);
+      }
+      return { draftId, versionId: store.drafts.get(draftId)!.latestVersionId, status: 'generated', continuityLevel: 'pass' };
+    },
     saveManualVersion: async (input) => {
       const draft = store.drafts.get(input.draftId)!;
       const next: DraftVersion = { ...draft.latestVersion, id: `${draft.id}-v${draft.versions.length + 1}`, versionNumber: draft.versions.length + 1, content: input.content, createdAt: '2026-08-15T03:10:00.000Z' };

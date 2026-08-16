@@ -240,6 +240,7 @@ const stableConflictCodes = new Set([
   'mode_kind_mismatch', 'active_provider_setting_required', 'context_budget_too_small', 'stale_attempt',
   'stale_provider_pricing', 'invalid_provider_pricing', 'manual_generation_disabled',
   'schedule_automation_disabled', 'manual_call_limit_reached', 'invalid_generation_source',
+  'manual_generation_binding_changed',
 ]);
 
 function mapPersistence(error: unknown, fallbackCode = 'internal_error'): GenerationError {

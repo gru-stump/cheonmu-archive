@@ -10,7 +10,6 @@ import {
   serviceGet,
   serviceInsert,
   servicePatch,
-  serviceRpc,
   startFakeProviderFunctions,
   type LocalOwnerSession,
 } from './localOwnerHarness';
@@ -41,31 +40,17 @@ async function approvePrivate(page: Page, draftId: string) {
   await expect(page.getByRole('status').filter({ hasText: '검토 결과를 저장했습니다.' })).toBeVisible();
 }
 
-async function createMajorJob(session: LocalOwnerSession, draftId: string, label: string) {
-  const [job] = await serviceInsert<Array<{ id: string }>>(session.config, 'generation_jobs', {
-    owner_id: seedOwnerId,
-    draft_id: draftId,
-    schedule_key: `e2e-major-${label}-${randomUUID()}`,
-    scheduled_for: new Date().toISOString(),
-    status: 'queued',
-    payload: { kind: 'major_event_proposal', source: 'manual' },
-  });
-  return job!.id;
-}
-
-async function generateMajorStage(session: LocalOwnerSession, draftId: string, jobId: string, mode: 'new' | 'major_event_scene_plan' | 'major_event_draft') {
-  return edgeJson<{ versionId: string; continuityLevel: string }>(await edgePost(session, 'generate-draft', {
-    jobId,
-    draftId,
-    idempotencyKey: `e2e-${mode}-${randomUUID()}`,
-    mode,
-    kind: 'major_event_proposal',
-  }));
-}
-
-async function reopenApprovedMajorDraft(session: LocalOwnerSession, draftId: string) {
-  await serviceRpc(session.config, 'transition_draft', { p_draft_id: draftId, p_expected: 'approved_private', p_next: 'archived' });
-  await serviceRpc(session.config, 'transition_draft', { p_draft_id: draftId, p_expected: 'archived', p_next: 'queued' });
+async function ownerGenerate<T>(page: Page, session: LocalOwnerSession, value: unknown, expectedStatus = 200): Promise<T> {
+  const result = await page.evaluate(async ({ accessToken, value }) => {
+    const response = await fetch('/api/narrative/generate', {
+      method: 'POST',
+      headers: { authorization: `Bearer ${accessToken}`, 'content-type': 'application/json' },
+      body: JSON.stringify(value),
+    });
+    return { status: response.status, body: await response.json().catch(() => ({})) };
+  }, { accessToken: session.accessToken, value });
+  expect(result.status, JSON.stringify(result.body)).toBe(expectedStatus);
+  return result.body as T;
 }
 
 test('authenticated owner journey persists budget, private approval, rejection feedback, special date, and major-event order', async ({ page }) => {
@@ -81,8 +66,8 @@ test('authenticated owner journey persists budget, private approval, rejection f
   });
   const functions = await startFakeProviderFunctions();
   let accessJobId: string | null = null;
-  const rejectedDraftId = randomUUID();
-  const rejectedReason = `인물의 반응을 더 선명하게 다듬어 주세요. (${rejectedDraftId})`;
+  let rejectedDraftId = '';
+  let rejectedReason = '';
   try {
     await page.goto('/?real-owner=1');
     await expect(page.getByRole('button', { name: '로그아웃' })).toBeVisible();
@@ -157,28 +142,15 @@ test('authenticated owner journey persists budget, private approval, rejection f
     expect(await serviceGet(session.config, `audit_events?select=event_type&entity_id=eq.${persistedJob!.draft_id}&event_type=in.(draft_archived,draft_restored)&order=created_at.asc`)).toEqual([{ event_type: 'draft_archived' }, { event_type: 'draft_restored' }]);
 
     const canonBeforeReject = await serviceGet<Array<{ id: string }>>(session.config, 'memory_items?select=id&memory_type=eq.canon&order=id.asc');
-    await serviceInsert(session.config, 'drafts', {
-      id: rejectedDraftId,
-      owner_id: seedOwnerId,
-      kind: 'short_dialogue',
-      status: 'queued',
-      title: `E2E 거절 대화 ${rejectedDraftId}`,
-    });
-    const [rejectedJob] = await serviceInsert<Array<{ id: string }>>(session.config, 'generation_jobs', {
-      owner_id: seedOwnerId,
-      draft_id: rejectedDraftId,
-      schedule_key: `e2e-reject-${rejectedDraftId}`,
-      scheduled_for: new Date().toISOString(),
-      status: 'queued',
-      payload: { kind: 'short_dialogue', source: 'manual' },
-    });
-    const rejectedGenerated = await edgeJson<{ versionId: string; continuityLevel: string }>(await edgePost(session, 'generate-draft', {
-      jobId: rejectedJob!.id,
-      draftId: rejectedDraftId,
-      idempotencyKey: `e2e-reject-generate-${randomUUID()}`,
+    const rejectedGenerated = await ownerGenerate<{ draftId: string; versionId: string; continuityLevel: string }>(page, session, {
       mode: 'new',
       kind: 'short_dialogue',
-    }));
+      title: `E2E 거절 대화 ${randomUUID()}`,
+      seed: '인물의 반응을 더 선명하게',
+      tags: ['거절', '대화'],
+    });
+    rejectedDraftId = rejectedGenerated.draftId;
+    rejectedReason = `인물의 반응을 더 선명하게 다듬어 주세요. (${rejectedDraftId})`;
     expect(rejectedGenerated.continuityLevel).toBe('review');
     await openDraft(page, rejectedDraftId);
     await page.getByRole('button', { name: '거절' }).click();
@@ -208,7 +180,7 @@ test('authenticated owner journey persists budget, private approval, rejection f
     await expect(page.getByLabel('특별일')).toHaveValue('2026-10-03');
 
     const rejectedDraftEvidence = await serviceGet<Array<{ status: string }>>(session.config, `drafts?select=status&id=eq.${rejectedDraftId}`);
-    const rejectedJobEvidence = await serviceGet<Array<{ draft_id: string; status: string }>>(session.config, `generation_jobs?select=draft_id,status&id=eq.${rejectedJob!.id}`);
+    const rejectedJobEvidence = await serviceGet<Array<{ draft_id: string; status: string }>>(session.config, `generation_jobs?select=draft_id,status&draft_id=eq.${rejectedDraftId}&payload->>source=eq.manual`);
     const rejectedFeedbackEvidence = await serviceGet<Array<{ memory_type: string; status: string; content: string; source_draft_version_id: string }>>(
       session.config,
       `memory_items?select=memory_type,status,content,source_draft_version_id&content=eq.${encodeURIComponent(rejectedReason)}`,
@@ -261,28 +233,20 @@ test('authenticated owner journey persists budget, private approval, rejection f
     expect(await serviceGet(session.config, `memory_items?select=memory_type&source_draft_version_id=eq.${rejectedGenerated.versionId}`)).toEqual([{ memory_type: 'feedback' }]);
     expect(await serviceGet(session.config, 'memory_items?select=id&memory_type=eq.canon&order=id.asc')).toEqual(canonBeforeReject);
 
-    const majorDraftId = randomUUID();
-    await serviceInsert(session.config, 'drafts', { id: majorDraftId, owner_id: seedOwnerId, kind: 'major_event_proposal', status: 'queued', title: 'E2E 중대 사건' });
-    await serviceInsert(session.config, 'major_event_workflows', { owner_id: seedOwnerId, draft_id: majorDraftId, phase: 'proposal', context: { source: 'owner-e2e' } });
-    const proposalJob = await createMajorJob(session, majorDraftId, 'proposal');
-    const earlyScenePlan = await edgePost(session, 'generate-draft', { jobId: proposalJob, draftId: majorDraftId, idempotencyKey: `early-${randomUUID()}`, mode: 'major_event_scene_plan', kind: 'major_event_proposal' });
-    const earlyBody = await earlyScenePlan.json();
-    expect(earlyScenePlan.status).toBe(409);
-    expect(earlyBody).toEqual({ error: 'workflow_phase_not_approved' });
-
-    await generateMajorStage(session, majorDraftId, proposalJob, 'new');
+    const proposalGenerated = await ownerGenerate<{ draftId: string; versionId: string }>(page, session, {
+      mode: 'new', kind: 'major_event_proposal', title: 'E2E 중대 사건',
+      seed: '봉인의 균열과 두 사람의 선택', tags: ['중대 사건', '봉인'],
+    });
+    const majorDraftId = proposalGenerated.draftId;
+    await ownerGenerate(page, session, { draftId: majorDraftId, mode: 'major_event_scene_plan' }, 409);
     await approvePrivate(page, majorDraftId);
     expect(await serviceGet(session.config, `major_event_workflows?select=phase&draft_id=eq.${majorDraftId}`)).toEqual([{ phase: 'proposal_approved' }]);
 
-    await reopenApprovedMajorDraft(session, majorDraftId);
-    const sceneJob = await createMajorJob(session, majorDraftId, 'scene');
-    await generateMajorStage(session, majorDraftId, sceneJob, 'major_event_scene_plan');
+    await ownerGenerate(page, session, { draftId: majorDraftId, mode: 'major_event_scene_plan' });
     await approvePrivate(page, majorDraftId);
     expect(await serviceGet(session.config, `major_event_workflows?select=phase&draft_id=eq.${majorDraftId}`)).toEqual([{ phase: 'scene_plan_approved' }]);
 
-    await reopenApprovedMajorDraft(session, majorDraftId);
-    const finalJob = await createMajorJob(session, majorDraftId, 'final');
-    await generateMajorStage(session, majorDraftId, finalJob, 'major_event_draft');
+    await ownerGenerate(page, session, { draftId: majorDraftId, mode: 'major_event_draft' });
     await approvePrivate(page, majorDraftId);
     expect(await serviceGet(session.config, `major_event_workflows?select=phase&draft_id=eq.${majorDraftId}`)).toEqual([{ phase: 'final_approved' }]);
     expect(await serviceGet(session.config, `publish_jobs?select=id&draft_id=eq.${majorDraftId}`)).toEqual([]);
