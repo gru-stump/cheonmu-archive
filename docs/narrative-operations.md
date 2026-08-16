@@ -15,11 +15,21 @@
 - GitHub 임시 브랜치 생성·게시·삭제와 Pages 배포
 - 일간·접속 시·주간·특별일 생산 활성화
 
-또한 현재 `run-schedules`는 예정된 작업을 `generation_jobs`에 **대기열로만
-넣고**, 대기 작업을 `generate-draft`로 실행하는 생산 worker가 저장소에 없습니다.
-관리자 UI도 `action: access`를 호출하지 않습니다. 두 경로가 구현되고 로컬·스테이징
-검증 증거가 있기 전에는 생산 일정을 활성화하지 않습니다. 시계 호출이 성공해도
-실제 초안이 생성되지 않을 수 있기 때문입니다.
+또한 다음 세 가지 생산 차단 조건이 남아 있습니다.
+
+- `run-schedules`는 예정된 작업을 `generation_jobs`에 **대기열로만 넣고**,
+  대기 작업을 `generate-draft`로 실행하는 생산 worker가 저장소에 없습니다.
+- 관리자 UI에는 `action: access`를 호출하는 동일 출처 경로가 없습니다.
+- 현재 설정은 `automation_enabled = false`이면 활성 provider도 함께 해제하고,
+  생성 예약도 거부합니다. 따라서 “자동 일정은 끄고 수동 생성만 허용”하는
+  격리 캐너리 상태를 만들 수 없습니다.
+
+첫째는 대기 job을 선점해 draft·idempotency·attempt를 묶고 `generate-draft`를
+호출하는 신뢰된 worker가 필요합니다. 둘째는 소유자 bearer만 전달하는
+`POST /api/narrative/access`와 안정적인 409 응답이 필요합니다. 셋째는 수동 생성
+허용과 자동 일정 허용을 서로 다른 서버 정책으로 분리해야 합니다. 이 세 경로가
+구현되고 로컬·스테이징 검증 증거가 있기 전에는 라이브 캐너리와 생산 일정을
+활성화하지 않습니다. 시계 호출이 성공해도 실제 초안이 생성되지 않을 수 있기 때문입니다.
 
 ## 2. 절대 원칙
 
@@ -40,7 +50,7 @@
 | Supabase | 전용 프로젝트, 단일 Auth 사용자 | 프로젝트 ref, owner UUID, 확인일 |
 | 관리자 주소 | 프로토콜·호스트·포트가 고정된 HTTPS origin | 예: `https://admin.example.com` |
 | AI | OpenAI 또는 Anthropic 하나, 전용 API key | 제공자, model ID, 단가 확인일 |
-| 예산 | 앱 월/일/호출 한도 + 제공자 계정 한도 | 설정된 USD 금액과 확인일 |
+| 예산 | 앱 월/일/호출 한도 + 제공자 강제 계정 한도 | 설정된 USD 금액, 강제 여부, 확인일 |
 | GitHub | 대상 저장소 하나만 허용하는 fine-grained token | owner/repo/branch, 허용 요약, 만료일 |
 | 백업 | 복구 시험이 완료된 DB 백업 + Git 원격 | 백업 ID, 복구 시험일 |
 
@@ -51,15 +61,17 @@ Node.js 20 이상, Docker Desktop, Supabase CLI, Playwright Chromium을 준비�
 
 ```powershell
 npm ci
+npm --prefix admin ci
 npm run narrative:security
 npm run validate
 npm run test:run
 npm run build
 npm run e2e
-npm --prefix admin ci
 npm --prefix admin run test -- --run
 npm --prefix admin run build
 npm --prefix admin run e2e
+# 두 dist가 만들어진 뒤 반드시 다시 실행합니다.
+npm run narrative:security
 npx supabase db reset --local --yes
 npx supabase test db
 npm run test:db:concurrency
@@ -67,9 +79,11 @@ npm run test:db:upgrade
 npm run test:functions:gateway
 ```
 
-`narrative:security`는 Git 추적 파일, `dist`, `admin/dist`를 스캔합니다. 발견 시 파일명과
-규칙명만 출력하며 일치한 값은 출력하지 않습니다. 실패하면 즉시 출시를 중단하고,
-유출 가능성이 있는 키는 먼저 폐기·재발급한 뒤 Git 이력을 정리합니다.
+`narrative:security`는 Git 추적 파일, `dist`, `admin/dist`를 스캔합니다. 첫 실행은
+소스를 빨리 확인하고, 두 번째 실행은 새 root/Admin bundle까지 확인하는 최종 출시
+게이트입니다. 발견 시 파일명과 규칙명만 출력하며 일치한 값은 출력하지 않습니다.
+실패하면 즉시 출시를 중단하고, 유출 가능성이 있는 키는 먼저 폐기·재발급한 뒤
+Git 이력을 정리합니다.
 
 ## 5. 단일 소유자와 로그인
 
@@ -84,12 +98,12 @@ on conflict (owner_id) do update set display_name = excluded.display_name;
 ```
 
 3. **Authentication > Sign In / Providers**에서 `Allow new users to sign up`을 끄고, 익명 로그인도
-   끄나있음을 확인합니다. 로컬 `supabase/config.toml`의 `enable_signup = false`는 호스팅
+   꺼져 있음을 확인합니다. 로컬 `supabase/config.toml`의 `enable_signup = false`는 호스팅
    프로젝트를 자동 변경하지 않습니다. [Supabase Auth 일반 설정](https://supabase.com/docs/guides/auth/general-configuration)에서도
    이 옵션을 끄면 기존 사용자만 로그인할 수 있음을 명시합니다.
 4. Auth **URL Configuration**의 Site URL과 Redirect URLs에 실제 관리자 origin을 등록합니다.
    매직 링크는 현재 `window.location.origin`으로 돌아옵니다.
-5. 소유자 계정으로 마직 링크를 받아 로그인하고, 다른 계정은 `관리자 권한이
+5. 소유자 계정으로 매직 링크를 받아 로그인하고, 다른 계정은 `관리자 권한이
    없습니다`로 차단되는지 확인합니다.
 
 ## 6. RLS와 권한 확인
@@ -110,7 +124,7 @@ select count(*) from public.owner_profiles;
 ```
 
 다음 검사는 `<OWNER_UUID>`를 실제 값으로, `<NON_OWNER_UUID>`를 존재하지 않는 다른 UUID로
-바꿠 트랜잭션 내에서만 실행합니다.
+바꿔 트랜잭션 내에서만 실행합니다.
 
 ```sql
 begin;
@@ -200,7 +214,7 @@ where owner_id = '<OWNER_UUID>'::uuid;
 ## 9. 모델 단가와 계정 하드 한도
 
 이 작업에서 공식 문서 링크를 마지막으로 확인한 날은 **2026-08-16**입니다.
-단가는 바뀐 수 있으므로 이 문서에 특정 금액을 고정하지 않습니다.
+단가는 바뀔 수 있으므로 이 문서에 특정 금액을 고정하지 않습니다.
 
 - OpenAI: [API 가격](https://openai.com/api/pricing/), [organization limits](https://platform.openai.com/settings/organization/limits)
 - Anthropic: [Claude 가격](https://platform.claude.com/docs/en/about-claude/pricing), [지출·속도 한도](https://platform.claude.com/docs/en/api/rate-limits)
@@ -211,18 +225,24 @@ where owner_id = '<OWNER_UUID>'::uuid;
 입력하지 않습니다. `단가 확인일`은 오늘보다 미래를 입력할 수 없고, 유효 기간이
 지나면 자동 실행이 차단됩니다.
 
-계정 하드 한도는 앱과 독립적으로 설정합니다.
+계정 한도는 앱과 독립적으로 확인합니다. 단, **OpenAI Project의 monthly budget은
+강제 차단 한도가 아니라 알림용 soft threshold**입니다. 초과해도 API 요청이 계속
+처리된다는 [OpenAI Project 예산 안내](https://help.openai.com/en/articles/9186755-managing-projects-in-the-api-platform)를
+기준으로 하며, 이를 `hard limit 확인`으로 기록하지 않습니다.
 
-1. OpenAI는 organization/project Billing에서 월 예산·알림을, Anthropic은 Settings > Billing에서
-   지출 한도를 설정합니다.
-2. 계정 한도는 소유자가 감당할 수 있는 최대 손실 이하로 둡니다.
-3. 앱의 월간 한도는 계정 한도 이하, 일일 한도는 월간 한도 이하로 둡니다.
-4. 첫 캐너리는 소유자가 승인한 최소의 0이 아닌 월/일 예산과 수동 호출 1회로 한정합니다.
-5. 주의/위험 기준은 예를 들어 80%/95%로 시작하되, 실제 예산에 맞게 소유자가 결정합니다.
+1. 선택한 제공자의 organization/account Billing에서 현재 계정에 적용되는 지출·속도
+   한도와 강제 차단 여부를 확인합니다. 설정 화면 이름만 보지 말고, 한도 도달 시
+   새 요청이 실제 거부된다는 공식 설명과 확인일을 증거로 남깁니다.
+2. OpenAI Project budget처럼 알림만 보내는 값은 soft alert로 따로 기록합니다.
+3. 강제 차단을 제공하는 계정 한도는 소유자가 감당할 수 있는 최대 손실 이하로 둡니다.
+4. 앱의 월간 한도는 강제 계정 한도 이하, 일일 한도는 월간 한도 이하로 둡니다.
+5. 첫 캐너리는 소유자가 승인한 최소의 0이 아닌 월/일 예산과 수동 호출 1회로 한정합니다.
+6. 주의/위험 기준은 예를 들어 80%/95%로 시작하되, 실제 예산에 맞게 소유자가 결정합니다.
 
-제공자 지출 한도는 지연되어 적용될 수 있으므로 OpenAI도 사용량 대시보드를
-정기적으로 확인하라고 안내합니다. 앱의 사전 예약 장치를 지출 한도의 단일
-방어선으로 보지 않습니다.
+계정에 강제 지출 중단 기능이 없다면 soft alert를 대체물로 간주하지 않습니다.
+강제 한도를 제공하는 다른 격리 계정/제공자 또는 검증된 외부 billing gateway를
+준비할 때까지 라이브 캐너리와 생산 자동화를 보류합니다. 제공자 한도는 사용량
+반영이 지연될 수도 있으므로 앱의 사전 예약 장치 역시 단일 방어선으로 보지 않습니다.
 
 ## 10. fake provider 제거 확인
 
@@ -251,7 +271,7 @@ project ref와 연결 상태를 먼저 확인합니다.
 3. Edge secrets와 Vault 이름을 맞춘 뒤 Edge Functions를 배포합니다.
 4. RLS·인증·gateway 확인 후 관리자 preview를 배포합니다.
 5. preview 고정 origin으로 로그인·읽기 경로를 확인한 뒤에만 production을 배포합니다.
-6. 자동화와 모든 일정은 아직 끄어 둡니다.
+6. 자동화와 모든 일정은 아직 꺼 둡니다.
 
 배포를 돌린 직후 관리자 로그인, 설정 조회, 초안 목록, 비밀 연결
 상태, 현재 예산을 확인합니다. 비밀 값 자체는 확인 화면에 나오면 안 됩니다.
@@ -263,13 +283,47 @@ project ref와 연결 상태를 먼저 확인합니다.
 
 - 대기열에서 `generate-draft`로 연결되는 worker가 구현·검증됨
 - Admin 새 수동 생성 또는 검증된 수동 dispatcher 경로가 구현됨
-- 임시 GitHub branch를 사용해도 production Pages가 즉시 변경되지 않는 preview 경로가 확보됨
+- 수동 생성 허용과 자동 일정 허용이 서버 정책으로 분리되어, 일정 off 상태에서도
+  활성 provider·예산·수동 호출 한도를 적용한 수동 생성이 가능함
+- 제공자 계정의 강제 지출 중단이 확인됨. soft budget 알림만 있으면 불충족
+- 임시 GitHub branch를 사용해도 production Pages가 변경되지 않는 preview 경로가 확보됨.
+  현재 `deploy.yml`을 임시 branch에서 수동 실행하면 `github-pages` 환경을 배포하므로
+  캐너리 preview로 사용하지 않음
 - 백업 및 복구 시험 완료, 비상 정지 담당자 대기
 - 월/일 예산과 수동 호출 한도가 승인된 최소의 0이 아닌 값임
 
-실행할 때의 정확한 순서는 다음과 같습니다.
+외부 작업 승인 뒤, 게시 전에 먼저 branch 안전 장치를 설정합니다.
 
-1. 자동화와 모든 일정을 끄고, 실제 제공자 하나만 활성화합니다.
+1. 현재 production target을 조회해 `<PRODUCTION_BRANCH>`와 기준 commit SHA를 기록합니다.
+
+```sql
+select github_repository_owner, github_repository_name, github_branch
+from public.narrative_admin_settings
+where owner_id = '<OWNER_UUID>'::uuid;
+```
+
+2. GitHub UI에서 그 기준 SHA로 `<CANARY_BRANCH>`를 새로 만듭니다. 현재 production
+   branch와 다른 이름인지 확인합니다. 이 단계는 이 문서 작성 작업에서는 실행하지 않았습니다.
+3. `pages: write`와 `deploy-pages`가 없는 별도 canary CI/artifact preview 또는 production과
+   분리된 preview 환경을 준비합니다. 현재 `.github/workflows/deploy.yml`의
+   `workflow_dispatch`를 `<CANARY_BRANCH>`에서 실행하지 않습니다.
+4. 백업 후 서버 target만 캐너리 branch로 바꾸고 즉시 다시 조회합니다.
+
+```sql
+update public.narrative_admin_settings
+set github_branch = '<CANARY_BRANCH>', updated_at = now()
+where owner_id = '<OWNER_UUID>'::uuid;
+
+select github_repository_owner, github_repository_name, github_branch
+from public.narrative_admin_settings
+where owner_id = '<OWNER_UUID>'::uuid;
+```
+
+조회 결과가 정확하지 않으면 공개 승인을 누르지 않습니다. 위 준비가 끝났을 때의
+캐너리 순서는 다음과 같습니다.
+
+1. 자동 일정·접속 시 생성·dispatcher를 모두 끄고, 분리된 수동 생성 정책과
+   실제 제공자 하나만 활성화합니다.
 2. 제공자 계정 하드 한도와 앱 월/일/수동 1회 한도를 재확인합니다.
 3. 짧은 대화 1건을 수동 생성합니다. job ID, draft ID, provider response ID,
    model ID, 입력/출력 token, 예약/정산 미달러, 시각만 기록합니다.
@@ -277,18 +331,41 @@ project ref와 연결 상태를 먼저 확인합니다.
 5. 해당 초안을 사유와 함께 거절합니다. 정사/연속/최근 기억에는 추가되지 않고,
    feedback memory만 작성되는지 확인합니다.
 6. fixture-safe 대화 1건을 다시 생성하고 내용·연속성 검사를 직접 한 뒤 공개 승인합니다.
-7. 임시 branch에만 게시하고, 게시 커밋 SHA가 승인된 고정 버전과 같은지
-   확인합니다. Actions run을 정확한 SHA로 연결하고 validate/test/build/e2e를 모두 확인합니다.
-8. preview에서 연결된 기록 제목·본문·메타데이터만 보이고 prompt, raw response,
+7. 임시 branch에만 게시하고, 다음 조회의 고정 target이 `<CANARY_BRANCH>`인지
+   확인합니다. 다르면 즉시 비상 정지하고 GitHub commit 존재 여부부터 조사합니다.
+
+```sql
+select id, status, repository_owner, repository_name, repository_branch,
+       commit_sha, published_path
+from public.publish_jobs
+where draft_id = '<DRAFT_UUID>'::uuid
+order by created_at desc
+limit 1;
+```
+
+8. 게시 commit SHA가 승인된 고정 버전과 같은지 확인합니다. 별도 canary CI run을
+   정확한 SHA로 연결하고 validate/test/build/e2e와 artifact를 확인한 뒤, production과
+   분리된 preview에서 렌더링합니다.
+9. preview에서 연결된 기록 제목·본문·메타데이터만 보이고 prompt, raw response,
    private memory, 비용, audit가 보이지 않는지 확인합니다.
-9. 커밋 SHA, Actions run ID, preview URL, ledger 요약, DB 상태, 시작/종료 시각을 증거표에 남깁니다.
-10. 즉시 자동화를 끄고 임시 branch를 GitHub UI에서 삭제합니다. branch 삭제 전에
-    증거가 보존되었는지 확인합니다.
+10. 커밋 SHA, Actions run ID, preview URL, ledger 요약, DB 상태, 시작/종료 시각을 증거표에 남깁니다.
+11. 즉시 수동 생성을 끄고 서버 target을 원래 branch로 복구한 뒤 조회로 확인합니다.
+
+```sql
+update public.narrative_admin_settings
+set github_branch = '<PRODUCTION_BRANCH>', updated_at = now()
+where owner_id = '<OWNER_UUID>'::uuid;
+```
+
+12. 해당 canary publish job이 `publishing`에 남지 않았고 증거가 보존됐는지 확인한 뒤
+    GitHub UI에서 임시 branch를 삭제합니다. 실패 job은 frozen branch를 유지하므로,
+    branch 삭제 뒤 재시도하지 않습니다.
 
 중간에 한 단계라도 실패하면 다음 단계로 가지 않고 다음 롤백을 실행합니다.
 
-- 자동화·일정 전부 끄기
-- 활성 provider 해제, 수동 호출 한도 0, 월/일 예산을 이미 약정된 금액 이하로 낮추기
+- 수동 생성·자동화·일정 전부 끄기
+- 활성 provider 해제, 수동 호출 한도 0, 월/일 예산을 현재 약정액까지 낮추기
+- 공개 승인 전 설정한 production branch를 서버 target에 복구하고 조회로 확인하기
 - 임시 branch 후속 게시 중단; 생성된 커밋은 증거 확보 전에 삭제하지 않기
 - 예산 예약이 남았다면 job ID로 실패/정산 상태를 확인하고 수동 DB 수정 전에 백업하기
 - 원인과 새 테스트 증거가 없으면 재시도하지 않기
@@ -372,7 +449,7 @@ artifact·로그의 노출 범위를 조사합니다.
 - Vault 백업이 DB 백업에 포함되는지는 해당 플랜을 확인하고, 복구한 키는 보안을 위해 재발급합니다.
 - 최소 분기 1회 별도 프로젝트로 복구해 migration head, owner 1명, RLS, draft/version,
   memory, budget ledger, schedules, publication SHA를 표본 대조합니다.
-- 복구 시험은 자동화·cron·provider·GitHub token이 끄진 격리 환경에서 합니다.
+- 복구 시험은 자동화·cron·provider·GitHub token이 꺼진 격리 환경에서 합니다.
 
 ## 18. 모니터링
 
@@ -392,7 +469,7 @@ artifact·로그의 노출 범위를 조사합니다.
 - Auth 사용자 1명, owner profile 1건, 예상하지 않은 세션/로그인
 - `npm run narrative:security`와 주요 로컬 게이트
 
-임계값을 넘거나 원인을 알 수 없는 실패가 2회 반복되면 자동화를 끈고 원인을
+임계값을 넘거나 원인을 알 수 없는 실패가 2회 반복되면 자동화를 끄고 원인을
 조사합니다. 단가 확인일이 만료되면 시스템이 자동 실행을 막는 것이 정상입니다.
 
 ## 19. 커스텀 도메인 주소
@@ -403,7 +480,7 @@ GitHub Pages 커스텀 도메인에 배포되었더라도 배포 상태는 `depl
 아웃바운드 링크는 생략됩니다. v1에는 커스텀 도메인 allowlist가 없으므로 정상적인
 보안 동작입니다. 임의의 커스텀 URL을 문서나 DB에 넣어 우회하지 않습니다.
 
-## 20. 외부 작업 체크포인 기록 양식
+## 20. 외부 작업 체크포인트 기록 양식
 
 다음 표를 외부 변경을 하기 전에 복사해 작성합니다.
 
@@ -414,7 +491,7 @@ GitHub Pages 커스텀 도메인에 배포되었더라도 배포 상태는 `depl
 | 변경 범위 | 프로젝트·함수·브랜치·일정 ID만 기록 |
 | 사전 백업 ID | |
 | 예산 / 계정 하드 한도 | 금액만 기록 |
-| 시작 상태 | 자동화 off, 일정 off, 활성 provider |
+| 시작 상태 | 수동 생성만 on, 자동화·일정 off, 활성 provider |
 | 성공 증거 | job/draft/commit/run/deployment ID, 시각, 결과 |
 | 롤백 기준 | |
 | 롤백 실행자 / 시각 | |

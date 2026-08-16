@@ -30,8 +30,8 @@ interface RuleMatch {
 const providerKeyPattern = /\bsk-(?:ant-|proj-)?[a-z0-9_-]{20,}\b/giu;
 const githubTokenPattern = /\b(?:gh[pousr]_[a-z0-9]{30,255}|github_pat_[a-z0-9_]{20,255})\b/giu;
 const jwtPattern = /\b([a-z0-9_-]{8,})\.([a-z0-9_-]{8,})\.([a-z0-9_-]{16,})\b/giu;
-const authorizationPattern = /\bauthorization\s*[:=]\s*["'`]?bearer[ \t]+([^\s"'`,;}{)\]]{16,})/giu;
-const rawPromptPattern = /(?:["'`](?:raw[_-]?prompt|prompt[_-]?(?:text|body|content)|system[_-]?prompt|user[_-]?prompt)["'`]|\b(?:raw[_-]?prompt|prompt[_-]?(?:text|body|content)|system[_-]?prompt|user[_-]?prompt)\b)\s*[:=]\s*(["'`])([^\r\n"'`]{1,4096})\1/giu;
+const authorizationPattern = /(?:["'`]authorization["'`]|\bauthorization\b)\s*[:=]\s*["'`]?bearer[ \t]+([^\s"'`,;}{)\]]{16,})/giu;
+const rawPromptPattern = /(?:["'`](?:raw[_-]?prompt|prompt[_-]?(?:text|body|content)|system[_-]?prompt|user[_-]?prompt)["'`]|\b(?:raw[_-]?prompt|prompt[_-]?(?:text|body|content)|system[_-]?prompt|user[_-]?prompt)\b)\s*[:=]\s*(?:"((?:\\[\s\S]|[^"\\])*)"|'((?:\\[\s\S]|[^'\\])*)'|`((?:\\[\s\S]|[^`\\])*)`)/giu;
 const base64CandidatePattern = /(?:^|[^a-z0-9+/])([a-z0-9+/]{24,8192}={0,2})(?=$|[^a-z0-9+/=])/giu;
 
 function slash(path: string): string {
@@ -61,16 +61,18 @@ async function checkedPath(root: string, candidate: string): Promise<string | nu
   }
 }
 
-async function walkDirectory(root: string, directory: string): Promise<string[]> {
+async function walkDirectory(root: string, directory: string, visited = new Set<string>()): Promise<string[]> {
   const physical = await checkedPath(root, directory);
   if (!physical) return [];
+  if (visited.has(physical)) return [];
+  visited.add(physical);
   const files: string[] = [];
   for (const entry of await readdir(physical, { withFileTypes: true })) {
     const child = resolve(physical, entry.name);
     const childPhysical = await realpath(child);
     if (!isWithin(root, childPhysical)) throw new Error('scan_path_outside_repository');
-    const stat = await lstat(child);
-    if (stat.isDirectory()) files.push(...await walkDirectory(root, slash(relative(root, child))));
+    const stat = await lstat(childPhysical);
+    if (stat.isDirectory()) files.push(...await walkDirectory(root, slash(relative(root, childPhysical)), visited));
     else if (stat.isFile()) files.push(childPhysical);
   }
   return files;
@@ -98,17 +100,19 @@ async function filesToScan(root: string, trackedFiles?: readonly string[]): Prom
 
 function decodePercent(value: string): string | null {
   if (!/%[0-9a-f]{2}/iu.test(value)) return null;
-  try {
-    let decoded = value;
-    for (let pass = 0; pass < 2; pass += 1) {
-      const next = decodeURIComponent(decoded);
-      if (next === decoded) break;
-      decoded = next;
-    }
-    return decoded === value ? null : decoded;
-  } catch {
-    return null;
+  let decoded = value;
+  for (let pass = 0; pass < 2; pass += 1) {
+    const next = decoded.replace(/(?:%[0-9a-f]{2})+/giu, (encoded) => {
+      try {
+        return decodeURIComponent(encoded);
+      } catch {
+        return encoded;
+      }
+    });
+    if (next === decoded) break;
+    decoded = next;
   }
+  return decoded === value ? null : decoded;
 }
 
 function decodeEscapes(value: string): string | null {
@@ -162,9 +166,8 @@ function isServiceRoleJwt(candidate: string): boolean {
 
 function isCredentialLike(candidate: string): boolean {
   if (/^(?:token|invalid-token|owner-token|visitor-token|expired-token|user-token|service-(?:role-)?(?:value|secret|credential)|fixture-[a-z0-9-]+)$/iu.test(candidate)) return false;
-  if (candidate.includes('${') || candidate.length < 24) return false;
-  const categories = [/[a-z]/u, /[A-Z]/u, /[0-9]/u, /[^a-z0-9]/iu].filter((pattern) => pattern.test(candidate)).length;
-  return categories >= 3 && new Set(candidate).size >= 8;
+  if (candidate.includes('${') || candidate.length < 24 || isObviousPlaceholder(candidate)) return false;
+  return true;
 }
 
 function isObviousPlaceholder(candidate: string): boolean {
@@ -197,7 +200,9 @@ function matches(source: string): RuleMatch[] {
       found.push({ rule: 'authorization-header', value: credential });
     }
   }
-  for (const match of source.matchAll(rawPromptPattern)) found.push({ rule: 'raw-prompt-field', value: match[2]! });
+  for (const match of source.matchAll(rawPromptPattern)) {
+    found.push({ rule: 'raw-prompt-field', value: match[1] ?? match[2] ?? match[3] ?? '' });
+  }
   return found;
 }
 

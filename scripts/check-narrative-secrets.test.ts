@@ -117,6 +117,34 @@ describe('scanNarrativeSecrets', () => {
     ]);
   });
 
+  it('detects quoted authorization keys, opaque bearer values, mixed percent text, and multiline prompt literals', async () => {
+    // JSON quoting, low-variety opaque credentials, or an unrelated malformed percent must not hide a leak.
+    const root = repository();
+    const opaqueCredential = 'Q'.repeat(32);
+    const jsonAuthorization = JSON.stringify({ [['Author', 'ization'].join('')]: ['Bearer ', opaqueCredential].join('') });
+    const encodedGitHub = [...githubToken('H')].map((character) => `%${character.charCodeAt(0).toString(16)}`).join('');
+    const promptKey = ['raw', 'Prompt'].join('');
+    const multilinePrompt = [promptKey, ': `private fixture line one\nline two`'].join('');
+    const longPrompt = [promptKey, ': "', 'private fixture '.repeat(400), '"'].join('');
+    writeFileSync(join(root, 'quoted.json'), jsonAuthorization);
+    writeFileSync(join(root, 'mixed-percent.txt'), `progress is 100%\n${encodedGitHub}`);
+    writeFileSync(join(root, 'multiline.ts'), multilinePrompt);
+    writeFileSync(join(root, 'long-prompt.ts'), longPrompt);
+
+    const findings = await scanNarrativeSecrets({
+      repoRoot: root,
+      trackedFiles: ['quoted.json', 'mixed-percent.txt', 'multiline.ts', 'long-prompt.ts'],
+    });
+
+    expect(findings).toEqual([
+      { file: 'long-prompt.ts', rule: 'raw-prompt-field' },
+      { file: 'mixed-percent.txt', rule: 'github-token' },
+      { file: 'multiline.ts', rule: 'raw-prompt-field' },
+      { file: 'quoted.json', rule: 'authorization-header' },
+    ]);
+    expect(formatSecretFindings(findings)).not.toContain(opaqueCredential);
+  });
+
   it('allows only the exact fixture value whose SHA-256 fingerprint is listed', async () => {
     // File- or rule-wide exemptions would hide a second secret placed beside an allowed fixture.
     const root = repository();
@@ -151,5 +179,23 @@ describe('scanNarrativeSecrets', () => {
     }
     await expect(scanNarrativeSecrets({ repoRoot: root, trackedFiles: [] }))
       .rejects.toThrow('scan_path_outside_repository');
+  });
+
+  it('follows an in-repository build junction instead of silently skipping its files', async () => {
+    // Build tools may materialize an in-repo junction; its physical target still belongs to the scan scope.
+    const root = repository();
+    const target = join(root, 'generated-bundles');
+    mkdirSync(target);
+    writeFileSync(join(target, 'bundle.js'), providerKey('M'));
+    const linked = join(root, 'dist', 'internal');
+    try {
+      symlinkSync(target, linked, process.platform === 'win32' ? 'junction' : 'dir');
+    } catch {
+      return;
+    }
+
+    const findings = await scanNarrativeSecrets({ repoRoot: root, trackedFiles: [] });
+
+    expect(findings).toEqual([{ file: 'generated-bundles/bundle.js', rule: 'provider-key' }]);
   });
 });

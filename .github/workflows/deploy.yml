@@ -47,6 +47,9 @@ jobs:
       - name: Build public archive
         run: npm run build
 
+      - name: Scan tracked source and built archive
+        run: npm run narrative:security
+
       - name: Run end-to-end tests
         run: npm run e2e
 
