@@ -162,8 +162,8 @@ select public.freeze_generation_context(
 );
 `);
   assert.notEqual(substitutedLegacyRevision.code, 0);
-  assert.match(substitutedLegacyRevision.stderr, /manual_generation_binding_changed/,
-    'an incomplete backfilled legacy revision must fail closed before accepting substituted mode, key, or provider');
+  assert.match(substitutedLegacyRevision.stderr, /generation_direct_claim_expired/,
+    'an incomplete backfilled legacy revision without a direct lease must fail closed before accepting substituted mode, key, or provider');
   assert.equal(
     await scalar("select concat(to_regprocedure('public.save_narrative_settings(boolean,boolean,text,jsonb,bigint,bigint,integer,integer,integer,numeric,integer)') is not null, '|', to_regprocedure('public.save_narrative_settings(boolean,text,jsonb,bigint,bigint,integer,integer,integer,numeric,integer)') is null, '|', has_function_privilege('authenticated', 'public.save_narrative_settings(boolean,boolean,text,jsonb,bigint,bigint,integer,integer,integer,numeric,integer)', 'EXECUTE'), '|', not has_function_privilege('anon', 'public.save_narrative_settings(boolean,boolean,text,jsonb,bigint,bigint,integer,integer,integer,numeric,integer)', 'EXECUTE'));"),
     't|t|t|t', 'upgrade must replace the combined policy command with the narrow authenticated split signature',
