@@ -45,6 +45,58 @@ function estimateRevisionCost(detail: DraftDetail, outputTokens: number): number
   return pricing.fixedCostMicros + Math.ceil(pricing.maximumInputTokens * pricing.inputCostMicrosPerMillion / 1_000_000) + Math.ceil(boundedOutput * pricing.outputCostMicrosPerMillion / 1_000_000);
 }
 
+function publicationLink(detail: DraftDetail, kind: 'commit' | 'workflow' | 'pages'): string | null {
+  const publication = detail.publication;
+  const raw = publication?.[kind].url;
+  if (!publication || !raw) return null;
+  try {
+    const url = new URL(raw);
+    if (url.protocol !== 'https:' || url.username || url.password || url.port || url.search || url.hash) return null;
+    const owner = publication.repositoryOwner;
+    const repository = publication.repositoryName;
+    if (!/^[A-Za-z0-9_.-]{1,100}$/.test(owner) || !/^[A-Za-z0-9_.-]{1,100}$/.test(repository)) return null;
+    if (kind === 'commit') {
+      const sha = publication.commit.sha;
+      const expected = sha && /^[0-9a-f]{40}$/i.test(sha) ? `/${owner}/${repository}/commit/${sha}` : '';
+      return url.hostname === 'github.com' && url.pathname === expected ? url.href : null;
+    }
+    if (kind === 'workflow') {
+      const runId = publication.workflow.runId;
+      const expected = Number.isSafeInteger(runId) && Number(runId) > 0 ? `/${owner}/${repository}/actions/runs/${runId}` : '';
+      return url.hostname === 'github.com' && url.pathname === expected ? url.href : null;
+    }
+    const host = `${owner.toLowerCase()}.github.io`;
+    const path = repository.toLowerCase() === host ? '/' : `/${repository}/`;
+    return url.hostname === host && url.pathname.toLowerCase().startsWith(path.toLowerCase()) ? url.href : null;
+  } catch { return null; }
+}
+
+const workflowLabels = {
+  pending: 'Workflow pending', queued: 'Workflow queued', in_progress: 'Workflow running',
+  success: 'Workflow succeeded', failure: 'Workflow failed', timed_out: 'Workflow observation timed out',
+} as const;
+const pagesLabels = {
+  pending: 'GitHub Pages pending', queued: 'GitHub Pages queued', in_progress: 'GitHub Pages deploying',
+  success: 'GitHub Pages deployed', failure: 'GitHub Pages failed', timed_out: 'GitHub Pages observation timed out',
+} as const;
+
+function PublicationStatus({ detail }: { detail: DraftDetail }) {
+  const publication = detail.publication;
+  if (!publication) return null;
+  const commitUrl = publicationLink(detail, 'commit');
+  const workflowUrl = publicationLink(detail, 'workflow');
+  const pagesUrl = publicationLink(detail, 'pages');
+  const commitLabel = publication.commit.status === 'created' ? 'Commit created' : publication.commit.status === 'failed' ? 'Commit failed' : 'Commit pending';
+  return <section className="publication-status" role="region" aria-label="Publication status">
+    <h2>Publication status</h2>
+    <dl>
+      <div><dt>Commit</dt><dd>{commitLabel}{commitUrl && <> · <a href={commitUrl} target="_blank" rel="noreferrer noopener">View commit</a></>}</dd></div>
+      <div><dt>Workflow</dt><dd>{workflowLabels[publication.workflow.status]}{workflowUrl && <> · <a href={workflowUrl} target="_blank" rel="noreferrer noopener">View workflow</a></>}</dd></div>
+      <div><dt>GitHub Pages</dt><dd>{pagesLabels[publication.pages.status]}{pagesUrl && <> · <a href={pagesUrl} target="_blank" rel="noreferrer noopener">Open Pages site</a></>}</dd></div>
+    </dl>
+  </section>;
+}
+
 export function DraftReviewPage({ api, draftId, readOnly = false }: { api: NarrativeApi; draftId: string; readOnly?: boolean }) {
   const [detail, setDetail] = useState<DraftDetail | null>(null);
   const [loadError, setLoadError] = useState(false);
@@ -139,6 +191,7 @@ export function DraftReviewPage({ api, draftId, readOnly = false }: { api: Narra
       {blocked && <AdminNotice tone="danger"><strong>차단된 버전</strong> · {reviewable ? '이 버전은 사유를 남겨 거절만 할 수 있습니다.' : '검토가 종료되어 추가 작업을 할 수 없습니다.'}</AdminNotice>}
       {!dialog && message && <AdminNotice tone={stale || problem ? 'danger' : 'success'}>{message}</AdminNotice>}
       {!dialog && stale && <button type="button" onClick={() => void load()}>새로 불러오기</button>}
+      <PublicationStatus detail={detail} />
       <div className="draft-review__layout">
         <section className="draft-reader" aria-labelledby="final-text"><h2 id="final-text">최종 본문</h2><pre className="draft-body">{version.content.body}</pre><span data-testid="reader-end" aria-hidden="true" /></section>
         <aside className="draft-review__rail" aria-label="검토 근거">

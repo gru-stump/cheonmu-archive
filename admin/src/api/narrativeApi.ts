@@ -38,6 +38,15 @@ export interface DraftDetail extends Omit<DraftSummary, 'updatedAt' | 'continuit
   latestVersionId: string;
   latestVersion: DraftVersion;
   versions: DraftVersion[];
+  publication?: {
+    phase: 'commit_created' | 'workflow_running' | 'workflow_succeeded' | 'workflow_failed' | 'pages_running' | 'pages_failed' | 'deployed' | 'tracking_timed_out';
+    trackingStatus: 'pending' | 'observing' | 'completed' | 'timed_out';
+    repositoryOwner: string;
+    repositoryName: string;
+    commit: { status: 'pending' | 'created' | 'failed'; sha: string | null; url: string | null };
+    workflow: { status: 'pending' | 'queued' | 'in_progress' | 'success' | 'failure' | 'timed_out'; runId: number | null; url: string | null };
+    pages: { status: 'pending' | 'queued' | 'in_progress' | 'success' | 'failure' | 'timed_out'; deploymentId: number | null; url: string | null };
+  };
   revisionPricing?: {
     maximumInputTokens: number;
     inputCostMicrosPerMillion: number;

@@ -109,6 +109,29 @@ async function verifyFunction(name, anonKey, accessToken) {
   assert((await denied.json())?.error === 'origin_not_allowed', `${name} denied-origin actual request bypassed the handler policy`);
 }
 
+async function verifyPublicationChecker(anonKey) {
+  const unauthenticated = await fetch(`${gatewayUrl}/check-publication`, {
+    method: 'POST', headers: { apikey: anonKey, 'content-type': 'application/json' },
+    body: JSON.stringify({ action: 'poll' }),
+  });
+  assert(unauthenticated.status === 401, `check-publication missing dispatch token returned ${unauthenticated.status}`);
+  assert((await unauthenticated.json())?.error === 'authentication_required', 'check-publication missing token exposed application data');
+
+  const wrong = await fetch(`${gatewayUrl}/check-publication`, {
+    method: 'POST', headers: { apikey: anonKey, 'content-type': 'application/json', 'x-schedule-dispatch-token': 'wrong-token' },
+    body: JSON.stringify({ action: 'poll' }),
+  });
+  assert(wrong.status === 401, `check-publication wrong dispatch token returned ${wrong.status}`);
+
+  const valid = await fetch(`${gatewayUrl}/check-publication`, {
+    method: 'POST', headers: { apikey: anonKey, 'content-type': 'application/json', 'x-schedule-dispatch-token': 'local-gateway-test' },
+    body: JSON.stringify({ action: 'poll' }),
+  });
+  const body = await valid.json();
+  assert(valid.status !== 401, `check-publication valid dispatch token was rejected: ${JSON.stringify(body)}`);
+  assert(!JSON.stringify(body).includes('local-gateway-test'), 'check-publication response echoed dispatch credentials');
+}
+
 async function createTestUser(keys) {
   const email = `gateway-${crypto.randomUUID()}@example.invalid`;
   const password = `Gateway-${crypto.randomUUID()}!`;
@@ -183,10 +206,11 @@ try {
   const user = await createTestUser(keys);
   try {
     for (const name of ['generate-draft', 'review-draft', 'publish-draft', 'run-schedules', 'manage-settings']) await verifyFunction(name, keys.anon, user.accessToken);
+    await verifyPublicationChecker(keys.anon);
   } finally {
     await deleteTestUser(user.id, keys.service);
   }
-  console.log('Actual local Supabase gateway CORS/auth probes passed for 5 functions.');
+  console.log('Actual local Supabase gateway auth probes passed for 6 functions (five browser boundaries and one server dispatcher).');
 } finally {
   stopServer(child);
   await rm(temp, { recursive: true, force: true });

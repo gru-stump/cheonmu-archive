@@ -22,6 +22,11 @@ verify_jwt = false
 # any service-role publication mutation or GitHub request is attempted.
 verify_jwt = false
 
+[functions.check-publication]
+# Scheduled dispatch uses a server-only header and the handler performs the
+# exact check before any service-role RPC or GitHub observation.
+verify_jwt = false
+
 [functions.run-schedules]
 # Cron authenticates with the dispatch secret; browser access is authenticated
 # explicitly by the handler before it evaluates or queues anything.

@@ -221,6 +221,39 @@ describe('same-origin narrative server boundary', () => {
     await expect(response.json()).resolves.toEqual({ error: 'stale_review' });
   });
 
+  it('maps the exact draft publication row into separate commit, workflow, and Pages status with constructed safe URLs', async () => {
+    const sha = '1'.repeat(40);
+    const fetch: typeof globalThis.fetch = vi.fn(async (input) => {
+      const url = new URL(String(input));
+      if (url.pathname === '/auth/v1/user') return Response.json({ id: 'owner-1' });
+      if (url.pathname === '/rest/v1/owner_profiles') return Response.json([{ owner_id: 'owner-1' }]);
+      if (url.pathname === '/rest/v1/drafts') return Response.json([{ id: 'draft-1', kind: 'daily_event', status: 'published', title: 'published' }]);
+      if (url.pathname === '/rest/v1/draft_versions') return Response.json([{
+        id: 'version-1', version_number: 1, created_at: '2026-08-16T00:00:00Z',
+        content: { title: 'published', body: 'body', canonChangeCandidates: [] }, context_version_ids: [], continuity_findings: [],
+      }]);
+      if (url.pathname === '/rest/v1/provider_settings') return Response.json([]);
+      if (url.pathname === '/rest/v1/publish_jobs') return Response.json([{
+        id: 'job-1', draft_id: 'draft-1', draft_version_id: 'version-1', status: 'published',
+        repository_owner: 'cheonmu-owner', repository_name: 'cheonmu-archive', commit_sha: sha,
+        publication_phase: 'deployed', tracking_status: 'completed', workflow_status: 'success', workflow_run_id: 42,
+        pages_status: 'success', pages_deployment_id: 314, pages_url: 'https://cheonmu-owner.github.io/cheonmu-archive/',
+      }]);
+      return Response.json({ error: 'unexpected' }, { status: 500 });
+    });
+    const handler = createNarrativeHandler({ supabaseUrl: 'https://db.example.test', supabaseAnonKey: 'anon', fetch });
+    const response = await handler(new Request('https://admin.example.test/api/narrative/drafts/draft-1', { headers: { authorization: 'Bearer owner-token' } }));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.publication).toEqual({
+      phase: 'deployed', trackingStatus: 'completed', repositoryOwner: 'cheonmu-owner', repositoryName: 'cheonmu-archive',
+      commit: { status: 'created', sha, url: `https://github.com/cheonmu-owner/cheonmu-archive/commit/${sha}` },
+      workflow: { status: 'success', runId: 42, url: 'https://github.com/cheonmu-owner/cheonmu-archive/actions/runs/42' },
+      pages: { status: 'success', deploymentId: 314, url: 'https://cheonmu-owner.github.io/cheonmu-archive/' },
+    });
+  });
+
   it('reads settings through a secret-free owner RPC response', async () => {
     const fetch: typeof globalThis.fetch = vi.fn(async (input) => {
       const path = new URL(String(input)).pathname;

@@ -88,6 +88,12 @@ body { margin: 0; min-width: 320px; background: var(--admin-paper); font-family:
 .admin-shell .draft-list__kind, .admin-shell .draft-list__continuity, .admin-shell .draft-list time{ color: var(--admin-muted); font-size: .82rem; }
 
 .admin-shell .draft-review__layout{ display: grid; grid-template-columns: minmax(0, 1fr) 18.5rem; align-items: start; gap: 2rem; }
+.admin-shell .publication-status{ margin: 1rem 0 1.5rem; padding: 1rem; border: 1px solid var(--admin-rule); background: var(--admin-surface); }
+.admin-shell .publication-status h2{ margin: 0 0 .75rem; font-size: 1rem; }
+.admin-shell .publication-status dl{ display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .75rem; margin: 0; }
+.admin-shell .publication-status dl > div{ min-width: 0; }
+.admin-shell .publication-status dt{ color: var(--admin-muted); font-size: .78rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
+.admin-shell .publication-status dd{ margin: .25rem 0 0; overflow-wrap: anywhere; }
 .admin-shell .draft-reader{ min-height: 34rem; padding: clamp(1.5rem, 4vw, 3.5rem); border: 1px solid var(--admin-rule); border-radius: 2px; background: var(--admin-surface); box-shadow: 0 8px 26px rgb(36 32 29 / 7%); }
 .admin-shell .draft-reader h2{ margin: 0 0 2rem; color: var(--admin-muted); font-family: var(--admin-ui); font-size: .72rem; letter-spacing: .14em; text-transform: uppercase; }
 .admin-shell .draft-body{ margin: 0; overflow-wrap: anywhere; white-space: pre-wrap; font: 1.08rem/2 var(--admin-prose); }
@@ -166,6 +172,7 @@ body { margin: 0; min-width: 320px; background: var(--admin-paper); font-family:
   .admin-shell__utility{ position: absolute; top: 0; right: 0; display: flex; height: 64px; align-items: center; gap: .4rem; margin: 0; padding: 0 1rem 0 0; border: 0; }
   .admin-shell__main{ width: 100%; margin: 0; padding: 2rem clamp(1rem, 4vw, 2rem) 4rem; }
   .admin-shell .draft-review__layout{ grid-template-columns: minmax(0, 1fr); }
+  .admin-shell .publication-status dl{ grid-template-columns: minmax(0, 1fr); }
   .admin-shell .draft-review__rail{ display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; }
   .admin-shell .schedule-form{ grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .admin-shell .schedule-form dl{ grid-column: 1 / -1; }

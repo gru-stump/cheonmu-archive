@@ -81,12 +81,16 @@ values ('${publishJobId}', '${ownerId}', '${draftId}', '${versionId}', 'queued')
 
   await success('publication migration failed over the pre-Task-2 schema', runProcess(npx, ['supabase', 'migration', 'up', '--local', '--yes']));
   headApplied = true;
-  assert.equal(await scalar('select max(version) from supabase_migrations.schema_migrations;'), '202608140017');
+  assert.equal(await scalar('select max(version) from supabase_migrations.schema_migrations;'), '202608140018');
   assert.equal(
     await scalar(`select concat(approval_action_id, '|', publication_details ->> 'id', '|', status, '|', attempt_count)
       from public.publish_jobs where id = '${publishJobId}';`),
     `${approvalId}|legacy-record|queued|0`,
     'additive migration must backfill the immutable approval and publication snapshot without changing queue state',
+  );
+  assert.equal(
+    await scalar("select concat(count(*) filter (where column_name = 'publication_phase'), '|', count(*) filter (where column_name = 'workflow_status'), '|', count(*) filter (where column_name = 'pages_status')) from information_schema.columns where table_schema = 'public' and table_name = 'publish_jobs';"),
+    '1|1|1', 'upgrade adds independent commit/workflow/Pages tracking columns without rebuilding the queue',
   );
   assert.equal(
     await scalar("select concat(has_function_privilege('service_role', 'public.claim_narrative_publication(uuid,uuid,uuid,text,uuid)', 'EXECUTE'), '|', not has_function_privilege('authenticated', 'public.claim_narrative_publication(uuid,uuid,uuid,text,uuid)', 'EXECUTE'), '|', has_function_privilege('service_role', 'public.renew_narrative_publication_claim(uuid,uuid)', 'EXECUTE'), '|', not has_function_privilege('authenticated', 'public.renew_narrative_publication_claim(uuid,uuid)', 'EXECUTE'), '|', to_regprocedure('public.retry_narrative_publish(uuid,uuid,text)') is null);"),
@@ -103,13 +107,14 @@ set role service_role;
 select public.store_narrative_secret('${ownerId}', 'github', 'publication-upgrade-fixture-value');
 select public.claim_narrative_publication('${ownerId}', '${publishJobId}', '${versionId}', 'legacy-publish-key', '${attemptId}') ->> 'outcome';
 select public.renew_narrative_publication_claim('${publishJobId}', '${attemptId}') ->> 'status';
+select public.complete_narrative_publication('${publishJobId}', '${attemptId}', '${'1'.repeat(40)}', 'src/content/records/77-legacy-record.md') ->> 'status';
 reset role;
 `));
   assert.equal(
-    await scalar(`select concat(job.status, '|', draft.status, '|', job.repository_owner, '/', job.repository_name, '@', job.repository_branch, '|', job.idempotency_key, '|', job.claim_expires_at > now())
+    await scalar(`select concat(job.status, '|', draft.status, '|', job.repository_owner, '/', job.repository_name, '@', job.repository_branch, '|', job.idempotency_key, '|', job.publication_phase, '|', job.tracking_status)
       from public.publish_jobs as job join public.drafts as draft on draft.id = job.draft_id where job.id = '${publishJobId}';`),
-    'publishing|publishing|cheonmu-owner/cheonmu-archive@main|legacy-publish-key|t',
-    'a migrated queued row remains claimable with a durable lease through the locked server configuration',
+    'published|published|cheonmu-owner/cheonmu-archive@main|legacy-publish-key|commit_created|pending',
+    'a migrated queued row remains publishable and initializes independent observation without changing commit success',
   );
 } catch (error) {
   primaryError = error;
@@ -124,4 +129,4 @@ reset role;
 }
 
 if (primaryError) throw primaryError;
-console.log('PASS: migration 017 upgrades a pre-Task-2 publication queue additively and preserves a claimable exact approval/version binding.');
+console.log('PASS: migrations 017-018 upgrade a pre-publication queue additively and initialize exact-commit deployment observation.');

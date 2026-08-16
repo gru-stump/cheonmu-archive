@@ -46,6 +46,52 @@ function api(overrides: Partial<NarrativeApi> = {}): NarrativeApi {
 }
 
 describe('DraftReviewPage', () => {
+  it('shows commit, workflow, and Pages phases separately with repository-bound safe links', async () => {
+    const published: DraftDetail = {
+      ...detail,
+      status: 'published',
+      publication: {
+        phase: 'deployed',
+        trackingStatus: 'completed',
+        repositoryOwner: 'cheonmu-owner',
+        repositoryName: 'cheonmu-archive',
+        commit: { status: 'created', sha: '1'.repeat(40), url: `https://github.com/cheonmu-owner/cheonmu-archive/commit/${'1'.repeat(40)}` },
+        workflow: { status: 'success', runId: 42, url: 'https://github.com/cheonmu-owner/cheonmu-archive/actions/runs/42' },
+        pages: { status: 'success', deploymentId: 314, url: 'https://cheonmu-owner.github.io/cheonmu-archive/' },
+      },
+    };
+    render(<DraftReviewPage api={api({ getDraft: vi.fn().mockResolvedValue(published) })} draftId="draft-1" />);
+
+    const status = await screen.findByRole('region', { name: 'Publication status' });
+    expect(status).toHaveTextContent('Commit created');
+    expect(status).toHaveTextContent('Workflow succeeded');
+    expect(status).toHaveTextContent('GitHub Pages deployed');
+    expect(within(status).getByRole('link', { name: 'View commit' })).toHaveAttribute('href', published.publication?.commit.url);
+    expect(within(status).getByRole('link', { name: 'View workflow' })).toHaveAttribute('href', published.publication?.workflow.url);
+    expect(within(status).getByRole('link', { name: 'Open Pages site' })).toHaveAttribute('href', published.publication?.pages.url);
+  });
+
+  it('renders phase text but never links attacker-controlled GitHub or Pages URLs', async () => {
+    const attacked: DraftDetail = {
+      ...detail,
+      status: 'published',
+      publication: {
+        phase: 'workflow_failed',
+        trackingStatus: 'completed',
+        repositoryOwner: 'cheonmu-owner',
+        repositoryName: 'cheonmu-archive',
+        commit: { status: 'created', sha: '1'.repeat(40), url: 'javascript:alert(1)' },
+        workflow: { status: 'failure', runId: 43, url: 'https://github.com/attacker/repository/actions/runs/43' },
+        pages: { status: 'pending', deploymentId: null, url: 'https://evil.github.io/phish/' },
+      },
+    };
+    render(<DraftReviewPage api={api({ getDraft: vi.fn().mockResolvedValue(attacked) })} draftId="draft-1" />);
+
+    const status = await screen.findByRole('region', { name: 'Publication status' });
+    expect(within(status).getByText('Workflow failed')).toBeInTheDocument();
+    expect(within(status).queryByRole('link')).not.toBeInTheDocument();
+  });
+
   it('shows final text, findings with sources, context, canon candidates, and full history', async () => {
     render(<DraftReviewPage api={api()} draftId="draft-1" />);
 

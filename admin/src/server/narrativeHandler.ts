@@ -30,6 +30,45 @@ function mapVersion(row: Record<string, unknown>) {
   };
 }
 
+function mapPublication(row: Record<string, unknown> | undefined) {
+  if (!row) return undefined;
+  const owner = typeof row.repository_owner === 'string' && /^[A-Za-z0-9_.-]{1,100}$/.test(row.repository_owner) ? row.repository_owner : '';
+  const repository = typeof row.repository_name === 'string' && /^[A-Za-z0-9_.-]{1,100}$/.test(row.repository_name) ? row.repository_name : '';
+  const sha = typeof row.commit_sha === 'string' && /^[0-9a-f]{40}$/i.test(row.commit_sha) ? row.commit_sha.toLowerCase() : null;
+  const workflowRunId = typeof row.workflow_run_id === 'number' && Number.isSafeInteger(row.workflow_run_id) && row.workflow_run_id > 0 ? row.workflow_run_id : null;
+  const deploymentId = typeof row.pages_deployment_id === 'number' && Number.isSafeInteger(row.pages_deployment_id) && row.pages_deployment_id > 0 ? row.pages_deployment_id : null;
+  const phaseValues = new Set(['commit_created', 'workflow_running', 'workflow_succeeded', 'workflow_failed', 'pages_running', 'pages_failed', 'deployed', 'tracking_timed_out']);
+  const trackingValues = new Set(['pending', 'observing', 'completed', 'timed_out']);
+  const observationValues = new Set(['pending', 'queued', 'in_progress', 'success', 'failure', 'timed_out']);
+  const phase = typeof row.publication_phase === 'string' && phaseValues.has(row.publication_phase) ? row.publication_phase : 'commit_created';
+  const trackingStatus = typeof row.tracking_status === 'string' && trackingValues.has(row.tracking_status) ? row.tracking_status : 'pending';
+  const workflowStatus = typeof row.workflow_status === 'string' && observationValues.has(row.workflow_status) ? row.workflow_status : 'pending';
+  const pagesStatus = typeof row.pages_status === 'string' && observationValues.has(row.pages_status) ? row.pages_status : 'pending';
+  let pagesUrl: string | null = null;
+  if (owner && repository && typeof row.pages_url === 'string') {
+    try {
+      const candidate = new URL(row.pages_url);
+      const host = `${owner.toLowerCase()}.github.io`;
+      const path = repository.toLowerCase() === host ? '/' : `/${repository}/`;
+      if (candidate.protocol === 'https:' && candidate.hostname === host && !candidate.port && !candidate.username && !candidate.password
+        && !candidate.search && !candidate.hash && candidate.pathname.toLowerCase().startsWith(path.toLowerCase())) pagesUrl = candidate.href;
+    } catch { /* Unsafe deployment metadata is omitted. */ }
+  }
+  return {
+    phase, trackingStatus, repositoryOwner: owner, repositoryName: repository,
+    commit: {
+      status: row.status === 'published' && sha ? 'created' : row.status === 'failed' ? 'failed' : 'pending',
+      sha,
+      url: owner && repository && sha ? `https://github.com/${owner}/${repository}/commit/${sha}` : null,
+    },
+    workflow: {
+      status: workflowStatus, runId: workflowRunId,
+      url: owner && repository && workflowRunId ? `https://github.com/${owner}/${repository}/actions/runs/${workflowRunId}` : null,
+    },
+    pages: { status: pagesStatus, deploymentId, url: pagesUrl },
+  };
+}
+
 export function createNarrativeHandler({ supabaseUrl, supabaseAnonKey, fetch = globalThis.fetch }: ServerConfig) {
   const base = supabaseUrl.replace(/\/$/, '');
   return async (request: Request): Promise<Response> => {
@@ -78,7 +117,10 @@ export function createNarrativeHandler({ supabaseUrl, supabaseAnonKey, fetch = g
         const versions = rows.map(mapVersion); const latestVersion = versions[versions.length - 1]!;
         const settings = await upstream('/rest/v1/provider_settings?select=max_input_tokens,max_revision_output_tokens,input_cost_micros_per_million,output_cost_micros_per_million,fixed_cost_micros&enabled=eq.true') as unknown as Array<Record<string, unknown>>;
         const setting = settings.length === 1 ? settings[0] : undefined;
-        return json({ id: draft.id, kind: draft.kind, status: draft.status, title: draft.title, latestVersionId: latestVersion.id, latestVersion, versions, ...(setting ? { revisionPricing: { maximumInputTokens: setting.max_input_tokens, maximumRevisionOutputTokens: setting.max_revision_output_tokens, inputCostMicrosPerMillion: setting.input_cost_micros_per_million, outputCostMicrosPerMillion: setting.output_cost_micros_per_million, fixedCostMicros: setting.fixed_cost_micros } } : {}) });
+        const publicationSelect = encodeURIComponent('id,draft_id,draft_version_id,status,repository_owner,repository_name,commit_sha,publication_phase,tracking_status,workflow_status,workflow_run_id,pages_status,pages_deployment_id,pages_url');
+        const publicationRows = await upstream(`/rest/v1/publish_jobs?select=${publicationSelect}&draft_id=eq.${encodeURIComponent(path[1]!)}&draft_version_id=eq.${encodeURIComponent(String(latestVersion.id))}&limit=2`) as unknown as Array<Record<string, unknown>>;
+        const publication = publicationRows.length === 1 ? mapPublication(publicationRows[0]) : undefined;
+        return json({ id: draft.id, kind: draft.kind, status: draft.status, title: draft.title, latestVersionId: latestVersion.id, latestVersion, versions, ...(publication ? { publication } : {}), ...(setting ? { revisionPricing: { maximumInputTokens: setting.max_input_tokens, maximumRevisionOutputTokens: setting.max_revision_output_tokens, inputCostMicrosPerMillion: setting.input_cost_micros_per_million, outputCostMicrosPerMillion: setting.output_cost_micros_per_million, fixedCostMicros: setting.fixed_cost_micros } } : {}) });
       }
       if (request.method === 'POST' && path.join('/') === 'generate') {
         const command = await body(); if (!command) return json({ error: 'invalid_command' }, 400);
