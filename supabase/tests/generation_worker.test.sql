@@ -151,11 +151,11 @@ select is((select count(*) from public.budget_entries where generation_job_id = 
 
 insert into public.drafts (id, owner_id, kind, status, title)
 values ('a0230000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001', 'short_dialogue', 'queued', 'retry');
-insert into public.generation_jobs (id, owner_id, draft_id, schedule_key, scheduled_for, payload, provider_setting_id) values (
+insert into public.generation_jobs (id, owner_id, draft_id, schedule_key, scheduled_for, payload, provider_setting_id, direct_dispatch_expires_at) values (
   'a0240000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001',
   'a0230000-0000-0000-0000-000000000001', 'worker:manual:retry', clock_timestamp() - interval '1 minute',
   '{"source":"manual","mode":"new","kind":"short_dialogue","manualRequestKey":"worker:manual:retry"}',
-  '12000000-0000-0000-0000-000000000001'
+  '12000000-0000-0000-0000-000000000001', clock_timestamp() - interval '1 second'
 );
 select is(public.claim_generation_worker_job('a0250000-0000-4000-8000-000000000001') ->> 'outcome', 'claimed',
   'a due exact manual binding is claimable');
@@ -205,11 +205,11 @@ select is((select worker_failure_code from public.generation_jobs where id = 'a0
 
 insert into public.drafts (id, owner_id, kind, status, title)
 values ('a0280000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001', 'daily_event', 'queued', 'completion');
-insert into public.generation_jobs (id, owner_id, draft_id, schedule_key, scheduled_for, payload, provider_setting_id) values (
+insert into public.generation_jobs (id, owner_id, draft_id, schedule_key, scheduled_for, payload, provider_setting_id, direct_dispatch_expires_at) values (
   'a0290000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001',
   'a0280000-0000-0000-0000-000000000001', 'worker:manual:complete', clock_timestamp() - interval '1 minute',
   '{"source":"manual","mode":"new","kind":"daily_event","manualRequestKey":"worker:manual:complete"}',
-  '12000000-0000-0000-0000-000000000001'
+  '12000000-0000-0000-0000-000000000001', clock_timestamp() - interval '1 second'
 );
 select is(public.claim_generation_worker_job('a02a0000-0000-4000-8000-000000000001') ->> 'outcome', 'claimed', 'completion fixture is claimed');
 select lives_ok(
