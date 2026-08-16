@@ -83,14 +83,70 @@ if (secondResult.code === 0 || !secondResult.stderr.includes('publication_in_pro
   throw new Error(`second publisher did not lose the same-key race\n${secondResult.stdout}\n${secondResult.stderr}`);
 }
 
+const expired = await runPsql(`
+update public.publish_jobs set claim_expires_at = now() - interval '1 second' where id = '${publishJobId}';
+`);
+if (expired.code !== 0) throw new Error(`could not expire the first publication lease\n${expired.stdout}\n${expired.stderr}`);
+
+let releaseStaleRenewal;
+const replacementClaimed = new Promise((resolve) => { releaseStaleRenewal = resolve; });
+const replacement = runPsql(`
+begin;
+select set_config('request.jwt.claim.role', 'service_role', false);
+set local role service_role;
+select public.claim_narrative_publication('${ownerId}', '${publishJobId}', '${versionId}', '${key}', '${secondAttempt}') ->> 'outcome';
+\\echo REPLACEMENT_PUBLICATION_CLAIMED
+select pg_sleep(2);
+commit;
+`, (stdout) => { if (stdout.includes('REPLACEMENT_PUBLICATION_CLAIMED')) releaseStaleRenewal(); });
+
+await Promise.race([
+  replacementClaimed,
+  replacement.then((result) => {
+    if (result.code !== 0) throw new Error(`replacement publication failed before holding its claim\n${result.stdout}\n${result.stderr}`);
+    throw new Error('replacement publication exited before reporting its held claim');
+  }),
+]);
+
+const staleRenewal = runPsql(`
+select set_config('request.jwt.claim.role', 'service_role', false);
+set role service_role;
+select public.renew_narrative_publication_claim('${publishJobId}', '${firstAttempt}');
+`);
+const [replacementResult, staleRenewalResult] = await Promise.all([replacement, staleRenewal]);
+if (replacementResult.code !== 0 || !replacementResult.stdout.includes('claimed')) {
+  throw new Error(`replacement publication did not reclaim the expired lease\n${replacementResult.stdout}\n${replacementResult.stderr}`);
+}
+if (staleRenewalResult.code === 0 || !staleRenewalResult.stderr.includes('publication_attempt_mismatch')) {
+  throw new Error(`the expired worker was not fenced after replacement\n${staleRenewalResult.stdout}\n${staleRenewalResult.stderr}`);
+}
+
+const replacementRenewal = await runPsql(`
+select set_config('request.jwt.claim.role', 'service_role', false);
+set role service_role;
+select public.renew_narrative_publication_claim('${publishJobId}', '${secondAttempt}');
+`);
+if (replacementRenewal.code !== 0) {
+  throw new Error(`the current replacement attempt could not renew\n${replacementRenewal.stdout}\n${replacementRenewal.stderr}`);
+}
+
 const verification = await runPsql(`
-select concat(job.status, '|', draft.status, '|', job.attempt_count, '|', job.idempotency_key, '|', job.attempt_token)
+select concat(job.status, '|', draft.status, '|', job.attempt_count, '|', job.idempotency_key, '|', job.attempt_token, '|', job.claim_expires_at > now() + interval '4 minutes')
 from public.publish_jobs as job join public.drafts as draft on draft.id = job.draft_id
 where job.id = '${publishJobId}';
 `);
-const expected = `publishing|publishing|1|${key}|${firstAttempt}`;
+const expected = `publishing|publishing|2|${key}|${secondAttempt}|t`;
 if (verification.code !== 0 || !verification.stdout.includes(expected)) {
   throw new Error(`publication race persisted an invalid state\n${verification.stdout}\n${verification.stderr}`);
 }
 
-console.log('PASS: two same-key publishers serialize at the advisory-lock claim and only one attempt reaches publishing.');
+const cleanup = await runPsql(`
+select set_config('request.jwt.claim.role', 'service_role', false);
+set role service_role;
+select public.fail_narrative_publication('${publishJobId}', '${secondAttempt}', 'publication_completion_failed') ->> 'status';
+`);
+if (cleanup.code !== 0 || !cleanup.stdout.includes('publish_failed')) {
+  throw new Error(`publication concurrency fixture cleanup failed\n${cleanup.stdout}\n${cleanup.stderr}`);
+}
+
+console.log('PASS: an active publisher is excluded, a concurrent replacement reclaims the expired lease, and the stale attempt is fenced before publication.');

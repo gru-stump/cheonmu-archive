@@ -1,6 +1,6 @@
 begin;
 
-select plan(61);
+select plan(67);
 
 select has_column('public', 'publish_jobs', 'approval_action_id', 'publication binds the exact public approval action');
 select has_column('public', 'publish_jobs', 'publication_details', 'publication metadata is frozen on the server-owned job');
@@ -16,11 +16,13 @@ select has_column('public', 'publish_jobs', 'failure_code', 'publication stores 
 select has_column('public', 'publish_jobs', 'claimed_at', 'the current publication claim is observable');
 select has_column('public', 'publish_jobs', 'claim_expires_at', 'publication claims have a durable recovery lease');
 select has_function('public', 'claim_narrative_publication', array['uuid','uuid','uuid','text','uuid'], 'one service RPC claims a locked publication snapshot');
+select has_function('public', 'renew_narrative_publication_claim', array['uuid','uuid'], 'one service RPC renews and fences the exact attempt before publication');
 select has_function('public', 'complete_narrative_publication', array['uuid','uuid','text','text'], 'one service RPC records commit success');
 select has_function('public', 'fail_narrative_publication', array['uuid','uuid','text'], 'one service RPC records sanitized failure');
 select ok(
   (select bool_and(has_function_privilege('service_role', signature, 'EXECUTE')) from unnest(array[
     'public.claim_narrative_publication(uuid,uuid,uuid,text,uuid)',
+    'public.renew_narrative_publication_claim(uuid,uuid)',
     'public.complete_narrative_publication(uuid,uuid,text,text)',
     'public.fail_narrative_publication(uuid,uuid,text)'
   ]) as signature),
@@ -29,6 +31,7 @@ select ok(
 select ok(
   not exists (select 1 from unnest(array[
     'public.claim_narrative_publication(uuid,uuid,uuid,text,uuid)',
+    'public.renew_narrative_publication_claim(uuid,uuid)',
     'public.complete_narrative_publication(uuid,uuid,text,text)',
     'public.fail_narrative_publication(uuid,uuid,text)'
   ]) as signature where has_function_privilege('authenticated', signature, 'EXECUTE')),
@@ -38,7 +41,7 @@ select ok(
   not exists (
     select 1 from information_schema.routine_privileges
     where routine_schema = 'public'
-      and routine_name in ('claim_narrative_publication', 'complete_narrative_publication', 'fail_narrative_publication')
+      and routine_name in ('claim_narrative_publication', 'renew_narrative_publication_claim', 'complete_narrative_publication', 'fail_narrative_publication')
       and grantee in ('PUBLIC', 'anon', 'authenticated') and privilege_type = 'EXECUTE'
   ),
   'PUBLIC, anon, and authenticated have no publication mutation grants'
@@ -250,6 +253,41 @@ select lives_ok(
 reset role;
 select is((select attempt_count from public.publish_jobs where id = '94000000-0000-0000-0000-000000000003'), 3, 'lease recovery records one new attempt without duplicating the job');
 select is((select attempt_token from public.publish_jobs where id = '94000000-0000-0000-0000-000000000003'), '95000000-0000-4000-8000-000000000008'::uuid, 'only the recovered attempt owns completion authority');
+
+update public.publish_jobs set claim_expires_at = now() + interval '1 second'
+where id = '94000000-0000-0000-0000-000000000003';
+create temp table publication_stale_renewal_snapshot on commit drop as
+select attempt_token, attempt_count, claim_expires_at, updated_at
+from public.publish_jobs where id = '94000000-0000-0000-0000-000000000003';
+select set_config('request.jwt.claim.role', 'service_role', true);
+set local role service_role;
+select throws_ok(
+  $$ select public.renew_narrative_publication_claim('94000000-0000-0000-0000-000000000003', '95000000-0000-4000-8000-000000000005') $$,
+  'P0001', 'publication_attempt_mismatch', 'an expired worker cannot renew after a replacement attempt owns the job'
+);
+reset role;
+select ok(
+  (select row(job.attempt_token, job.attempt_count, job.claim_expires_at, job.updated_at)
+    = row(snapshot.attempt_token, snapshot.attempt_count, snapshot.claim_expires_at, snapshot.updated_at)
+   from public.publish_jobs as job cross join publication_stale_renewal_snapshot as snapshot
+   where job.id = '94000000-0000-0000-0000-000000000003'),
+  'a stale renewal failure is mutation-free'
+);
+select set_config('request.jwt.claim.role', 'service_role', true);
+set local role service_role;
+select throws_ok(
+  $$ select public.complete_narrative_publication('94000000-0000-0000-0000-000000000003', '95000000-0000-4000-8000-000000000005', '2222222222222222222222222222222222222222', 'src/content/records/09-stale-worker.md') $$,
+  'P0001', 'publication_attempt_mismatch', 'a replaced worker cannot complete publication'
+);
+select lives_ok(
+  $$ select public.renew_narrative_publication_claim('94000000-0000-0000-0000-000000000003', '95000000-0000-4000-8000-000000000008') $$,
+  'the current exact attempt renews immediately before its external write'
+);
+reset role;
+select ok(
+  (select claim_expires_at > now() + interval '4 minutes' from public.publish_jobs where id = '94000000-0000-0000-0000-000000000003'),
+  'pre-publication renewal restores the full bounded side-effect lease'
+);
 
 select set_config('request.jwt.claim.role', 'service_role', true);
 set local role service_role;

@@ -373,6 +373,52 @@ exception when unique_violation then
 end;
 $$;
 
+create function public.renew_narrative_publication_claim(
+  p_publish_job_id uuid,
+  p_attempt_token uuid
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  locked_job public.publish_jobs;
+  locked_draft public.drafts;
+begin
+  if auth.role() is distinct from 'service_role' then
+    raise exception 'publication renewal caller is not authorized' using errcode = '42501';
+  end if;
+  if p_publish_job_id is null or p_attempt_token is null then
+    raise exception 'invalid_publication_renewal' using errcode = '22023';
+  end if;
+
+  perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('narrative-publication-queue', 0));
+  select job.* into locked_job from public.publish_jobs as job
+  where job.id = p_publish_job_id for update;
+  if locked_job.id is null then raise exception 'publication_target_not_found' using errcode = 'P0002'; end if;
+  select draft.* into locked_draft from public.drafts as draft
+  where draft.id = locked_job.draft_id and draft.owner_id = locked_job.owner_id for share;
+  if locked_job.status is distinct from 'publishing'
+    or locked_job.attempt_token is distinct from p_attempt_token
+    or locked_job.claim_expires_at is null
+    or locked_job.claim_expires_at <= pg_catalog.clock_timestamp()
+    or locked_draft.status is distinct from 'publishing' then
+    raise exception 'publication_attempt_mismatch' using errcode = 'P0001';
+  end if;
+
+  update public.publish_jobs
+  set claim_expires_at = pg_catalog.clock_timestamp() + interval '5 minutes', updated_at = now()
+  where id = locked_job.id
+  returning * into locked_job;
+  return jsonb_build_object(
+    'publishJobId', locked_job.id,
+    'attemptToken', locked_job.attempt_token,
+    'status', 'renewed'
+  );
+end;
+$$;
+
 create function public.complete_narrative_publication(
   p_publish_job_id uuid,
   p_attempt_token uuid,
@@ -481,11 +527,14 @@ $$;
 
 revoke all on function public.claim_narrative_publication(uuid, uuid, uuid, text, uuid)
 from public, anon, authenticated, service_role;
+revoke all on function public.renew_narrative_publication_claim(uuid, uuid)
+from public, anon, authenticated, service_role;
 revoke all on function public.complete_narrative_publication(uuid, uuid, text, text)
 from public, anon, authenticated, service_role;
 revoke all on function public.fail_narrative_publication(uuid, uuid, text)
 from public, anon, authenticated, service_role;
 
 grant execute on function public.claim_narrative_publication(uuid, uuid, uuid, text, uuid) to service_role;
+grant execute on function public.renew_narrative_publication_claim(uuid, uuid) to service_role;
 grant execute on function public.complete_narrative_publication(uuid, uuid, text, text) to service_role;
 grant execute on function public.fail_narrative_publication(uuid, uuid, text) to service_role;

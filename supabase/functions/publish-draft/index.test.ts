@@ -51,12 +51,14 @@ function harness(overrides: Partial<PublicationDependencies> = {}) {
     createAttemptToken: () => attemptToken,
     authenticate: async () => { events.push('authenticate'); return { ownerId }; },
     claimPublication: async () => { events.push('claim'); return structuredClone(claimed); },
-    createPublisher: () => ({
-      createFile: async (input) => {
+    renewPublication: async () => { events.push('renew'); },
+    createPublisher: () => {
+      events.push('publisher');
+      return { createFile: async (input) => {
         events.push('create'); createInputs.push(input);
         return { outcome: 'created', commitSha } satisfies CreateFileResult;
-      },
-    }),
+      } };
+    },
     completePublication: async (input) => {
       events.push('complete'); completed.push(input);
       return { publishJobId: input.publishJobId, versionId, status: 'published', commitSha: input.commitSha, path: input.path };
@@ -73,7 +75,7 @@ describe('applyPublication', () => {
     const h = harness();
     const result = await applyPublication(h.deps, command);
 
-    expect(h.events).toEqual(['authenticate', 'claim', 'create', 'complete']);
+    expect(h.events).toEqual(['authenticate', 'claim', 'renew', 'publisher', 'create', 'complete']);
     expect(h.createInputs).toEqual([{
       path: 'src/content/records/08-rainy-return.md',
       content: expect.stringContaining('recordNumber: "CM-08"'),
@@ -248,6 +250,74 @@ describe('applyPublication', () => {
     await expect(resumed).resolves.toMatchObject({ status: 'published', commitSha });
     expect(createCount).toBe(1);
   });
+
+  it('fences a live expired attempt before GitHub after a replacement attempt reclaims the lease', async () => {
+    // A process may resume after its durable lease was reaped; completion fencing alone is too late to prevent a second GitHub writer.
+    const firstAttempt = '60000000-0000-4000-8000-000000000021';
+    const replacementAttempt = '60000000-0000-4000-8000-000000000022';
+    const attempts = [firstAttempt, replacementAttempt];
+    let state: 'approved' | 'publishing' | 'published' = 'approved';
+    let activeAttempt = '';
+    let leaseExpired = false;
+    const publisherAttempts: string[] = [];
+    let reportFirstRenewal!: () => void;
+    const firstRenewalStarted = new Promise<void>((resolve) => { reportFirstRenewal = resolve; });
+    let releaseFirstRenewal!: () => void;
+    const firstRenewalBlocked = new Promise<void>((resolve) => { releaseFirstRenewal = resolve; });
+    type RenewalInput = { publishJobId: string; attemptToken: string };
+
+    const h = harness({
+      createAttemptToken: () => attempts.shift()!,
+      claimPublication: async (input) => {
+        if (state === 'approved' || (state === 'publishing' && leaseExpired)) {
+          state = 'publishing';
+          leaseExpired = false;
+          activeAttempt = input.attemptToken;
+          return { ...structuredClone(claimed), attemptToken: input.attemptToken };
+        }
+        throw new PublicationError(409, 'publication_in_progress');
+      },
+      renewPublication: async (input: RenewalInput) => {
+        if (input.attemptToken === firstAttempt) {
+          reportFirstRenewal();
+          await firstRenewalBlocked;
+        }
+        if (state !== 'publishing' || activeAttempt !== input.attemptToken) {
+          throw new PublicationError(409, 'publication_attempt_mismatch');
+        }
+      },
+      createPublisher: () => ({ createFile: async () => {
+        publisherAttempts.push(activeAttempt);
+        return { outcome: 'created', commitSha };
+      } }),
+      completePublication: async (input) => {
+        if (state !== 'publishing' || activeAttempt !== input.attemptToken) {
+          throw new PublicationError(409, 'publication_attempt_mismatch');
+        }
+        state = 'published';
+        return { publishJobId, versionId, status: 'published', commitSha: input.commitSha, path: input.path };
+      },
+      failPublication: async (input) => {
+        if (state !== 'publishing' || activeAttempt !== input.attemptToken) {
+          throw new PublicationError(409, 'publication_attempt_mismatch');
+        }
+        throw new Error('the current attempt must not fail in this race');
+      },
+    });
+
+    const first = applyPublication(h.deps, command);
+    const firstPhase = await Promise.race([
+      firstRenewalStarted.then(() => 'renewing' as const),
+      first.then(() => 'published' as const, () => 'rejected' as const),
+    ]);
+    expect(firstPhase).toBe('renewing');
+
+    leaseExpired = true;
+    await expect(applyPublication(h.deps, command)).resolves.toMatchObject({ status: 'published' });
+    releaseFirstRenewal();
+    await expect(first).rejects.toMatchObject({ code: 'publication_attempt_mismatch' });
+    expect(publisherAttempts).toEqual([replacementAttempt]);
+  });
 });
 
 describe('publish-draft HTTP boundary', () => {
@@ -293,6 +363,107 @@ describe('publish-draft HTTP boundary', () => {
 });
 
 describe('Supabase publication adapter privilege boundary', () => {
+  it.each(['request', 'response body'] as const)('bounds a stalled Supabase %s wait', async (phase) => {
+    // Abort signals alone are insufficient because an injected HTTP implementation or body parser may ignore them.
+    vi.useFakeTimers();
+    try {
+      const stalledFetch = (phase === 'request'
+        ? (() => new Promise<Response>(() => {}))
+        : (async () => ({
+          ok: true,
+          status: 200,
+          json: () => new Promise<never>(() => {}),
+        } as Response))) as typeof globalThis.fetch;
+      const deps = createSupabasePublicationDependencies({
+        url: 'http://supabase', anonKey: 'anon', serviceRoleKey: 'service', fetch: stalledFetch,
+        timeoutMs: 5,
+      }, 'owner-token');
+      const observed = Promise.race([
+        deps.authenticate('owner-token').then(
+          () => ({ outcome: 'resolved' }),
+          (error: unknown) => ({ outcome: 'rejected', code: error instanceof PublicationError ? error.code : 'unexpected' }),
+        ),
+        new Promise<{ outcome: string }>((resolve) => setTimeout(() => resolve({ outcome: 'still_pending' }), 20)),
+      ]);
+
+      await vi.advanceTimersByTimeAsync(20);
+      await expect(observed).resolves.toEqual({ outcome: 'rejected', code: 'internal_error' });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('never reaches GitHub when the committed exact-attempt renewal response is lost', async () => {
+    // Proceeding without a confirmed renewal would let a replaced worker issue a second repository write.
+    let activeAttempt = '';
+    const paths: string[] = [];
+    const createFile = vi.fn(async () => ({ outcome: 'created', commitSha }) satisfies CreateFileResult);
+    const createPublisher = vi.fn(() => ({ createFile }));
+    const fetch: typeof globalThis.fetch = vi.fn(async (input, init) => {
+      const path = new URL(String(input)).pathname;
+      paths.push(path);
+      if (path === '/auth/v1/user') return Response.json({ id: ownerId });
+      if (path.endsWith('/claim_narrative_publication')) {
+        activeAttempt = String(JSON.parse(String(init?.body)).p_attempt_token);
+        return Response.json({
+          outcome: 'claimed', attempt_token: activeAttempt, publish_job_id: publishJobId, owner_id: ownerId,
+          draft_id: draftId, version_id: versionId, version_number: 8, latest_version_id: versionId,
+          approval_id: approvalId, approval_action: 'approve_public', approval_resulting_state: 'approved',
+          content: claimed.content, publication_details: publicationDetails,
+          repository_owner: 'cheonmu-owner', repository_name: 'cheonmu-archive', repository_branch: 'main',
+          credential: 'fixture-github-token',
+        });
+      }
+      if (path.endsWith('/renew_narrative_publication_claim')) {
+        return { ok: true, status: 200, json: () => new Promise<never>(() => {}) } as Response;
+      }
+      if (path.endsWith('/fail_narrative_publication')) return Response.json({ status: 'publish_failed' });
+      throw new Error(`unexpected publication request ${path}`);
+    });
+    const adapter = createSupabasePublicationDependencies({
+      url: 'http://supabase', anonKey: 'anon', serviceRoleKey: 'service-role-value', fetch, timeoutMs: 5,
+    }, 'owner-token');
+
+    await expect(applyPublication({
+      ...adapter,
+      createPublisher,
+    }, command)).rejects.toMatchObject({ code: 'internal_error' });
+
+    expect(activeAttempt).not.toBe('');
+    expect(paths).toEqual([
+      '/auth/v1/user',
+      '/rest/v1/rpc/claim_narrative_publication',
+      '/rest/v1/rpc/renew_narrative_publication_claim',
+      '/rest/v1/rpc/fail_narrative_publication',
+    ]);
+    expect(createPublisher).not.toHaveBeenCalled();
+    expect(createFile).not.toHaveBeenCalled();
+  });
+
+  it('caps configured Supabase waits well below the durable publication lease', async () => {
+    // A misconfigured timeout must not let an old worker remain live until a five-minute claim can be replaced.
+    vi.useFakeTimers();
+    try {
+      const deps = createSupabasePublicationDependencies({
+        url: 'http://supabase', anonKey: 'anon', serviceRoleKey: 'service',
+        fetch: (() => new Promise<Response>(() => {})) as typeof globalThis.fetch,
+        timeoutMs: 300_000,
+      }, 'owner-token');
+      const observed = Promise.race([
+        deps.authenticate('owner-token').then(
+          () => ({ outcome: 'resolved' }),
+          (error: unknown) => ({ outcome: 'rejected', code: error instanceof PublicationError ? error.code : 'unexpected' }),
+        ),
+        new Promise<{ outcome: string }>((resolve) => setTimeout(() => resolve({ outcome: 'still_pending' }), 10_001)),
+      ]);
+
+      await vi.advanceTimersByTimeAsync(10_001);
+      await expect(observed).resolves.toEqual({ outcome: 'rejected', code: 'internal_error' });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('uses the owner token only for authentication and service role only for publication mutation RPCs', async () => {
     // Calling claim/complete through the user token would violate the service-only mutation boundary.
     const calls: Array<{ path: string; authorization: string | null; body: unknown }> = [];
@@ -309,6 +480,7 @@ describe('Supabase publication adapter privilege boundary', () => {
       calls.push({ path, authorization: new Headers(init?.headers).get('authorization'), body: init?.body ? JSON.parse(String(init.body)) : null });
       if (path === '/auth/v1/user') return Response.json({ id: ownerId });
       if (path.endsWith('/claim_narrative_publication')) return Response.json(claimRow);
+      if (path.endsWith('/renew_narrative_publication_claim')) return Response.json({ publishJobId, attemptToken, status: 'renewed' });
       if (path.endsWith('/complete_narrative_publication')) return Response.json({ publishJobId, versionId, status: 'published', commitSha, path: 'src/content/records/08-rainy-return.md' });
       return Response.json({ status: 'publish_failed' });
     });
@@ -318,12 +490,14 @@ describe('Supabase publication adapter privilege boundary', () => {
 
     await expect(deps.authenticate('owner-token')).resolves.toEqual({ ownerId });
     await expect(deps.claimPublication({ ownerId, publishJobId, expectedVersionId: versionId, idempotencyKey, attemptToken })).resolves.toEqual(claimed);
+    await deps.renewPublication({ publishJobId, attemptToken });
     await deps.completePublication({ publishJobId, attemptToken, commitSha, path: 'src/content/records/08-rainy-return.md' });
     await deps.failPublication({ publishJobId, attemptToken, failureCode: 'github_timeout' });
 
     expect(calls.map(({ path, authorization }) => ({ path, authorization }))).toEqual([
       { path: '/auth/v1/user', authorization: 'Bearer owner-token' },
       { path: '/rest/v1/rpc/claim_narrative_publication', authorization: 'Bearer service-role-value' },
+      { path: '/rest/v1/rpc/renew_narrative_publication_claim', authorization: 'Bearer service-role-value' },
       { path: '/rest/v1/rpc/complete_narrative_publication', authorization: 'Bearer service-role-value' },
       { path: '/rest/v1/rpc/fail_narrative_publication', authorization: 'Bearer service-role-value' },
     ]);

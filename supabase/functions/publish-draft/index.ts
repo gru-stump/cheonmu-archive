@@ -64,6 +64,7 @@ export interface PublicationDependencies {
   claimPublication(input: {
     ownerId: string; publishJobId: string; expectedVersionId: string; idempotencyKey: string; attemptToken: string;
   }): Promise<PublicationClaim>;
+  renewPublication(input: { publishJobId: string; attemptToken: string }): Promise<void>;
   createPublisher(config: { owner: string; repository: string; token: string }): PublisherPort;
   completePublication(input: { publishJobId: string; attemptToken: string; commitSha: string; path: string }): Promise<PublicationResponse>;
   failPublication(input: { publishJobId: string; attemptToken: string; failureCode: PublicationFailureCode }): Promise<{ status: 'publish_failed' }>;
@@ -74,6 +75,7 @@ export interface SupabasePublicationConfig {
   anonKey: string;
   serviceRoleKey: string;
   fetch?: typeof globalThis.fetch;
+  timeoutMs?: number;
 }
 
 export type PublicationFailureCode =
@@ -226,6 +228,7 @@ export async function applyPublication(deps: PublicationDependencies, command: P
       }), claim.publicationDetails);
     }
     catch { throw new PublicationError(500, 'record_validation_failed'); }
+    await deps.renewPublication({ publishJobId: claim.publishJobId, attemptToken: claim.attemptToken });
     const publisher = deps.createPublisher({
       owner: claim.repository.owner, repository: claim.repository.name, token: claim.repository.credential,
     });
@@ -305,19 +308,41 @@ function parseClaim(value: unknown): PublicationClaim {
 
 export function createSupabasePublicationDependencies(config: SupabasePublicationConfig, authToken: string): PublicationDependencies {
   const request = config.fetch ?? globalThis.fetch;
+  const timeoutMs = typeof config.timeoutMs === 'number' && Number.isFinite(config.timeoutMs) && config.timeoutMs > 0
+    ? Math.min(config.timeoutMs, 10_000)
+    : 10_000;
   const userHeaders = { apikey: config.anonKey, authorization: `Bearer ${authToken}`, 'content-type': 'application/json' };
   const serviceHeaders = { apikey: config.serviceRoleKey, authorization: `Bearer ${config.serviceRoleKey}`, 'content-type': 'application/json' };
   const call = async (path: string, headers: Record<string, string>, init: RequestInit = {}): Promise<unknown> => {
-    let response: Response;
-    try { response = await request(`${config.url}${path}`, { ...init, headers: { ...headers, ...init.headers } }); }
-    catch { throw new PublicationError(500, 'internal_error'); }
-    let value: unknown = null;
-    if (response.status !== 204) {
-      try { value = await response.json(); }
+    const controller = new AbortController();
+    let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<never>((_, reject) => {
+      timeoutHandle = setTimeout(() => {
+        controller.abort();
+        reject(new PublicationError(500, 'internal_error'));
+      }, timeoutMs);
+    });
+    try {
+      let response: Response;
+      try {
+        response = await Promise.race([
+          request(`${config.url}${path}`, {
+            ...init, signal: controller.signal, headers: { ...headers, ...init.headers },
+          }),
+          timeout,
+        ]);
+      }
       catch { throw new PublicationError(500, 'internal_error'); }
+      let value: unknown = null;
+      if (response.status !== 204) {
+        try { value = await Promise.race([response.json(), timeout]); }
+        catch { throw new PublicationError(500, 'internal_error'); }
+      }
+      if (!response.ok) throw databaseError(value, response.status);
+      return value;
+    } finally {
+      if (timeoutHandle !== undefined) clearTimeout(timeoutHandle);
     }
-    if (!response.ok) throw databaseError(value, response.status);
-    return value;
   };
   const rpc = (name: string, body: Record<string, unknown>) => call(`/rest/v1/rpc/${name}`, serviceHeaders, { method: 'POST', body: JSON.stringify(body) });
   return {
@@ -332,6 +357,17 @@ export function createSupabasePublicationDependencies(config: SupabasePublicatio
       p_owner_id: input.ownerId, p_publish_job_id: input.publishJobId, p_expected_version_id: input.expectedVersionId,
       p_idempotency_key: input.idempotencyKey, p_attempt_token: input.attemptToken,
     })),
+    renewPublication: async (input) => {
+      const value = await rpc('renew_narrative_publication_claim', {
+        p_publish_job_id: input.publishJobId, p_attempt_token: input.attemptToken,
+      });
+      const parsed = z.object({
+        publishJobId: postgresUuid, attemptToken: postgresUuid, status: z.literal('renewed'),
+      }).strict().safeParse(value);
+      if (!parsed.success || parsed.data.publishJobId !== input.publishJobId || parsed.data.attemptToken !== input.attemptToken) {
+        throw new PublicationError(500, 'internal_error');
+      }
+    },
     createPublisher: (input) => new GitHubPublisher({ owner: input.owner, repository: input.repository, token: input.token }),
     completePublication: async (input) => {
       const value = await rpc('complete_narrative_publication', {

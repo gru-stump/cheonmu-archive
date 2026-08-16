@@ -89,9 +89,9 @@ values ('${publishJobId}', '${ownerId}', '${draftId}', '${versionId}', 'queued')
     'additive migration must backfill the immutable approval and publication snapshot without changing queue state',
   );
   assert.equal(
-    await scalar("select concat(has_function_privilege('service_role', 'public.claim_narrative_publication(uuid,uuid,uuid,text,uuid)', 'EXECUTE'), '|', not has_function_privilege('authenticated', 'public.claim_narrative_publication(uuid,uuid,uuid,text,uuid)', 'EXECUTE'), '|', to_regprocedure('public.retry_narrative_publish(uuid,uuid,text)') is null);"),
-    't|t|t',
-    'upgrade installs only the service publication mutation boundary and removes browser retry',
+    await scalar("select concat(has_function_privilege('service_role', 'public.claim_narrative_publication(uuid,uuid,uuid,text,uuid)', 'EXECUTE'), '|', not has_function_privilege('authenticated', 'public.claim_narrative_publication(uuid,uuid,uuid,text,uuid)', 'EXECUTE'), '|', has_function_privilege('service_role', 'public.renew_narrative_publication_claim(uuid,uuid)', 'EXECUTE'), '|', not has_function_privilege('authenticated', 'public.renew_narrative_publication_claim(uuid,uuid)', 'EXECUTE'), '|', to_regprocedure('public.retry_narrative_publish(uuid,uuid,text)') is null);"),
+    't|t|t|t|t',
+    'upgrade installs claim and exact-attempt renewal only at the service publication boundary and removes browser retry',
   );
 
   await success('upgraded publication configuration failed', runPsql(`
@@ -102,6 +102,7 @@ select set_config('request.jwt.claim.role', 'service_role', false);
 set role service_role;
 select public.store_narrative_secret('${ownerId}', 'github', 'publication-upgrade-fixture-value');
 select public.claim_narrative_publication('${ownerId}', '${publishJobId}', '${versionId}', 'legacy-publish-key', '${attemptId}') ->> 'outcome';
+select public.renew_narrative_publication_claim('${publishJobId}', '${attemptId}') ->> 'status';
 reset role;
 `));
   assert.equal(
