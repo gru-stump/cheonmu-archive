@@ -3,6 +3,7 @@
 
 alter table public.generation_jobs
   add column worker_attempt_token uuid,
+  add column direct_dispatch_expires_at timestamptz,
   add column worker_attempt_count integer not null default 0,
   add column worker_claimed_at timestamptz,
   add column worker_lease_expires_at timestamptz,
@@ -34,7 +35,7 @@ alter table public.generation_jobs
       'worker_binding_invalid', 'worker_binding_changed', 'worker_policy_disabled',
       'worker_provider_changed', 'worker_pricing_invalid', 'worker_budget_blocked',
       'worker_retry_scheduled', 'worker_attempts_exhausted',
-      'worker_reserved_without_dispatch', 'provider_outcome_unknown',
+      'worker_reserved_without_dispatch', 'worker_pre_dispatch_retried', 'provider_outcome_unknown',
       'worker_legacy_frozen', 'worker_legacy_running'
     )
   ),
@@ -52,6 +53,27 @@ create unique index generation_jobs_worker_attempt_token_idx
 create index generation_jobs_worker_due_idx
   on public.generation_jobs (scheduled_for, worker_retry_at, created_at, id)
   where status = 'queued';
+
+-- Manual queue RPCs synchronously hand work to the direct generation Edge
+-- path. Mark that ownership in the same insert transaction so the cron worker
+-- cannot seize the job between the queue response and the first freeze RPC.
+create function narrative_private.mark_direct_generation_dispatch()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if new.payload ->> 'source' = 'manual' and new.direct_dispatch_expires_at is null then
+    new.direct_dispatch_expires_at := pg_catalog.clock_timestamp() + interval '5 minutes';
+  end if;
+  return new;
+end;
+$$;
+
+create trigger generation_jobs_mark_direct_dispatch
+before insert on public.generation_jobs
+for each row execute function narrative_private.mark_direct_generation_dispatch();
 
 -- Pre-020 frozen/running work has no durable provider-dispatch evidence. It is
 -- deliberately terminal instead of being guessed safe or replayed.
@@ -241,14 +263,45 @@ declare
   locked_job public.generation_jobs;
   abort_result jsonb;
   retry_time timestamptz;
+  reservation public.budget_entries;
+  replacement public.generation_jobs;
 begin
   select job.* into locked_job from public.generation_jobs as job where job.id = p_job_id for update;
   if locked_job.id is null then return jsonb_build_object('outcome', 'stale'); end if;
   if locked_job.provider_dispatch_recorded_at is not null then
     return narrative_private.dead_letter_generation_worker_job(locked_job.id, 'provider_outcome_unknown', true);
   end if;
-  if exists (select 1 from public.budget_entries as entry where entry.generation_job_id = locked_job.id and entry.entry_type = 'reservation')
-    or locked_job.status is distinct from 'queued' then
+  select entry.* into reservation from public.budget_entries as entry
+  where entry.generation_job_id = locked_job.id and entry.entry_type = 'reservation';
+  if reservation.id is not null then
+    if locked_job.worker_attempt_count >= 3 then
+      return narrative_private.dead_letter_generation_worker_job(locked_job.id, 'worker_attempts_exhausted', false);
+    end if;
+    perform public.fail_generation_budget(locked_job.id, 0);
+    retry_time := pg_catalog.clock_timestamp() + case locked_job.worker_attempt_count
+      when 1 then interval '1 minute' else interval '5 minutes' end;
+    update public.drafts set status = 'queued', updated_at = now()
+    where id = locked_job.worker_draft_id and owner_id = locked_job.owner_id and status = 'generating';
+    update public.generation_jobs
+    set status = 'failed', failure_code = 'worker_pre_dispatch_retried', failure_at = now(),
+        worker_failure_code = 'worker_pre_dispatch_retried', worker_retry_at = null,
+        worker_lease_expires_at = null
+    where id = locked_job.id;
+    insert into public.generation_jobs (
+      owner_id, draft_id, schedule_key, scheduled_for, status, payload,
+      provider_setting_id, worker_attempt_count, worker_retry_at, worker_failure_code
+    ) values (
+      locked_job.owner_id, locked_job.worker_draft_id, locked_job.schedule_key,
+      pg_catalog.clock_timestamp(), 'queued', locked_job.payload,
+      locked_job.worker_provider_setting_id, locked_job.worker_attempt_count,
+      retry_time, 'worker_retry_scheduled'
+    ) returning * into replacement;
+    insert into public.audit_events (owner_id, event_type, entity_type, entity_id, payload)
+    values (locked_job.owner_id, 'generation_worker_pre_dispatch_retried', 'generation_job', locked_job.id,
+      jsonb_build_object('replacementJobId', replacement.id, 'attemptCount', locked_job.worker_attempt_count));
+    return jsonb_build_object('outcome', 'retry_wait', 'jobId', replacement.id, 'retryAt', retry_time);
+  end if;
+  if locked_job.status is distinct from 'queued' then
     return narrative_private.dead_letter_generation_worker_job(locked_job.id, 'worker_reserved_without_dispatch', false);
   end if;
   if locked_job.attempt_token is not null then
@@ -324,6 +377,8 @@ begin
   select job.* into expired_job from public.generation_jobs as job
   where job.worker_attempt_token is null and job.status = 'running'
     and job.scheduled_for <= pg_catalog.clock_timestamp()
+    and (job.direct_dispatch_expires_at is null
+      or job.direct_dispatch_expires_at <= pg_catalog.clock_timestamp())
   order by job.scheduled_for, job.created_at, job.id limit 1 for update;
   if expired_job.id is not null then
     return narrative_private.dead_letter_generation_worker_job(
@@ -346,6 +401,9 @@ begin
     and job.scheduled_for <= pg_catalog.clock_timestamp()
     and (job.worker_retry_at is null or job.worker_retry_at <= pg_catalog.clock_timestamp())
     and job.worker_attempt_token is null
+    and job.attempt_token is null
+    and (job.direct_dispatch_expires_at is null
+      or job.direct_dispatch_expires_at <= pg_catalog.clock_timestamp())
     and job.worker_attempt_count < 3
   order by job.scheduled_for, job.created_at, job.id limit 1 for update;
   if candidate.id is null then return jsonb_build_object('outcome', 'idle'); end if;
@@ -514,6 +572,14 @@ begin
   if locked_job.worker_attempt_token is not null then
     raise exception 'generation_worker_claim_required' using errcode = 'P0001';
   end if;
+  if locked_job.payload ->> 'source' = 'manual'
+    and (locked_job.direct_dispatch_expires_at is null
+      or locked_job.direct_dispatch_expires_at <= pg_catalog.clock_timestamp()) then
+    raise exception 'generation_direct_claim_expired' using errcode = 'P0001';
+  end if;
+  update public.generation_jobs
+  set direct_dispatch_expires_at = pg_catalog.clock_timestamp() + interval '5 minutes'
+  where id = locked_job.id and locked_job.payload ->> 'source' = 'manual';
   return public.generation_direct_freeze_context_v2(
     p_job_id, p_draft_id, p_generation_mode, p_idempotency_key,
     p_context_version_ids, p_context_snapshot, p_provider_setting_id, p_attempt_token
@@ -556,6 +622,11 @@ declare locked_job public.generation_jobs;
 begin
   select job.* into locked_job from public.generation_jobs as job where job.id = p_job_id for update;
   if locked_job.worker_attempt_token is not null then raise exception 'generation_worker_claim_required' using errcode = 'P0001'; end if;
+  if locked_job.payload ->> 'source' = 'manual'
+    and (locked_job.direct_dispatch_expires_at is null
+      or locked_job.direct_dispatch_expires_at <= pg_catalog.clock_timestamp()) then
+    raise exception 'generation_direct_claim_expired' using errcode = 'P0001';
+  end if;
   return public.generation_direct_reserve_start_v2(p_job_id, p_attempt_token, p_amount_micros);
 end;
 $$;
@@ -565,7 +636,9 @@ create function public.reserve_and_start_worker_generation(
 )
 returns jsonb language plpgsql security definer set search_path = ''
 as $$
-declare locked_job public.generation_jobs;
+declare
+  locked_job public.generation_jobs;
+  reservation public.budget_entries;
 begin
   if auth.role() is distinct from 'service_role' then raise exception 'generation worker reserve caller is not authorized' using errcode = '42501'; end if;
   select job.* into locked_job from public.generation_jobs as job where job.id = p_job_id for update;
@@ -574,6 +647,13 @@ begin
     or locked_job.attempt_token is distinct from p_attempt_token
     or not narrative_private.generation_worker_binding_valid(locked_job) then
     raise exception 'generation_worker_attempt_mismatch' using errcode = 'P0001';
+  end if;
+  if locked_job.status = 'running' and locked_job.provider_dispatch_recorded_at is null then
+    select entry.* into reservation from public.budget_entries as entry
+    where entry.generation_job_id = locked_job.id and entry.entry_type = 'reservation';
+    if reservation.id is not null and reservation.amount_micros = p_amount_micros then
+      return jsonb_build_object('status', 'reserved', 'budgetStatus', 'normal', 'remainingMicros', null);
+    end if;
   end if;
   return public.generation_direct_reserve_start_v2(p_job_id, p_attempt_token, p_amount_micros);
 end;
@@ -630,6 +710,9 @@ begin
     end if;
   elsif p_worker_attempt_token is not null or source_value is distinct from 'manual' then
     return jsonb_build_object('outcome', 'rejected', 'failureCode', 'generation_worker_claim_required');
+  elsif locked_job.direct_dispatch_expires_at is null
+    or locked_job.direct_dispatch_expires_at <= pg_catalog.clock_timestamp() then
+    return jsonb_build_object('outcome', 'rejected', 'failureCode', 'generation_direct_claim_expired');
   end if;
   select provider.* into current_provider from public.provider_settings as provider
   where provider.id = locked_job.provider_setting_id and provider.owner_id = locked_job.owner_id and provider.enabled for share;
@@ -908,6 +991,7 @@ select cron.schedule(
 ) where not exists (select 1 from cron.job where jobname = 'narrative-generation-worker');
 
 revoke all on function narrative_private.generation_worker_binding_valid(public.generation_jobs) from public, anon, authenticated, service_role;
+revoke all on function narrative_private.mark_direct_generation_dispatch() from public, anon, authenticated, service_role;
 revoke all on function narrative_private.generation_worker_policy_failure(public.generation_jobs) from public, anon, authenticated, service_role;
 revoke all on function narrative_private.dead_letter_generation_worker_job(uuid, text, boolean) from public, anon, authenticated, service_role;
 revoke all on function narrative_private.retry_generation_worker_job(uuid) from public, anon, authenticated, service_role;

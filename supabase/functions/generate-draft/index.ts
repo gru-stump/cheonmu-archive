@@ -362,11 +362,6 @@ export async function runGeneration(deps: GenerationDependencies, command: Gener
     continuityContext = buildFrozenContinuityContext(frozenSelection);
   } catch (error) { return abortAfterFreeze(deps, effectiveCommand, attemptToken, 'frozen_validation_failed', mapPersistence(error)); }
 
-  let reservation: Awaited<ReturnType<GenerationDependencies['reserveAndStart']>>;
-  try { reservation = await deps.reserveAndStart({ jobId: effectiveCommand.jobId, draftId: effectiveCommand.draftId, attemptToken, worstCaseCostMicros: frozenPolicy.worstCaseCostMicros }); }
-  catch (error) { return abortAfterFreeze(deps, effectiveCommand, attemptToken, 'reservation_failed', mapPersistence(error)); }
-  if (reservation.status === 'blocked') return abortAfterFreeze(deps, effectiveCommand, attemptToken, 'budget_blocked', new GenerationError(402, 'budget_blocked', { budgetStatus: reservation.budgetStatus, remainingMicros: reservation.remainingMicros }));
-
   const outputCap = effectiveCommand.mode === 'revise_selection' ? Math.min(frozenPolicy.maxOutputTokens, frozenPolicy.maxRevisionOutputTokens) : frozenPolicy.maxOutputTokens;
   const request: GenerationRequest = {
     kind: effectiveCommand.kind, mode: effectiveCommand.mode, modelKey: frozenPolicy.modelKey, ...(effectiveCommand.seed === undefined ? {} : { seed: effectiveCommand.seed }),
@@ -382,6 +377,16 @@ export async function runGeneration(deps: GenerationDependencies, command: Gener
   catch { return abortAfterFreeze(deps, effectiveCommand, attemptToken, 'provider_generation_failed', new GenerationError(502, 'provider_generation_failed')); }
   try {
     await deps.renewWorkerLease?.({ jobId: effectiveCommand.jobId });
+  } catch {
+    return abortAfterFreeze(deps, effectiveCommand, attemptToken, 'provider_dispatch_uncertain', new GenerationError(502, 'generation_provider_fence_uncertain'));
+  }
+
+  let reservation: Awaited<ReturnType<GenerationDependencies['reserveAndStart']>>;
+  try { reservation = await deps.reserveAndStart({ jobId: effectiveCommand.jobId, draftId: effectiveCommand.draftId, attemptToken, worstCaseCostMicros: frozenPolicy.worstCaseCostMicros }); }
+  catch (error) { return abortAfterFreeze(deps, effectiveCommand, attemptToken, 'reservation_failed', mapPersistence(error)); }
+  if (reservation.status === 'blocked') return abortAfterFreeze(deps, effectiveCommand, attemptToken, 'budget_blocked', new GenerationError(402, 'budget_blocked', { budgetStatus: reservation.budgetStatus, remainingMicros: reservation.remainingMicros }));
+
+  try {
     const fence = await deps.fenceProviderDispatch({ jobId: effectiveCommand.jobId, attemptToken });
     if (fence.outcome !== 'fenced') throw new Error('provider fence rejected');
   } catch {
@@ -636,10 +641,19 @@ export function createSupabaseGenerationDependencies(
         contextSnapshot: z.array(frozenMemorySchema).parse(value.context_snapshot),
       };
     },
-    reserveAndStart: async (input) => reservationResultSchema.parse(await rpc(worker ? 'reserve_and_start_worker_generation' : 'reserve_and_start_generation', {
-      p_job_id: input.jobId, p_attempt_token: input.attemptToken, p_amount_micros: input.worstCaseCostMicros,
-      ...(worker ? { p_worker_attempt_token: worker.workerAttemptToken } : {}),
-    })),
+    reserveAndStart: async (input) => {
+      const body = {
+        p_job_id: input.jobId, p_attempt_token: input.attemptToken, p_amount_micros: input.worstCaseCostMicros,
+        ...(worker ? { p_worker_attempt_token: worker.workerAttemptToken } : {}),
+      };
+      const reserve = () => rpc(worker ? 'reserve_and_start_worker_generation' : 'reserve_and_start_generation', body);
+      if (!worker) return reservationResultSchema.parse(await reserve());
+      try { return reservationResultSchema.parse(await reserve()); }
+      catch (error) {
+        if (error instanceof GenerationError || error instanceof PersistenceError) throw error;
+        return reservationResultSchema.parse(await reserve());
+      }
+    },
     ...(worker ? {
       renewWorkerLease: async (input: { jobId: string }) => {
         renewalResultSchema.parse(await rpc('renew_generation_worker_claim', { p_job_id: input.jobId, p_worker_attempt_token: worker.workerAttemptToken }));

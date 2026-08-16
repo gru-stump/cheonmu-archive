@@ -128,7 +128,7 @@ describe('runGeneration', () => {
   it('renews a worker lease before the exact fence and fails closed when renewal is uncertain', async () => {
     const renewed = harness({ renewWorkerLease: async () => { renewed.events.push('renew'); } });
     await expect(runGeneration(renewed.deps, baseCommand)).resolves.toMatchObject({ status: 'generated' });
-    expect(renewed.events.slice(renewed.events.indexOf('resolve-provider'))).toEqual(['resolve-provider', 'renew', 'fence', 'provider', 'parse', 'continuity', 'finalize']);
+    expect(renewed.events.slice(renewed.events.indexOf('resolve-provider'))).toEqual(['resolve-provider', 'renew', 'reserve-start', 'fence', 'provider', 'parse', 'continuity', 'finalize']);
 
     const uncertain = harness({ renewWorkerLease: async () => { uncertain.events.push('renew'); throw new Error('lost renewal response'); } });
     await expect(runGeneration(uncertain.deps, baseCommand)).rejects.toMatchObject({ code: 'generation_provider_fence_uncertain' });
