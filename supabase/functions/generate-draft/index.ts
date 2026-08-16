@@ -563,6 +563,7 @@ export function createSupabaseGenerationDependencies(
   };
   const call = (path: string, init: RequestInit = {}) => callWith(worker ? serviceHeaders : userHeaders, path, init);
   const rpc = (name: string, body: Record<string, unknown>) => callWith(serviceHeaders, `/rest/v1/rpc/${name}`, { method: 'POST', body: JSON.stringify(body) });
+  const trustedOwner = (ownerId: string) => worker?.claim.ownerId ?? ownerId;
   return {
     createAttemptToken: () => crypto.randomUUID(),
     authenticate: async () => {
@@ -571,14 +572,17 @@ export function createSupabaseGenerationDependencies(
       if (!user?.id) throw new GenerationError(401, 'authentication_required');
       return { ownerId: user.id };
     },
-    authorize: async (_ownerId, command) => {
+    authorize: async (ownerId, command) => {
+      const ownerScope = trustedOwner(ownerId);
       if (worker) {
         const claim = worker.claim;
         if (command.jobId !== claim.jobId || command.draftId !== claim.draftId || command.idempotencyKey !== claim.idempotencyKey
           || command.mode !== claim.mode || command.kind !== claim.kind) throw new GenerationError(409, 'generation_worker_binding_changed');
-        const workflowPhase = claim.mode.startsWith('major_event_')
-          ? row<{ phase: string }>(await call(`/rest/v1/major_event_workflows?select=phase&draft_id=eq.${encodeURIComponent(claim.draftId)}`))?.phase ?? null
+        const workflow = claim.mode.startsWith('major_event_')
+          ? row<{ owner_id: string; phase: string }>(await call(`/rest/v1/major_event_workflows?select=owner_id,phase&owner_id=eq.${encodeURIComponent(ownerScope)}&draft_id=eq.${encodeURIComponent(claim.draftId)}`))
           : null;
+        if (workflow && workflow.owner_id !== ownerScope) throw new GenerationError(409, 'generation_worker_binding_changed');
+        const workflowPhase = workflow?.phase ?? null;
         return {
           draftStatus: 'queued' as const, draftKind: claim.kind, workflowPhase,
           jobPayload: {
@@ -589,19 +593,23 @@ export function createSupabaseGenerationDependencies(
           },
         };
       }
-      const draft = row<{ status: DraftStatus; kind: DraftKind }>(await call(`/rest/v1/drafts?select=status,kind&id=eq.${encodeURIComponent(command.draftId)}`));
-      if (!draft) throw new GenerationError(404, 'draft_not_found');
-      const job = row<{ id: string; draft_id: string | null; payload: unknown }>(await call(`/rest/v1/generation_jobs?select=id,draft_id,payload&id=eq.${encodeURIComponent(command.jobId)}`));
-      if (!job || (job.draft_id !== null && job.draft_id !== command.draftId)) throw new GenerationError(404, 'generation_target_not_found');
-      const workflowPhase = command.mode.startsWith('major_event_') ? row<{ phase: string }>(await call(`/rest/v1/major_event_workflows?select=phase&draft_id=eq.${encodeURIComponent(command.draftId)}`))?.phase ?? null : null;
+      const draft = row<{ owner_id: string; status: DraftStatus; kind: DraftKind }>(await call(`/rest/v1/drafts?select=owner_id,status,kind&owner_id=eq.${encodeURIComponent(ownerScope)}&id=eq.${encodeURIComponent(command.draftId)}`));
+      if (!draft || draft.owner_id !== ownerScope) throw new GenerationError(404, 'draft_not_found');
+      const job = row<{ id: string; owner_id: string; draft_id: string | null; payload: unknown }>(await call(`/rest/v1/generation_jobs?select=id,owner_id,draft_id,payload&owner_id=eq.${encodeURIComponent(ownerScope)}&id=eq.${encodeURIComponent(command.jobId)}`));
+      if (!job || job.owner_id !== ownerScope || (job.draft_id !== null && job.draft_id !== command.draftId)) throw new GenerationError(404, 'generation_target_not_found');
+      const workflow = command.mode.startsWith('major_event_')
+        ? row<{ owner_id: string; phase: string }>(await call(`/rest/v1/major_event_workflows?select=owner_id,phase&owner_id=eq.${encodeURIComponent(ownerScope)}&draft_id=eq.${encodeURIComponent(command.draftId)}`))
+        : null;
+      const workflowPhase = workflow?.owner_id === ownerScope ? workflow.phase : null;
       return { draftStatus: draft.status, draftKind: draft.kind, workflowPhase, jobPayload: job.payload };
     },
-    findIdempotent: async (_ownerId, command) => {
+    findIdempotent: async (ownerId, command) => {
+      const ownerScope = trustedOwner(ownerId);
       const job = row<{
-        id: string; draft_id: string | null; status: string; idempotency_key: string | null;
+        id: string; owner_id: string; draft_id: string | null; status: string; idempotency_key: string | null;
         generation_mode: GenerationMode | null; payload: Record<string, unknown>;
-      }>(await call(`/rest/v1/generation_jobs?select=id,draft_id,status,idempotency_key,generation_mode,payload&id=eq.${encodeURIComponent(command.jobId)}`));
-      if (!job) return null;
+      }>(await call(`/rest/v1/generation_jobs?select=id,owner_id,draft_id,status,idempotency_key,generation_mode,payload&owner_id=eq.${encodeURIComponent(ownerScope)}&id=eq.${encodeURIComponent(command.jobId)}`));
+      if (!job || job.owner_id !== ownerScope) return null;
       const payload = job.payload && typeof job.payload === 'object' ? job.payload : {};
       const preboundKey = typeof payload.manualRequestKey === 'string' ? payload.manualRequestKey : null;
       const preboundMode = typeof payload.mode === 'string' ? payload.mode : null;
@@ -623,25 +631,28 @@ export function createSupabaseGenerationDependencies(
         if (job.idempotency_key !== null) throw new GenerationError(409, 'duplicate_generation');
         return null;
       }
-      const version = row<{ id: string; continuity_level: ContinuityCheck['level'] }>(await call(`/rest/v1/draft_versions?select=id,continuity_level&generation_job_id=eq.${job.id}`));
-      return version ? { draftId: command.draftId, versionId: version.id, status: 'generated', continuityLevel: version.continuity_level } : null;
+      const version = row<{ id: string; owner_id: string; continuity_level: ContinuityCheck['level'] }>(await call(`/rest/v1/draft_versions?select=id,owner_id,continuity_level&owner_id=eq.${encodeURIComponent(ownerScope)}&generation_job_id=eq.${job.id}`));
+      return version?.owner_id === ownerScope ? { draftId: command.draftId, versionId: version.id, status: 'generated', continuityLevel: version.continuity_level } : null;
     },
     loadPolicy: async (ownerId) => {
-      const values = await callWith(serviceHeaders, `/rest/v1/provider_settings?select=id,owner_id,provider_key,enabled,configuration,model_key,max_input_tokens,max_output_tokens,max_revision_output_tokens,input_cost_micros_per_million,output_cost_micros_per_million,fixed_cost_micros&enabled=eq.true&owner_id=eq.${encodeURIComponent(ownerId)}`);
+      const ownerScope = trustedOwner(ownerId);
+      const values = await callWith(serviceHeaders, `/rest/v1/provider_settings?select=id,owner_id,provider_key,enabled,configuration,model_key,max_input_tokens,max_output_tokens,max_revision_output_tokens,input_cost_micros_per_million,output_cost_micros_per_million,fixed_cost_micros&enabled=eq.true&owner_id=eq.${encodeURIComponent(ownerScope)}`);
       const ownerSettings = (Array.isArray(values) ? values : []).filter((candidate) => candidate && typeof candidate === 'object'
-        && (candidate as Record<string, unknown>).owner_id === ownerId && (candidate as Record<string, unknown>).enabled === true);
+        && (candidate as Record<string, unknown>).owner_id === ownerScope && (candidate as Record<string, unknown>).enabled === true);
       if (ownerSettings.length !== 1) throw new GenerationError(409, 'active_provider_setting_required');
       try {
-        const setting = trustedSettingFromRecord(ownerSettings[0] as Record<string, unknown>, ownerId);
+        const setting = trustedSettingFromRecord(ownerSettings[0] as Record<string, unknown>, ownerScope);
         if (worker && setting.providerSettingId !== worker.claim.providerSettingId) throw new Error('worker provider changed');
         return setting;
       }
       catch { throw new GenerationError(500, 'invalid_provider_setting'); }
     },
-    selectContext: async (_ownerId, command, inputTokenBudget) => {
-      const values = await call('/rest/v1/memory_items?select=id,memory_type,content,status,blocking,metadata,updated_at&status=in.(active,approved)');
-      const memories = (Array.isArray(values) ? values : []).map((raw) => {
-        const value = raw as { id: string; memory_type: NarrativeMemory['memoryType']; content: string; status: string; blocking: boolean; metadata?: Record<string, unknown>; updated_at?: string };
+    selectContext: async (ownerId, command, inputTokenBudget) => {
+      const ownerScope = trustedOwner(ownerId);
+      const values = await call(`/rest/v1/memory_items?select=id,owner_id,memory_type,content,status,blocking,metadata,updated_at&owner_id=eq.${encodeURIComponent(ownerScope)}&status=in.(active,approved)`);
+      const memories = (Array.isArray(values) ? values : []).filter((raw) => raw && typeof raw === 'object'
+        && (raw as Record<string, unknown>).owner_id === ownerScope).map((raw) => {
+        const value = raw as { id: string; owner_id: string; memory_type: NarrativeMemory['memoryType']; content: string; status: string; blocking: boolean; metadata?: Record<string, unknown>; updated_at?: string };
         const metadata = memoryMetadataSchema.parse(value.metadata ?? {});
         return { versionId: value.id, memoryType: value.memory_type, content: value.content, status: value.status, blocking: value.blocking, tokenCount: metadata.tokenCount ?? Math.ceil(value.content.length / 4), tags: metadata.tags, updatedAt: value.updated_at, claims: metadata.claims, continuityFacts: metadata.continuityFacts };
       });
@@ -710,12 +721,12 @@ declare const Deno: DenoRuntime;
 const defaultFakeResult: GenerationResult = { title: '로컬 생성 초안', kind: 'short_dialogue', setting: { time: '저녁', place: '처마 아래' }, body: '천령과 무영은 빗소리 사이에서 잠시 말을 멈추었다.', emotionalStart: '고요함', emotionalEnd: '잔잔한 안도', continuityUsed: [], continuityCandidates: [], canonChangeCandidates: [], unresolvedCallbacks: [], riskFlags: [] };
 export function createLocalFixtureProvider(
   sleep: (milliseconds: number) => Promise<unknown> = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)),
-  onInvocation?: (kind: DraftKind) => void,
+  onInvocation?: (kind: DraftKind, request: GenerationRequest) => void,
 ): NarrativeProvider {
   return {
     generate: async (providerRequest, signal) => {
       if (signal?.aborted) throw new DOMException('aborted', 'AbortError');
-      onInvocation?.(providerRequest.kind);
+      onInvocation?.(providerRequest.kind, providerRequest);
       let rejectAbort: ((reason?: unknown) => void) | undefined;
       const aborted = new Promise<never>((_resolve, reject) => { rejectAbort = reject; });
       const abort = () => rejectAbort?.(new DOMException('aborted', 'AbortError'));

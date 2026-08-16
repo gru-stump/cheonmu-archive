@@ -78,6 +78,27 @@ describe('trusted generation policy', () => {
     expect(response.usage).toEqual({ inputTokens: 14, outputTokens: 9 });
   });
 
+  it('exposes the exact fixture request to the served integration observer', async () => {
+    const observed: unknown[] = [];
+    const provider = createLocalFixtureProvider(
+      vi.fn().mockResolvedValue(undefined),
+      (_kind, request) => observed.push(request),
+    );
+    const request = {
+      kind: 'short_dialogue' as const,
+      mode: 'new' as const,
+      modelKey: 'fake-local-model',
+      maxInputTokens: 100,
+      maxOutputTokens: 20,
+      contextVersionIds: ['owner-a-memory'],
+      contextMemories: [{ versionId: 'owner-a-memory', memoryType: 'canon' as const, content: 'owner-a-only', tokenCount: 1 }],
+    };
+
+    await provider.generate(request);
+
+    expect(observed).toEqual([request]);
+  });
+
   it('estimates reservation from trusted model prices and caps revision output', () => {
     expect(estimateWorstCaseCostMicros(policy, 'new')).toBe(905);
     expect(estimateWorstCaseCostMicros(policy, 'revise_selection')).toBe(665);
@@ -523,7 +544,7 @@ describe('Supabase generation adapter', () => {
     const seen: Array<{ path: string; authorization: string | null }> = [];
     const fetch: typeof globalThis.fetch = async (input, init) => {
       seen.push({ path: new URL(String(input)).pathname, authorization: new Headers(init?.headers).get('authorization') });
-      return Response.json([{ phase: 'proposal_approved' }]);
+      return Response.json([{ owner_id: 'owner-1', phase: 'proposal_approved' }]);
     };
     const command = { ...baseCommand, mode: 'major_event_scene_plan' as const, kind: 'major_event_proposal' as const };
     const deps = createSupabaseGenerationDependencies(
@@ -550,9 +571,9 @@ describe('Supabase generation adapter', () => {
     const fetch: typeof globalThis.fetch = async (input) => {
       const path = new URL(String(input)).pathname;
       if (path.endsWith('/memory_items')) return Response.json([
-        { id: 'canon-v1', memory_type: 'canon', content: '관계 단계', status: 'approved', blocking: false, metadata: { tokenCount: 5, continuityFacts: { relationshipStage: 7 } } },
-        { id: 'approved-v2', memory_type: 'continuity', content: '치료실에서 맺은 약속', status: 'approved', blocking: false, metadata: { tokenCount: 6, tags: ['치료실', '밤'], continuityFacts: { continuityId: 'approved-v2' } } },
-        { id: 'unapproved-v3', memory_type: 'continuity', content: '검토되지 않은 사건', status: 'active', blocking: false, metadata: { tokenCount: 6, tags: ['치료실'], continuityFacts: { continuityId: 'unapproved-v3' } } },
+        { id: 'canon-v1', owner_id: 'owner-1', memory_type: 'canon', content: '관계 단계', status: 'approved', blocking: false, metadata: { tokenCount: 5, continuityFacts: { relationshipStage: 7 } } },
+        { id: 'approved-v2', owner_id: 'owner-1', memory_type: 'continuity', content: '치료실에서 맺은 약속', status: 'approved', blocking: false, metadata: { tokenCount: 6, tags: ['치료실', '밤'], continuityFacts: { continuityId: 'approved-v2' } } },
+        { id: 'unapproved-v3', owner_id: 'owner-1', memory_type: 'continuity', content: '검토되지 않은 사건', status: 'active', blocking: false, metadata: { tokenCount: 6, tags: ['치료실'], continuityFacts: { continuityId: 'unapproved-v3' } } },
       ]);
       return Response.json([]);
     };
@@ -562,13 +583,56 @@ describe('Supabase generation adapter', () => {
     expect(selected.continuity.map((memory) => memory.versionId)).toEqual(['approved-v2']);
   });
 
+  it('derives every worker context, canon, workflow, job, provider, and version read from the claimed owner', async () => {
+    const seen: URL[] = [];
+    const fetch: typeof globalThis.fetch = async (input) => {
+      const url = new URL(String(input));
+      seen.push(url);
+      if (url.pathname === '/rest/v1/major_event_workflows') return Response.json([{ owner_id: 'owner-a', phase: 'proposal_approved' }]);
+      if (url.pathname === '/rest/v1/generation_jobs') return Response.json([{
+        id: 'job-1', owner_id: 'owner-a', draft_id: 'draft-1', status: 'completed', idempotency_key: 'request-1',
+        generation_mode: 'major_event_scene_plan', payload: { source: 'manual', mode: 'major_event_scene_plan', kind: 'major_event_proposal', manualRequestKey: 'request-1' },
+      }]);
+      if (url.pathname === '/rest/v1/draft_versions') return Response.json([{ id: 'version-a', owner_id: 'owner-a', continuity_level: 'review' }]);
+      if (url.pathname === '/rest/v1/provider_settings') return Response.json([
+        { id: 'setting-b', owner_id: 'owner-b', provider_key: 'fake-local-provider', enabled: true, configuration: { mode: 'fixture' }, model_key: 'owner-b-model', max_input_tokens: 500, max_output_tokens: 200, max_revision_output_tokens: 80, input_cost_micros_per_million: 0, output_cost_micros_per_million: 0, fixed_cost_micros: 0 },
+        { id: 'setting-a', owner_id: 'owner-a', provider_key: 'fake-local-provider', enabled: true, configuration: { mode: 'fixture' }, model_key: 'owner-a-model', max_input_tokens: 500, max_output_tokens: 200, max_revision_output_tokens: 80, input_cost_micros_per_million: 0, output_cost_micros_per_million: 0, fixed_cost_micros: 0 },
+      ]);
+      if (url.pathname === '/rest/v1/memory_items') return Response.json([
+        { id: 'memory-b', owner_id: 'owner-b', memory_type: 'canon', content: 'OWNER_B_PRIVATE', status: 'approved', blocking: false, metadata: { tokenCount: 1, continuityFacts: { relationshipStage: 1 } } },
+        { id: 'memory-a', owner_id: 'owner-a', memory_type: 'canon', content: 'OWNER_A_PRIVATE', status: 'approved', blocking: false, metadata: { tokenCount: 1, continuityFacts: { relationshipStage: 7 } } },
+      ]);
+      return Response.json([]);
+    };
+    const command = { ...baseCommand, mode: 'major_event_scene_plan' as const, kind: 'major_event_proposal' as const };
+    const deps = createSupabaseGenerationDependencies(
+      { url: 'http://supabase', anonKey: 'anon', serviceRoleKey: 'service-secret', fetch }, '',
+      async () => new FakeNarrativeProvider(result),
+      { workerAttemptToken: 'a1000000-0000-4000-8000-000000000005', claim: {
+        ownerId: 'owner-a', jobId: command.jobId, draftId: command.draftId, providerSettingId: 'setting-a',
+        idempotencyKey: command.idempotencyKey, mode: command.mode, kind: command.kind, source: 'manual', policyClass: 'manual',
+      } },
+    );
+
+    await expect(deps.authorize('owner-b', command)).resolves.toMatchObject({ workflowPhase: 'proposal_approved' });
+    await expect(deps.findIdempotent('owner-b', command)).resolves.toMatchObject({ versionId: 'version-a' });
+    await expect(deps.loadPolicy('owner-b', command)).resolves.toMatchObject({ providerSettingId: 'setting-a', modelKey: 'owner-a-model' });
+    await expect(deps.selectContext('owner-b', command, 500)).resolves.toMatchObject({ versionIds: ['memory-a'] });
+
+    const scopedPaths = new Set(['/rest/v1/major_event_workflows', '/rest/v1/generation_jobs', '/rest/v1/draft_versions', '/rest/v1/provider_settings', '/rest/v1/memory_items']);
+    expect(seen.filter((url) => scopedPaths.has(url.pathname))).not.toHaveLength(0);
+    for (const url of seen.filter((candidate) => scopedPaths.has(candidate.pathname))) {
+      expect(url.searchParams.get('owner_id'), url.pathname).toBe('eq.owner-a');
+    }
+  });
+
   it('authorizes both draft and job with the user client before service mutations', async () => {
     const seen: string[] = [];
     const fetch: typeof globalThis.fetch = async (input, init) => {
       const path = new URL(String(input)).pathname;
       seen.push(`${path}:${new Headers(init?.headers).get('authorization')}`);
-      if (path.endsWith('/drafts')) return Response.json([{ status: 'queued', kind: 'short_dialogue' }]);
-      if (path.endsWith('/generation_jobs')) return Response.json([{ id: 'job-1', draft_id: 'draft-1', payload: { source: 'manual', mode: 'new', kind: 'short_dialogue', manualRequestKey: 'request-1', seed: 'database seed', tags: ['database-tag'] } }]);
+      if (path.endsWith('/drafts')) return Response.json([{ owner_id: 'owner-1', status: 'queued', kind: 'short_dialogue' }]);
+      if (path.endsWith('/generation_jobs')) return Response.json([{ id: 'job-1', owner_id: 'owner-1', draft_id: 'draft-1', payload: { source: 'manual', mode: 'new', kind: 'short_dialogue', manualRequestKey: 'request-1', seed: 'database seed', tags: ['database-tag'] } }]);
       return Response.json([]);
     };
     const deps = createSupabaseGenerationDependencies({ url: 'http://supabase', anonKey: 'anon', serviceRoleKey: 'service-secret', fetch }, 'token', async () => new FakeNarrativeProvider(result));
@@ -583,18 +647,18 @@ describe('Supabase generation adapter', () => {
     const fetch: typeof globalThis.fetch = async (input) => {
       const url = new URL(String(input));
       if (url.pathname === '/auth/v1/user') return Response.json({ id: 'owner-1' });
-      if (url.pathname === '/rest/v1/drafts') return Response.json([{ status: 'queued', kind: 'short_dialogue' }]);
-      if (url.pathname === '/rest/v1/generation_jobs' && url.searchParams.get('select') === 'id,draft_id,payload') {
-        return Response.json([{ id: 'job-1', draft_id: 'draft-1', payload: { kind: 'short_dialogue', mode: 'new', manualRequestKey: 'queued-a-key' } }]);
+      if (url.pathname === '/rest/v1/drafts') return Response.json([{ owner_id: 'owner-1', status: 'queued', kind: 'short_dialogue' }]);
+      if (url.pathname === '/rest/v1/generation_jobs' && url.searchParams.get('select') === 'id,owner_id,draft_id,payload') {
+        return Response.json([{ id: 'job-1', owner_id: 'owner-1', draft_id: 'draft-1', payload: { kind: 'short_dialogue', mode: 'new', manualRequestKey: 'queued-a-key' } }]);
       }
       if (url.pathname === '/rest/v1/generation_jobs') {
         if (url.searchParams.has('idempotency_key')) {
-          return Response.json([{ id: 'job-b', draft_id: 'draft-b', status: 'completed', idempotency_key: 'completed-b-key', generation_mode: 'new', payload: { kind: 'short_dialogue', mode: 'new', manualRequestKey: 'completed-b-key' } }]);
+          return Response.json([{ id: 'job-b', owner_id: 'owner-1', draft_id: 'draft-b', status: 'completed', idempotency_key: 'completed-b-key', generation_mode: 'new', payload: { kind: 'short_dialogue', mode: 'new', manualRequestKey: 'completed-b-key' } }]);
         }
         expect(url.searchParams.get('id')).toBe('eq.job-1');
-        return Response.json([{ id: 'job-1', draft_id: 'draft-1', status: 'queued', idempotency_key: null, generation_mode: null, payload: { kind: 'short_dialogue', mode: 'new', manualRequestKey: 'queued-a-key' } }]);
+        return Response.json([{ id: 'job-1', owner_id: 'owner-1', draft_id: 'draft-1', status: 'queued', idempotency_key: null, generation_mode: null, payload: { kind: 'short_dialogue', mode: 'new', manualRequestKey: 'queued-a-key' } }]);
       }
-      if (url.pathname === '/rest/v1/draft_versions') return Response.json([{ id: 'version-b', continuity_level: 'review' }]);
+      if (url.pathname === '/rest/v1/draft_versions') return Response.json([{ id: 'version-b', owner_id: 'owner-1', continuity_level: 'review' }]);
       return Response.json([]);
     };
     const deps = createSupabaseGenerationDependencies({ url: 'http://supabase', anonKey: 'anon', serviceRoleKey: 'service-secret', fetch }, 'token', async () => new FakeNarrativeProvider(result));
@@ -611,13 +675,13 @@ describe('Supabase generation adapter', () => {
     const fetch: typeof globalThis.fetch = async (input) => {
       const url = new URL(String(input));
       if (url.pathname === '/auth/v1/user') return Response.json({ id: 'owner-1' });
-      if (url.pathname === '/rest/v1/drafts') return Response.json([{ status: 'approved_private', kind: 'short_dialogue' }]);
-      if (url.pathname === '/rest/v1/generation_jobs' && url.searchParams.get('select') === 'id,draft_id,payload') return Response.json([{ id: 'job-1', draft_id: 'draft-1', payload: { kind: 'short_dialogue', mode: 'revise_selection', manualRequestKey: 'revision-key' } }]);
+      if (url.pathname === '/rest/v1/drafts') return Response.json([{ owner_id: 'owner-1', status: 'approved_private', kind: 'short_dialogue' }]);
+      if (url.pathname === '/rest/v1/generation_jobs' && url.searchParams.get('select') === 'id,owner_id,draft_id,payload') return Response.json([{ id: 'job-1', owner_id: 'owner-1', draft_id: 'draft-1', payload: { kind: 'short_dialogue', mode: 'revise_selection', manualRequestKey: 'revision-key' } }]);
       if (url.pathname === '/rest/v1/generation_jobs') return Response.json([{
-        id: 'job-1', draft_id: 'draft-1', status: 'completed', idempotency_key: 'revision-key', generation_mode: 'revise_selection',
+        id: 'job-1', owner_id: 'owner-1', draft_id: 'draft-1', status: 'completed', idempotency_key: 'revision-key', generation_mode: 'revise_selection',
         payload: { kind: 'short_dialogue', mode: 'revise_selection', manualRequestKey: 'revision-key' },
       }]);
-      if (url.pathname === '/rest/v1/draft_versions') return Response.json([{ id: 'version-1', continuity_level: 'review' }]);
+      if (url.pathname === '/rest/v1/draft_versions') return Response.json([{ id: 'version-1', owner_id: 'owner-1', continuity_level: 'review' }]);
       return Response.json([]);
     };
     const deps = createSupabaseGenerationDependencies({ url: 'http://supabase', anonKey: 'anon', serviceRoleKey: 'service-secret', fetch }, 'token', async () => new FakeNarrativeProvider(result));
@@ -629,13 +693,13 @@ describe('Supabase generation adapter', () => {
     const fetch: typeof globalThis.fetch = async (input) => {
       const url = new URL(String(input));
       if (url.pathname === '/auth/v1/user') return Response.json({ id: 'owner-1' });
-      if (url.pathname === '/rest/v1/drafts') return Response.json([{ status: 'approved_private', kind: 'short_dialogue' }]);
-      if (url.pathname === '/rest/v1/generation_jobs' && url.searchParams.get('select') === 'id,draft_id,payload') return Response.json([{ id: 'job-1', draft_id: 'draft-1', payload: { kind: 'short_dialogue', mode: 'revise_selection', manualRequestKey: 'revision-key' } }]);
+      if (url.pathname === '/rest/v1/drafts') return Response.json([{ owner_id: 'owner-1', status: 'approved_private', kind: 'short_dialogue' }]);
+      if (url.pathname === '/rest/v1/generation_jobs' && url.searchParams.get('select') === 'id,owner_id,draft_id,payload') return Response.json([{ id: 'job-1', owner_id: 'owner-1', draft_id: 'draft-1', payload: { kind: 'short_dialogue', mode: 'revise_selection', manualRequestKey: 'revision-key' } }]);
       if (url.pathname === '/rest/v1/generation_jobs') return Response.json([{
-        id: 'job-1', draft_id: 'draft-1', status: 'completed', idempotency_key: 'revision-key', generation_mode: 'revise_selection',
+        id: 'job-1', owner_id: 'owner-1', draft_id: 'draft-1', status: 'completed', idempotency_key: 'revision-key', generation_mode: 'revise_selection',
         payload: { kind: 'short_dialogue', mode: 'revise_selection', manualRequestKey: 'revision-key' },
       }]);
-      if (url.pathname === '/rest/v1/draft_versions') return Response.json([{ id: 'version-1', continuity_level: 'review' }]);
+      if (url.pathname === '/rest/v1/draft_versions') return Response.json([{ id: 'version-1', owner_id: 'owner-1', continuity_level: 'review' }]);
       return Response.json([]);
     };
     const deps = createSupabaseGenerationDependencies({ url: 'http://supabase', anonKey: 'anon', serviceRoleKey: 'service-secret', fetch }, 'token', async () => new FakeNarrativeProvider(result));
@@ -655,14 +719,14 @@ describe('Supabase generation adapter', () => {
     const fetch: typeof globalThis.fetch = async (input) => {
       const url = new URL(String(input));
       if (url.pathname === '/auth/v1/user') return Response.json({ id: 'owner-1' });
-      if (url.pathname === '/rest/v1/drafts') return Response.json([{ status: 'approved_private', kind: 'short_dialogue' }]);
-      if (url.pathname === '/rest/v1/generation_jobs' && ['id,draft_id', 'id,draft_id,payload'].includes(url.searchParams.get('select') ?? '')) {
-        return Response.json([{ id: 'job-1', draft_id: 'draft-1', payload }]);
+      if (url.pathname === '/rest/v1/drafts') return Response.json([{ owner_id: 'owner-1', status: 'approved_private', kind: 'short_dialogue' }]);
+      if (url.pathname === '/rest/v1/generation_jobs' && ['id,owner_id,draft_id', 'id,owner_id,draft_id,payload'].includes(url.searchParams.get('select') ?? '')) {
+        return Response.json([{ id: 'job-1', owner_id: 'owner-1', draft_id: 'draft-1', payload }]);
       }
       if (url.pathname === '/rest/v1/generation_jobs') return Response.json([{
-        id: 'job-1', draft_id: 'draft-1', status: 'completed', idempotency_key: 'revision-key', generation_mode: 'revise_selection', payload,
+        id: 'job-1', owner_id: 'owner-1', draft_id: 'draft-1', status: 'completed', idempotency_key: 'revision-key', generation_mode: 'revise_selection', payload,
       }]);
-      if (url.pathname === '/rest/v1/draft_versions') return Response.json([{ id: 'version-1', continuity_level: 'review' }]);
+      if (url.pathname === '/rest/v1/draft_versions') return Response.json([{ id: 'version-1', owner_id: 'owner-1', continuity_level: 'review' }]);
       return Response.json([]);
     };
     const deps = createSupabaseGenerationDependencies({ url: 'http://supabase', anonKey: 'anon', serviceRoleKey: 'service-secret', fetch }, 'token', async () => new FakeNarrativeProvider(result));

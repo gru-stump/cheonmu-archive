@@ -261,8 +261,12 @@ if (typeof Deno !== 'undefined' && (import.meta as ImportMeta & { main?: boolean
   const dispatchToken = Deno.env.get('NARRATIVE_SCHEDULE_DISPATCH_TOKEN');
   if (!url || !anonKey || !serviceRoleKey || !dispatchToken) throw new Error('generation worker runtime settings are required');
   const generationConfig = { url, anonKey, serviceRoleKey };
+  const traceFakeContext = Deno.env.get('NARRATIVE_FAKE_LOCAL_CONTEXT_TRACE') === 'true';
   const fakeProvider = Deno.env.get('NARRATIVE_FAKE_LOCAL_FIXTURE') === 'true'
-    ? createLocalFixtureProvider(undefined, (kind) => console.log(`FAKE_LOCAL_PROVIDER_INVOKED:${kind}`))
+    ? createLocalFixtureProvider(undefined, (kind, request) => {
+      console.log(`FAKE_LOCAL_PROVIDER_INVOKED:${kind}`);
+      if (traceFakeContext) console.log(`FAKE_LOCAL_PROVIDER_CONTEXT:${kind}:${JSON.stringify(request)}`);
+    })
     : undefined;
   const resolveProvider = createRuntimeGenerationProviderResolver(generationConfig, (name) => Deno.env.get(name), fakeProvider);
   const deps = createSupabaseGenerationWorkerDependencies({ url, serviceRoleKey }, async (command, workerAttemptToken, claim, signal) => {

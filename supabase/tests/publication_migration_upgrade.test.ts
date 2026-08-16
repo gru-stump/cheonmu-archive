@@ -81,7 +81,7 @@ values ('${publishJobId}', '${ownerId}', '${draftId}', '${versionId}', 'queued')
 
   await success('publication migration failed over the pre-Task-2 schema', runProcess(npx, ['supabase', 'migration', 'up', '--local', '--yes']));
   headApplied = true;
-  assert.equal(await scalar('select max(version) from supabase_migrations.schema_migrations;'), '202608140020');
+  assert.equal(await scalar('select max(version) from supabase_migrations.schema_migrations;'), '202608140021');
   assert.equal(
     await scalar(`select concat(approval_action_id, '|', publication_details ->> 'id', '|', status, '|', attempt_count)
       from public.publish_jobs where id = '${publishJobId}';`),

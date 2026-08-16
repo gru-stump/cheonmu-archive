@@ -34,7 +34,7 @@ async function psql(sql: string) {
   return result.stdout;
 }
 
-const historical = readdirSync(migrations).filter((name) => /^2026081400(0[1-9]|1[0-9])_.*\.sql$/.test(name)).sort();
+const historical = readdirSync(migrations).filter((name) => /^2026081400(0[1-9]|1[0-9]|20)_.*\.sql$/.test(name)).sort();
 const before = new Map(historical.map((name) => [name, createHash('sha256').update(readFileSync(join(migrations, name))).digest('hex')]));
 
 try {
@@ -84,7 +84,7 @@ values ('${owner}', 'b0220000-0000-0000-0000-000000000001', 'b0240000-0000-0000-
 
   await run('npx', ['supabase', 'migration', 'up', '--local']);
   const version = (await psql(`select version from supabase_migrations.schema_migrations order by version desc limit 1;`)).trim();
-  if (version !== '202608140020') throw new Error(`expected migration 020, got ${version}`);
+  if (version !== '202608140021') throw new Error(`expected migration 021, got ${version}`);
   const result = await psql(`
 select concat(status, '|', coalesce(worker_failure_code, ''), '|', provider_dispatch_recorded_at is null, '|', worker_attempt_count)
 from public.generation_jobs where id in (
@@ -105,13 +105,13 @@ from public.budget_entries where generation_job_id = 'b0240000-0000-0000-0000-00
     || lines[4] !== 'failed||t|0'
     || lines[5] !== '0'
     || lines[6] !== '1|1|321') {
-    throw new Error(`019→020 did not migrate legacy states fail-closed without side-effect evidence\n${result}`);
+    throw new Error(`019→021 did not migrate legacy states fail-closed without side-effect evidence\n${result}`);
   }
   for (const [name, hash] of before) {
     const after = createHash('sha256').update(readFileSync(join(migrations, name))).digest('hex');
-    if (after !== hash) throw new Error(`historical migration changed during 019→020 upgrade test: ${name}`);
+    if (after !== hash) throw new Error(`historical migration changed during 019→021 upgrade test: ${name}`);
   }
-  console.log('PASS: actual 019→020 upgrade fails legacy frozen/running rows closed, preserves terminal rows, fabricates no provider fence, and leaves migrations 001–019 unchanged.');
+  console.log('PASS: actual 019→021 upgrade fails legacy frozen/running rows closed, preserves terminal rows, fabricates no provider fence, and leaves migrations 001–020 unchanged.');
 } finally {
   await run('npx', ['supabase', 'db', 'reset', '--local', '--yes']);
 }
