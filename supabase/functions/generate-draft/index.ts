@@ -80,7 +80,7 @@ export interface GenerationDependencies {
   >;
   renewWorkerLease?(input: { jobId: string }): Promise<void>;
   fenceProviderDispatch(input: { jobId: string; attemptToken: string }): Promise<{ outcome: 'fenced' }>;
-  resolveProvider(ownerId: string, loadedPolicy: TrustedGenerationPolicy, frozenPolicy: FrozenGenerationPolicy): NarrativeProvider | Promise<NarrativeProvider>;
+  resolveProvider(ownerId: string, loadedPolicy: TrustedGenerationPolicy, frozenPolicy: FrozenGenerationPolicy, signal?: AbortSignal): NarrativeProvider | Promise<NarrativeProvider>;
   parseProviderResponse(value: unknown): NarrativeProviderResponse;
   checkContinuity(result: GenerationResult, context: ContinuityContext): ContinuityCheck;
   finalizeSuccess(input: {
@@ -92,7 +92,7 @@ export interface GenerationDependencies {
   auditFailure?(stage: string): void;
 }
 
-export interface SupabaseRestConfig { url: string; anonKey: string; serviceRoleKey: string; fetch?: typeof globalThis.fetch; timeoutMs?: number }
+export interface SupabaseRestConfig { url: string; anonKey: string; serviceRoleKey: string; fetch?: typeof globalThis.fetch; timeoutMs?: number; signal?: AbortSignal }
 
 export interface TrustedWorkerGenerationContext {
   workerAttemptToken: string;
@@ -330,7 +330,7 @@ async function abortAfterFreeze(
   throw response;
 }
 
-export async function runGeneration(deps: GenerationDependencies, command: GenerationCommand): Promise<GenerationResponse> {
+export async function runGeneration(deps: GenerationDependencies, command: GenerationCommand, signal?: AbortSignal): Promise<GenerationResponse> {
   const { ownerId } = await deps.authenticate(command.authToken);
   const authorized = await deps.authorize(ownerId, command);
   const effectiveCommand = canonicalizeManualCommand(command, authorized.jobPayload);
@@ -372,7 +372,7 @@ export async function runGeneration(deps: GenerationDependencies, command: Gener
 
   let provider: NarrativeProvider;
   try {
-    provider = await deps.resolveProvider(ownerId, loadedPolicy, frozenPolicy);
+    provider = await deps.resolveProvider(ownerId, loadedPolicy, frozenPolicy, signal);
   }
   catch { return abortAfterFreeze(deps, effectiveCommand, attemptToken, 'provider_generation_failed', new GenerationError(502, 'provider_generation_failed')); }
   try {
@@ -393,7 +393,7 @@ export async function runGeneration(deps: GenerationDependencies, command: Gener
     return abortAfterFreeze(deps, effectiveCommand, attemptToken, 'provider_dispatch_uncertain', new GenerationError(502, 'generation_provider_fence_uncertain'));
   }
   let raw: unknown;
-  try { raw = await provider.generate(request); }
+  try { raw = await provider.generate(request, signal); }
   catch { return abortAfterFreeze(deps, effectiveCommand, attemptToken, 'provider_generation_failed', new GenerationError(502, 'provider_generation_failed')); }
   let providerResponse: NarrativeProviderResponse;
   try { providerResponse = deps.parseProviderResponse(raw); }
@@ -491,15 +491,32 @@ function trustedSettingFromRecord(value: Record<string, unknown>, ownerId: strin
 
 export function createSupabaseProviderSecretReader(config: SupabaseRestConfig) {
   const request = config.fetch ?? globalThis.fetch;
-  return async (ownerId: string, providerKey: 'openai' | 'anthropic'): Promise<string> => {
-    const response = await request(`${config.url}/rest/v1/rpc/read_narrative_secret`, {
-      method: 'POST',
-      headers: { apikey: config.serviceRoleKey, authorization: `Bearer ${config.serviceRoleKey}`, 'content-type': 'application/json' },
-      body: JSON.stringify({ p_owner_id: ownerId, p_secret_kind: providerKey }),
-    });
-    const value = await response.json().catch(() => null);
-    if (!response.ok || typeof value !== 'string' || !value.trim()) throw new GenerationError(500, 'provider_secret_unavailable');
-    return value;
+  const timeoutMs = typeof config.timeoutMs === 'number' && Number.isFinite(config.timeoutMs) && config.timeoutMs > 0
+    ? Math.min(config.timeoutMs, 10_000)
+    : 10_000;
+  return async (ownerId: string, providerKey: 'openai' | 'anthropic', outerSignal?: AbortSignal): Promise<string> => {
+    const controller = new AbortController();
+    let rejectBoundary: ((error: GenerationError) => void) | undefined;
+    const boundary = new Promise<never>((_resolve, reject) => { rejectBoundary = reject; });
+    const abortOuter = () => { controller.abort(outerSignal?.reason); rejectBoundary?.(new GenerationError(500, 'provider_secret_unavailable')); };
+    if (outerSignal?.aborted) abortOuter();
+    else outerSignal?.addEventListener('abort', abortOuter, { once: true });
+    const timeout = setTimeout(() => { controller.abort(); rejectBoundary?.(new GenerationError(500, 'provider_secret_unavailable')); }, timeoutMs);
+    try {
+      const response = await Promise.race([request(`${config.url}/rest/v1/rpc/read_narrative_secret`, {
+        method: 'POST', signal: controller.signal,
+        headers: { apikey: config.serviceRoleKey, authorization: `Bearer ${config.serviceRoleKey}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ p_owner_id: ownerId, p_secret_kind: providerKey }),
+      }), boundary]);
+      const value = await Promise.race([response.json().catch(() => null), boundary]);
+      if (!response.ok || typeof value !== 'string' || !value.trim()) throw new GenerationError(500, 'provider_secret_unavailable');
+      return value;
+    } catch {
+      throw new GenerationError(500, 'provider_secret_unavailable');
+    } finally {
+      clearTimeout(timeout);
+      outerSignal?.removeEventListener('abort', abortOuter);
+    }
   };
 }
 
@@ -517,16 +534,20 @@ export function createSupabaseGenerationDependencies(
   const serviceHeaders = { apikey: config.serviceRoleKey, authorization: `Bearer ${config.serviceRoleKey}`, 'content-type': 'application/json' };
   const callWith = async (headers: Record<string, string>, path: string, init: RequestInit = {}): Promise<unknown> => {
     const controller = new AbortController();
+    let rejectOuter: ((reason?: unknown) => void) | undefined;
+    const outer = new Promise<never>((_resolve, reject) => { rejectOuter = reject; });
+    const abortOuter = () => { controller.abort(config.signal?.reason); rejectOuter?.(new Error('supabase_request_cancelled')); };
+    if (config.signal?.aborted) abortOuter();
+    else config.signal?.addEventListener('abort', abortOuter, { once: true });
     let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
     const timeout = new Promise<never>((_, reject) => {
       timeoutHandle = setTimeout(() => { controller.abort(); reject(new Error('supabase_request_timeout')); }, timeoutMs);
     });
     try {
       const response = await Promise.race([
-        request(`${config.url}${path}`, { ...init, signal: controller.signal, headers: { ...headers, ...init.headers } }),
-        timeout,
+        request(`${config.url}${path}`, { ...init, signal: controller.signal, headers: { ...headers, ...init.headers } }), timeout, outer,
       ]);
-      const value = response.status === 204 ? null : await Promise.race([response.json(), timeout]);
+      const value = response.status === 204 ? null : await Promise.race([response.json(), timeout, outer]);
       if (!response.ok) {
         if (path === '/auth/v1/user' && (response.status === 401 || response.status === 403)) throw new GenerationError(401, 'authentication_required');
         const databaseCode = value && typeof value === 'object' && 'code' in value ? String(value.code) : '';
@@ -537,6 +558,7 @@ export function createSupabaseGenerationDependencies(
       return value;
     } finally {
       if (timeoutHandle !== undefined) clearTimeout(timeoutHandle);
+      config.signal?.removeEventListener('abort', abortOuter);
     }
   };
   const call = (path: string, init: RequestInit = {}) => callWith(worker ? serviceHeaders : userHeaders, path, init);
@@ -650,7 +672,7 @@ export function createSupabaseGenerationDependencies(
       if (!worker) return reservationResultSchema.parse(await reserve());
       try { return reservationResultSchema.parse(await reserve()); }
       catch (error) {
-        if (error instanceof GenerationError || error instanceof PersistenceError) throw error;
+        if (config.signal?.aborted || error instanceof GenerationError || error instanceof PersistenceError) throw error;
         return reservationResultSchema.parse(await reserve());
       }
     },
@@ -688,8 +710,14 @@ declare const Deno: DenoRuntime;
 const defaultFakeResult: GenerationResult = { title: '로컬 생성 초안', kind: 'short_dialogue', setting: { time: '저녁', place: '처마 아래' }, body: '천령과 무영은 빗소리 사이에서 잠시 말을 멈추었다.', emotionalStart: '고요함', emotionalEnd: '잔잔한 안도', continuityUsed: [], continuityCandidates: [], canonChangeCandidates: [], unresolvedCallbacks: [], riskFlags: [] };
 export function createLocalFixtureProvider(sleep: (milliseconds: number) => Promise<unknown> = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds))): NarrativeProvider {
   return {
-    generate: async (providerRequest) => {
-      await sleep(5_000);
+    generate: async (providerRequest, signal) => {
+      if (signal?.aborted) throw new DOMException('aborted', 'AbortError');
+      let rejectAbort: ((reason?: unknown) => void) | undefined;
+      const aborted = new Promise<never>((_resolve, reject) => { rejectAbort = reject; });
+      const abort = () => rejectAbort?.(new DOMException('aborted', 'AbortError'));
+      signal?.addEventListener('abort', abort, { once: true });
+      try { await Promise.race([sleep(5_000), aborted]); }
+      finally { signal?.removeEventListener('abort', abort); }
       return { result: { ...defaultFakeResult, kind: providerRequest.kind }, usage: { inputTokens: 14, outputTokens: 9 }, rawId: `fake-${providerRequest.kind}`, responseModel: providerRequest.modelKey };
     },
   };
@@ -701,11 +729,11 @@ export function createRuntimeGenerationProviderResolver(
   fakeLocalProvider?: NarrativeProvider,
 ): GenerationDependencies['resolveProvider'] {
   const readVaultSecret = createSupabaseProviderSecretReader(config);
-  return async (ownerId, loadedPolicy) => {
+  return async (ownerId, loadedPolicy, _frozenPolicy, signal) => {
     const resolvedSecret = loadedPolicy.providerKey === 'fake-local-provider'
       ? undefined
       : loadedPolicy.secretSource === 'vault'
-        ? await readVaultSecret(ownerId, loadedPolicy.providerKey)
+        ? await readVaultSecret(ownerId, loadedPolicy.providerKey, signal)
         : loadedPolicy.secretRef ? environment(loadedPolicy.secretRef) : undefined;
     const configuration = loadedPolicy.providerKey === 'fake-local-provider'
       ? { mode: 'fixture' }

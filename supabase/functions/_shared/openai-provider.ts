@@ -35,32 +35,45 @@ export function usageFromUpstream(value: unknown): { inputTokens: number; output
 
 async function safeJson(response: Response): Promise<unknown> { try { return await response.json(); } catch { throw new ProviderRequestError('malformed_response'); } }
 
-export async function oneRequest(options: ProviderHttpOptions, url: string, init: RequestInit): Promise<unknown> {
+export async function oneRequest(options: ProviderHttpOptions, url: string, init: RequestInit, outerSignal?: AbortSignal): Promise<unknown> {
   if (!options.apiKey.trim()) throw new ProviderRequestError('upstream_unavailable');
   const controller = new AbortController();
   const clock = options.clock ?? Date.now;
   const deadline = clock() + options.timeoutMs;
-  const timer = (options.setTimer ?? setTimeout)(() => controller.abort(), Math.max(0, deadline - clock()));
+  let timedOut = false;
+  let rejectBoundary: ((error: ProviderRequestError) => void) | undefined;
+  const boundary = new Promise<never>((_resolve, reject) => { rejectBoundary = reject; });
+  const abortOuter = () => { controller.abort(outerSignal?.reason); rejectBoundary?.(new ProviderRequestError('timeout')); };
+  if (outerSignal?.aborted) abortOuter();
+  else outerSignal?.addEventListener('abort', abortOuter, { once: true });
+  const timer = (options.setTimer ?? setTimeout)(() => {
+    timedOut = true;
+    controller.abort();
+    rejectBoundary?.(new ProviderRequestError('timeout'));
+  }, Math.max(0, deadline - clock()));
   try {
-    const response = await (options.fetch ?? globalThis.fetch)(url, { ...init, signal: controller.signal });
+    const response = await Promise.race([(options.fetch ?? globalThis.fetch)(url, { ...init, signal: controller.signal }), boundary]);
     if (response.status === 429) throw new ProviderRequestError('rate_limited');
     if (!response.ok) throw new ProviderRequestError('upstream_unavailable');
     return await safeJson(response);
   } catch (error) {
     if (error instanceof ProviderRequestError) throw error;
-    if (controller.signal.aborted) throw new ProviderRequestError('timeout');
+    if (controller.signal.aborted || timedOut || outerSignal?.aborted) throw new ProviderRequestError('timeout');
     throw new ProviderRequestError('upstream_unavailable');
-  } finally { (options.clearTimer ?? clearTimeout)(timer); }
+  } finally {
+    outerSignal?.removeEventListener('abort', abortOuter);
+    (options.clearTimer ?? clearTimeout)(timer);
+  }
 }
 
 export class OpenAiNarrativeProvider implements NarrativeProvider {
   constructor(private readonly options: ProviderHttpOptions) {}
-  async generate(request: GenerationRequest): Promise<NarrativeProviderResponse> {
+  async generate(request: GenerationRequest, signal?: AbortSignal): Promise<NarrativeProviderResponse> {
     if (this.options.modelKey && request.modelKey !== this.options.modelKey) throw new ProviderRequestError('provider_setting_mismatch');
     const value = await oneRequest(this.options, 'https://api.openai.com/v1/responses', {
       method: 'POST', headers: { authorization: `Bearer ${this.options.apiKey}`, 'content-type': 'application/json' },
       body: JSON.stringify({ model: request.modelKey, input: narrativePrompt(request), max_output_tokens: request.maxOutputTokens, text: { format: { type: 'json_schema', name: 'narrative_result', strict: true, schema: narrativeJsonSchema() } } }),
-    });
+    }, signal);
     const record = value && typeof value === 'object' ? value as Record<string, unknown> : null;
     const id = typeof record?.id === 'string' && record.id ? record.id : null;
     const responseModel = typeof record?.model === 'string' && record.model.trim() ? record.model : null;

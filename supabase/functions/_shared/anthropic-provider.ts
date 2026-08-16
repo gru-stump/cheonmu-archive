@@ -4,12 +4,12 @@ import { narrativeJsonSchema, narrativePrompt, oneRequest, type ProviderHttpOpti
 
 export class AnthropicNarrativeProvider implements NarrativeProvider {
   constructor(private readonly options: ProviderHttpOptions) {}
-  async generate(request: GenerationRequest): Promise<NarrativeProviderResponse> {
+  async generate(request: GenerationRequest, signal?: AbortSignal): Promise<NarrativeProviderResponse> {
     if (this.options.modelKey && request.modelKey !== this.options.modelKey) throw new ProviderRequestError('provider_setting_mismatch');
     const value = await oneRequest(this.options, 'https://api.anthropic.com/v1/messages', {
       method: 'POST', headers: { 'x-api-key': this.options.apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
       body: JSON.stringify({ model: request.modelKey, max_tokens: request.maxOutputTokens, messages: [{ role: 'user', content: narrativePrompt(request) }], tools: [{ name: 'narrative_result', description: 'Return the completed narrative result.', input_schema: narrativeJsonSchema(), strict: true }], tool_choice: { type: 'tool', name: 'narrative_result' } }),
-    });
+    }, signal);
     const record = value && typeof value === 'object' ? value as Record<string, unknown> : null;
     const id = typeof record?.id === 'string' && record.id ? record.id : null;
     const responseModel = typeof record?.model === 'string' && record.model.trim() ? record.model : null;

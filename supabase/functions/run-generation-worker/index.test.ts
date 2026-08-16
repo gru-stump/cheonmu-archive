@@ -151,6 +151,7 @@ describe('generation worker HTTP boundary', () => {
     try {
       const h = harness({
         generate: async (_command, _token, _claim, signal?: AbortSignal) => {
+          h.events.push('generate');
           receivedSignal = signal;
           return await new Promise((resolve, reject) => {
             const timer = setTimeout(() => resolve({ draftId: claim.draftId, versionId: 'late-version', status: 'generated', continuityLevel: 'pass' }), 200);

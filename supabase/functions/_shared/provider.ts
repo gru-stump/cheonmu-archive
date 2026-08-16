@@ -11,7 +11,7 @@ export interface NarrativeProviderResponse {
 }
 
 export interface NarrativeProvider {
-  generate(request: GenerationRequest): Promise<NarrativeProviderResponse>;
+  generate(request: GenerationRequest, signal?: AbortSignal): Promise<NarrativeProviderResponse>;
 }
 
 const safeUsageValue = z.number().finite().int().safe().nonnegative();
@@ -63,9 +63,9 @@ export function createServerNarrativeProvider(
   if (setting.provider_key === 'fake-local-provider') {
     if (!options.fakeLocalProvider) throw new Error('unsupported_provider_setting');
     return {
-      generate: (request) => {
+      generate: (request, signal) => {
         if (request.modelKey !== setting.model_key) throw new ProviderRequestError('provider_setting_mismatch');
-        return options.fakeLocalProvider!.generate(request);
+        return options.fakeLocalProvider!.generate(request, signal);
       },
     };
   }

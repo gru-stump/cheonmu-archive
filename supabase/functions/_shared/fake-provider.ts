@@ -37,7 +37,8 @@ export class FakeNarrativeProvider implements NarrativeProvider {
     };
   }
 
-  async generate(request: GenerationRequest): Promise<NarrativeProviderResponse> {
+  async generate(request: GenerationRequest, signal?: AbortSignal): Promise<NarrativeProviderResponse> {
+    if (signal?.aborted) throw new DOMException('aborted', 'AbortError');
     return parseNarrativeProviderResponse({
       result: clone(this.fixture.result),
       usage: clone(this.fixture.usage ?? { inputTokens: 14, outputTokens: 9 }),

@@ -54,10 +54,10 @@ export type GenerationWorkerOutcome = { outcome: 'idle' | 'retry_wait' | 'dead_l
 
 export interface GenerationWorkerDependencies {
   createWorkerAttemptToken(): string;
-  claim(workerAttemptToken: string): Promise<GenerationWorkerClaim>;
-  generate(command: GenerationCommand, workerAttemptToken: string, claim: ClaimedGenerationJob): Promise<GenerationResponse>;
-  complete(jobId: string, workerAttemptToken: string): Promise<z.infer<typeof workerMutationSchema>>;
-  fail(jobId: string, workerAttemptToken: string, failureCode: string): Promise<z.infer<typeof workerMutationSchema>>;
+  claim(workerAttemptToken: string, signal?: AbortSignal): Promise<GenerationWorkerClaim>;
+  generate(command: GenerationCommand, workerAttemptToken: string, claim: ClaimedGenerationJob, signal?: AbortSignal): Promise<GenerationResponse>;
+  complete(jobId: string, workerAttemptToken: string, signal?: AbortSignal): Promise<z.infer<typeof workerMutationSchema>>;
+  fail(jobId: string, workerAttemptToken: string, failureCode: string, signal?: AbortSignal): Promise<z.infer<typeof workerMutationSchema>>;
 }
 
 export interface GenerationWorkerRestConfig {
@@ -95,32 +95,46 @@ function commandFromClaim(claim: ClaimedGenerationJob): GenerationCommand {
   };
 }
 
-export async function dispatchGenerationWorker(deps: GenerationWorkerDependencies): Promise<GenerationWorkerOutcome> {
+export async function dispatchGenerationWorker(deps: GenerationWorkerDependencies, signal?: AbortSignal): Promise<GenerationWorkerOutcome> {
   const workerAttemptToken = deps.createWorkerAttemptToken();
-  const claim = await deps.claim(workerAttemptToken);
+  if (signal?.aborted) throw new GenerationWorkerError('generation_worker_cancelled');
+  const claim = await deps.claim(workerAttemptToken, signal);
   if (claim.outcome !== 'claimed') return { outcome: claim.outcome, ...('jobId' in claim && claim.jobId ? { jobId: claim.jobId } : {}) };
   try {
-    await deps.generate(commandFromClaim(claim), workerAttemptToken, claim);
+    await deps.generate(commandFromClaim(claim), workerAttemptToken, claim, signal);
   } catch (error) {
-    const failed = await deps.fail(claim.jobId, workerAttemptToken, failureCode(error));
+    if (signal?.aborted) throw new GenerationWorkerError('generation_worker_cancelled');
+    const failed = await deps.fail(claim.jobId, workerAttemptToken, failureCode(error), signal);
     return { outcome: failed.outcome, jobId: claim.jobId };
   }
+  if (signal?.aborted) throw new GenerationWorkerError('generation_worker_cancelled');
   let completed: Awaited<ReturnType<GenerationWorkerDependencies['complete']>>;
-  try { completed = await deps.complete(claim.jobId, workerAttemptToken); }
-  catch { completed = await deps.complete(claim.jobId, workerAttemptToken); }
+  try { completed = await deps.complete(claim.jobId, workerAttemptToken, signal); }
+  catch (error) {
+    if (signal?.aborted) throw new GenerationWorkerError('generation_worker_cancelled');
+    completed = await deps.complete(claim.jobId, workerAttemptToken, signal);
+  }
   return { outcome: completed.outcome, jobId: claim.jobId };
 }
 
-async function boundedBody(request: Request, maximumBytes: number): Promise<unknown> {
+async function boundedBody(request: Request, maximumBytes: number, signal: AbortSignal): Promise<unknown> {
   const contentLength = request.headers.get('content-length');
   if (contentLength !== null && Number(contentLength) > maximumBytes) throw new GenerationWorkerError('dispatch_body_too_large');
   if (!request.body) throw new GenerationWorkerError('invalid_command');
   const reader = request.body.getReader();
   const chunks: Uint8Array[] = [];
   let size = 0;
+  let rejectAbort: ((error: GenerationWorkerError) => void) | undefined;
+  const aborted = new Promise<never>((_resolve, reject) => { rejectAbort = reject; });
+  const abort = () => {
+    void reader.cancel().catch(() => undefined);
+    rejectAbort?.(new GenerationWorkerError('generation_worker_cancelled'));
+  };
+  if (signal.aborted) abort();
+  else signal.addEventListener('abort', abort, { once: true });
   try {
     while (true) {
-      const { done, value } = await reader.read();
+      const { done, value } = await Promise.race([reader.read(), aborted]);
       if (done) break;
       size += value.byteLength;
       if (size > maximumBytes) {
@@ -136,7 +150,7 @@ async function boundedBody(request: Request, maximumBytes: number): Promise<unkn
   } catch (error) {
     if (error instanceof GenerationWorkerError) throw error;
     throw new GenerationWorkerError('invalid_command');
-  }
+  } finally { signal.removeEventListener('abort', abort); }
 }
 
 export function createGenerationWorkerHandler(
@@ -152,25 +166,30 @@ export function createGenerationWorkerHandler(
     if (!dispatchToken || request.headers.get('x-schedule-dispatch-token') !== dispatchToken) {
       return Response.json({ error: 'dispatch_not_authorized' }, { status: 401 });
     }
-    let body: unknown;
-    try { body = await boundedBody(request, 1_024); }
-    catch (error) {
-      const code = error instanceof GenerationWorkerError ? error.code : 'invalid_command';
-      return Response.json({ error: code }, { status: code === 'dispatch_body_too_large' ? 413 : 400 });
-    }
-    const parsed = z.object({ action: z.literal('dispatch') }).strict().safeParse(body);
-    if (!parsed.success) return Response.json({ error: 'invalid_command' }, { status: 400 });
-
+    const controller = new AbortController();
     let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
     const timeout = new Promise<never>((_, reject) => {
-      timeoutHandle = setTimeout(() => reject(new GenerationWorkerError('generation_worker_timeout')), dispatchTimeoutMs);
+      timeoutHandle = setTimeout(() => {
+        controller.abort();
+        reject(new GenerationWorkerError('generation_worker_timeout'));
+      }, dispatchTimeoutMs);
     });
     try {
-      const outcome = await Promise.race([dispatchGenerationWorker(deps), timeout]);
+      const operation = (async () => {
+        const body = await boundedBody(request, 1_024, controller.signal);
+        const parsed = z.object({ action: z.literal('dispatch') }).strict().safeParse(body);
+        if (!parsed.success) throw new GenerationWorkerError('invalid_command');
+        return dispatchGenerationWorker(deps, controller.signal);
+      })();
+      const outcome = await Promise.race([operation, timeout]);
       return Response.json(outcome, { status: 202 });
     } catch (error) {
       const code = error instanceof GenerationWorkerError ? error.code : 'internal_error';
-      return Response.json({ error: code }, { status: code === 'generation_worker_timeout' ? 504 : 500 });
+      const status = code === 'generation_worker_timeout' ? 504
+        : code === 'dispatch_body_too_large' ? 413
+        : code === 'invalid_command' ? 400
+        : 500;
+      return Response.json({ error: code }, { status });
     } finally {
       if (timeoutHandle !== undefined) clearTimeout(timeoutHandle);
     }
@@ -186,8 +205,13 @@ export function createSupabaseGenerationWorkerDependencies(
     ? Math.min(config.timeoutMs, 10_000)
     : 10_000;
   const headers = { apikey: config.serviceRoleKey, authorization: `Bearer ${config.serviceRoleKey}`, 'content-type': 'application/json' };
-  const rpc = async (name: string, body: Record<string, unknown>): Promise<unknown> => {
+  const rpc = async (name: string, body: Record<string, unknown>, outerSignal?: AbortSignal): Promise<unknown> => {
     const controller = new AbortController();
+    let rejectOuter: ((error: GenerationWorkerError) => void) | undefined;
+    const cancelled = new Promise<never>((_resolve, reject) => { rejectOuter = reject; });
+    const abortOuter = () => { controller.abort(outerSignal?.reason); rejectOuter?.(new GenerationWorkerError('generation_worker_cancelled')); };
+    if (outerSignal?.aborted) abortOuter();
+    else outerSignal?.addEventListener('abort', abortOuter, { once: true });
     let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
     const timeout = new Promise<never>((_, reject) => {
       timeoutHandle = setTimeout(() => { controller.abort(); reject(new GenerationWorkerError('generation_worker_rpc_uncertain')); }, timeoutMs);
@@ -195,9 +219,9 @@ export function createSupabaseGenerationWorkerDependencies(
     try {
       const response = await Promise.race([
         request(`${config.url}/rest/v1/rpc/${name}`, { method: 'POST', headers, signal: controller.signal, body: JSON.stringify(body) }),
-        timeout,
+        timeout, cancelled,
       ]);
-      const value = response.status === 204 ? null : await Promise.race([response.json(), timeout]);
+      const value = response.status === 204 ? null : await Promise.race([response.json(), timeout, cancelled]);
       if (!response.ok) throw new GenerationWorkerError('generation_worker_rpc_failed');
       return value;
     } catch (error) {
@@ -205,12 +229,13 @@ export function createSupabaseGenerationWorkerDependencies(
       throw new GenerationWorkerError('generation_worker_rpc_uncertain');
     } finally {
       if (timeoutHandle !== undefined) clearTimeout(timeoutHandle);
+      outerSignal?.removeEventListener('abort', abortOuter);
     }
   };
   return {
     createWorkerAttemptToken: () => crypto.randomUUID(),
-    claim: async (workerAttemptToken) => {
-      const value = await rpc('claim_generation_worker_job', { p_worker_attempt_token: workerAttemptToken });
+    claim: async (workerAttemptToken, signal) => {
+      const value = await rpc('claim_generation_worker_job', { p_worker_attempt_token: workerAttemptToken }, signal);
       const claimed = claimedGenerationSchema.safeParse(value);
       if (claimed.success) return claimed.data;
       const nonClaim = nonClaimSchema.safeParse(value);
@@ -218,12 +243,12 @@ export function createSupabaseGenerationWorkerDependencies(
       throw new GenerationWorkerError('generation_worker_claim_invalid');
     },
     generate,
-    complete: async (jobId, workerAttemptToken) => workerMutationSchema.parse(await rpc('complete_generation_worker_attempt', {
+    complete: async (jobId, workerAttemptToken, signal) => workerMutationSchema.parse(await rpc('complete_generation_worker_attempt', {
       p_job_id: jobId, p_worker_attempt_token: workerAttemptToken,
-    })),
-    fail: async (jobId, workerAttemptToken, code) => workerMutationSchema.parse(await rpc('fail_generation_worker_attempt', {
+    }, signal)),
+    fail: async (jobId, workerAttemptToken, code, signal) => workerMutationSchema.parse(await rpc('fail_generation_worker_attempt', {
       p_job_id: jobId, p_worker_attempt_token: workerAttemptToken, p_failure_code: code,
-    })),
+    }, signal)),
   };
 }
 
@@ -238,10 +263,11 @@ if (typeof Deno !== 'undefined' && (import.meta as ImportMeta & { main?: boolean
   const generationConfig = { url, anonKey, serviceRoleKey };
   const fakeProvider = Deno.env.get('NARRATIVE_FAKE_LOCAL_FIXTURE') === 'true' ? createLocalFixtureProvider() : undefined;
   const resolveProvider = createRuntimeGenerationProviderResolver(generationConfig, (name) => Deno.env.get(name), fakeProvider);
-  const deps = createSupabaseGenerationWorkerDependencies({ url, serviceRoleKey }, async (command, workerAttemptToken, claim) => {
+  const deps = createSupabaseGenerationWorkerDependencies({ url, serviceRoleKey }, async (command, workerAttemptToken, claim, signal) => {
     return runGeneration(
-      createSupabaseGenerationDependencies(generationConfig, '', resolveProvider, { workerAttemptToken, claim }),
+      createSupabaseGenerationDependencies({ ...generationConfig, signal }, '', resolveProvider, { workerAttemptToken, claim }),
       command,
+      signal,
     );
   });
   Deno.serve(createGenerationWorkerHandler(deps, dispatchToken));
