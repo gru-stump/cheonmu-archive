@@ -68,7 +68,7 @@ describe('same-origin narrative server boundary', () => {
     expect(calls[3]?.body).toMatchObject({ expectedVersionId: 'version-blocked', expectedState: 'reviewing', action: 'reject', reason: 'continuity block' });
   });
 
-  it('queues a confirmed revision and retains all bounded request fields for immutable generation', async () => {
+  it('queues a confirmed revision and forwards only the canonical RPC request fields', async () => {
     const calls: Array<{ path: string; body: Record<string, unknown> }> = [];
     const fetch: typeof globalThis.fetch = vi.fn(async (input, init) => {
       const path = new URL(String(input)).pathname;
@@ -76,7 +76,10 @@ describe('same-origin narrative server boundary', () => {
       calls.push({ path, body });
       if (path === '/auth/v1/user') return Response.json({ id: 'owner-1' });
       if (path === '/rest/v1/owner_profiles') return Response.json([{ owner_id: 'owner-1' }]);
-      if (path.endsWith('/queue_draft_revision')) return Response.json({ job_id: 'job-3', idempotency_key: 'revision-key', draft_id: 'draft-1', kind: 'short_dialogue' });
+      if (path.endsWith('/queue_draft_revision')) return Response.json({
+        job_id: 'job-3', idempotency_key: 'revision-key', draft_id: 'draft-1', mode: 'revise_selection', kind: 'short_dialogue',
+        revision: { selectedText: 'database selection', instruction: 'database instruction' }, requested_max_output_tokens: 80,
+      });
       return Response.json({ draftId: 'draft-1', versionId: 'version-3', status: 'generated', continuityLevel: 'review' });
     });
     const handler = createNarrativeHandler({ supabaseUrl: 'https://db.example.test', supabaseAnonKey: 'anon', fetch });
@@ -84,6 +87,7 @@ describe('same-origin narrative server boundary', () => {
       draftId: 'draft-1', expectedVersionId: 'version-2', mode: 'revise_selection', kind: 'short_dialogue',
       revision: { selectedText: '선택 구절', instruction: '말투 수정' }, requestedMaxOutputTokens: 128,
       maximumCostConfirmed: true, confirmedMaximumCostMicros: 321,
+      jobId: 'browser-job', idempotencyKey: 'browser-key', seed: 'browser seed', tags: ['browser-tag'],
     };
     const response = await handler(new Request('https://admin.example.test/api/narrative/generate', {
       method: 'POST', headers: { authorization: 'Bearer owner-token', 'content-type': 'application/json' }, body: JSON.stringify(command),
@@ -91,7 +95,37 @@ describe('same-origin narrative server boundary', () => {
 
     expect(response.status).toBe(200);
     expect(calls[2]?.body).toMatchObject({ p_expected_version_id: 'version-2', p_selected_text: '선택 구절', p_instruction: '말투 수정', p_requested_max_output_tokens: 128, p_confirmed_maximum_cost_micros: 321 });
-    expect(calls[3]?.body).toMatchObject({ jobId: 'job-3', idempotencyKey: 'revision-key', revision: command.revision, requestedMaxOutputTokens: 128 });
+    expect(calls[3]).toEqual({ path: '/functions/v1/generate-draft', body: {
+      jobId: 'job-3', idempotencyKey: 'revision-key', draftId: 'draft-1', mode: 'revise_selection', kind: 'short_dialogue',
+      revision: { selectedText: 'database selection', instruction: 'database instruction' }, requestedMaxOutputTokens: 80,
+    } });
+  });
+
+  it('fails closed when the revision queue RPC omits canonical request content', async () => {
+    const calls: string[] = [];
+    const fetch: typeof globalThis.fetch = vi.fn(async (input) => {
+      const path = new URL(String(input)).pathname;
+      calls.push(path);
+      if (path === '/auth/v1/user') return Response.json({ id: 'owner-1' });
+      if (path === '/rest/v1/owner_profiles') return Response.json([{ owner_id: 'owner-1' }]);
+      if (path.endsWith('/queue_draft_revision')) return Response.json({
+        job_id: 'job-3', idempotency_key: 'revision-key', draft_id: 'draft-1', mode: 'revise_selection', kind: 'short_dialogue',
+      });
+      return Response.json({ unexpected: true });
+    });
+    const handler = createNarrativeHandler({ supabaseUrl: 'https://db.example.test', supabaseAnonKey: 'anon', fetch });
+    const response = await handler(new Request('https://admin.example.test/api/narrative/generate', {
+      method: 'POST', headers: { authorization: 'Bearer owner-token', 'content-type': 'application/json' },
+      body: JSON.stringify({
+        draftId: 'draft-1', expectedVersionId: 'version-2', mode: 'revise_selection', kind: 'short_dialogue',
+        revision: { selectedText: 'browser selection', instruction: 'browser instruction' }, requestedMaxOutputTokens: 128,
+        maximumCostConfirmed: true, confirmedMaximumCostMicros: 321,
+      }),
+    }));
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toEqual({ error: 'request_failed' });
+    expect(calls).toEqual(['/auth/v1/user', '/rest/v1/owner_profiles', '/rest/v1/rpc/queue_draft_revision']);
   });
 
   it.each(['new', 'major_event_scene_plan', 'major_event_draft'] as const)('queues owner manual %s through the authoritative RPC and forwards only returned bindings', async (mode) => {
@@ -170,7 +204,10 @@ describe('same-origin narrative server boundary', () => {
       const path = new URL(String(input)).pathname;
       if (path === '/auth/v1/user') return Response.json({ id: 'owner-1' });
       if (path === '/rest/v1/owner_profiles') return Response.json([{ owner_id: 'owner-1' }]);
-      if (path.endsWith('/queue_draft_revision')) return Response.json({ job_id: 'job-1', draft_id: 'draft-1', idempotency_key: 'revision-key', kind: 'short_dialogue' });
+      if (path.endsWith('/queue_draft_revision')) return Response.json({
+        job_id: 'job-1', draft_id: 'draft-1', idempotency_key: 'revision-key', mode: 'revise_selection', kind: 'short_dialogue',
+        revision: { selectedText: 'database selection', instruction: 'database instruction' }, requested_max_output_tokens: 64,
+      });
       return Response.json({ error: 'generation_replay_mismatch' }, { status: 409 });
     });
     const handler = createNarrativeHandler({ supabaseUrl: 'https://db.example.test', supabaseAnonKey: 'anon', fetch });

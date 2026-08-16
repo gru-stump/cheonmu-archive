@@ -66,7 +66,7 @@ export type GenerationFailureCode =
 export interface GenerationDependencies {
   createAttemptToken(): string;
   authenticate(token: string): Promise<{ ownerId: string }>;
-  authorize(ownerId: string, command: GenerationCommand): Promise<{ draftStatus: DraftStatus; draftKind: DraftKind; workflowPhase: string | null }>;
+  authorize(ownerId: string, command: GenerationCommand): Promise<{ draftStatus: DraftStatus; draftKind: DraftKind; workflowPhase: string | null; jobPayload: unknown }>;
   findIdempotent(ownerId: string, command: GenerationCommand): Promise<GenerationResponse | null>;
   loadPolicy(ownerId: string, command: GenerationCommand): Promise<TrustedGenerationPolicy>;
   selectContext(ownerId: string, command: GenerationCommand, inputTokenBudget: number): Promise<ContextSelection>;
@@ -110,6 +110,25 @@ const bodySchema = z.object({
   revision: z.object({ selectedText: z.string().trim().min(1).max(4_000), instruction: z.string().trim().min(1).max(1_000) }).strict().optional(),
   requestedMaxOutputTokens: z.number().int().positive().optional(),
 }).strict();
+
+const persistedNonBlankText = (maximumLength: number) => z.string().min(1).max(maximumLength)
+  .refine((value) => value.trim().length > 0);
+const manualRevisionPayloadSchema = z.object({
+  source: z.literal('manual'), mode: z.literal('revise_selection'), kind: z.enum(draftKinds),
+  manualRequestKey: persistedNonBlankText(200),
+  revision: z.object({
+    selectedText: persistedNonBlankText(4_000), instruction: persistedNonBlankText(1_000),
+  }).strict(),
+  requestedMaxOutputTokens: z.number().int().positive().max(2_147_483_647),
+  seed: z.never().optional(), tags: z.never().optional(),
+}).passthrough();
+const manualFullOutputPayloadSchema = z.object({
+  source: z.literal('manual'), mode: z.enum(['new', 'major_event_scene_plan', 'major_event_draft']), kind: z.enum(draftKinds),
+  manualRequestKey: persistedNonBlankText(200),
+  seed: persistedNonBlankText(2_000).optional(),
+  tags: z.array(persistedNonBlankText(64)).max(10).optional(),
+  revision: z.never().optional(), requestedMaxOutputTokens: z.never().optional(),
+}).passthrough();
 
 const narrativeClaimSchema = z.object({
   id: z.string().min(1), sourceId: z.string().min(1), sourcePriority: z.number().int(),
@@ -216,6 +235,37 @@ function validateCommand(command: GenerationCommand, draftKind: DraftKind): void
   if (command.mode !== 'revise_selection' && command.requestedMaxOutputTokens !== undefined) throw new GenerationError(400, 'revision_token_limit_forbidden');
 }
 
+function canonicalizeManualCommand(command: GenerationCommand, jobPayload: unknown): GenerationCommand {
+  if (!jobPayload || typeof jobPayload !== 'object' || Array.isArray(jobPayload)
+    || !('source' in jobPayload) || jobPayload.source !== 'manual') return command;
+  const mode = 'mode' in jobPayload ? jobPayload.mode : undefined;
+  const parsed = mode === 'revise_selection'
+    ? manualRevisionPayloadSchema.safeParse(jobPayload)
+    : manualFullOutputPayloadSchema.safeParse(jobPayload);
+  if (!parsed.success
+    || parsed.data.mode !== command.mode
+    || parsed.data.kind !== command.kind
+    || parsed.data.manualRequestKey !== command.idempotencyKey) {
+    throw new GenerationError(409, 'manual_generation_binding_changed');
+  }
+  const canonical: GenerationCommand = {
+    authToken: command.authToken,
+    jobId: command.jobId,
+    draftId: command.draftId,
+    idempotencyKey: command.idempotencyKey,
+    mode: command.mode,
+    kind: command.kind,
+  };
+  if (parsed.data.mode === 'revise_selection') {
+    canonical.revision = parsed.data.revision;
+    canonical.requestedMaxOutputTokens = parsed.data.requestedMaxOutputTokens;
+  } else {
+    if (parsed.data.seed !== undefined) canonical.seed = parsed.data.seed;
+    if (parsed.data.tags !== undefined) canonical.tags = parsed.data.tags;
+  }
+  return canonical;
+}
+
 function prerequisiteApproved(mode: GenerationMode, phase: string | null): boolean {
   if (mode === 'major_event_scene_plan') return phase === 'proposal_approved';
   if (mode === 'major_event_draft') return phase === 'scene_plan_approved';
@@ -270,15 +320,16 @@ async function abortAfterFreeze(
 export async function runGeneration(deps: GenerationDependencies, command: GenerationCommand): Promise<GenerationResponse> {
   const { ownerId } = await deps.authenticate(command.authToken);
   const authorized = await deps.authorize(ownerId, command);
-  validateCommand(command, authorized.draftKind);
-  const existing = await deps.findIdempotent(ownerId, command);
+  const effectiveCommand = canonicalizeManualCommand(command, authorized.jobPayload);
+  validateCommand(effectiveCommand, authorized.draftKind);
+  const existing = await deps.findIdempotent(ownerId, effectiveCommand);
   if (existing) return existing;
-  if (!prerequisiteApproved(command.mode, authorized.workflowPhase)) throw new GenerationError(409, 'workflow_phase_not_approved');
+  if (!prerequisiteApproved(effectiveCommand.mode, authorized.workflowPhase)) throw new GenerationError(409, 'workflow_phase_not_approved');
   if (authorized.draftStatus !== 'queued') throw new GenerationError(409, 'stale_transition');
 
-  const loadedPolicy = await deps.loadPolicy(ownerId, command);
+  const loadedPolicy = await deps.loadPolicy(ownerId, effectiveCommand);
   let selection: ContextSelection;
-  try { selection = await deps.selectContext(ownerId, command, loadedPolicy.maxInputTokens); }
+  try { selection = await deps.selectContext(ownerId, effectiveCommand, loadedPolicy.maxInputTokens); }
   catch (error) {
     if (error instanceof Error && error.message === 'context_budget_too_small') throw new GenerationError(409, 'context_budget_too_small');
     throw error;
@@ -288,27 +339,27 @@ export async function runGeneration(deps: GenerationDependencies, command: Gener
   const attemptToken = deps.createAttemptToken();
   let frozenPolicy: FrozenGenerationPolicy;
   try {
-    frozenPolicy = await deps.freezeContext({ ownerId, jobId: command.jobId, draftId: command.draftId, idempotencyKey: command.idempotencyKey, mode: command.mode, contextVersionIds: selection.versionIds, contextSnapshot: snapshot, providerSettingId: loadedPolicy.providerSettingId, attemptToken });
-  } catch (error) { return abortAfterFreeze(deps, command, attemptToken, 'freeze_failed', mapPersistence(error)); }
+    frozenPolicy = await deps.freezeContext({ ownerId, jobId: effectiveCommand.jobId, draftId: effectiveCommand.draftId, idempotencyKey: effectiveCommand.idempotencyKey, mode: effectiveCommand.mode, contextVersionIds: selection.versionIds, contextSnapshot: snapshot, providerSettingId: loadedPolicy.providerSettingId, attemptToken });
+  } catch (error) { return abortAfterFreeze(deps, effectiveCommand, attemptToken, 'freeze_failed', mapPersistence(error)); }
   let continuityContext: ContinuityContext;
   try {
-    if (frozenPolicy.attemptToken !== attemptToken || !sameFrozenPolicy(loadedPolicy, frozenPolicy, command)
-      || estimateWorstCaseCostMicros(frozenPolicy, command.mode) !== frozenPolicy.worstCaseCostMicros) throw new GenerationError(500, 'invalid_provider_setting');
+    if (frozenPolicy.attemptToken !== attemptToken || !sameFrozenPolicy(loadedPolicy, frozenPolicy, effectiveCommand)
+      || estimateWorstCaseCostMicros(frozenPolicy, effectiveCommand.mode) !== frozenPolicy.worstCaseCostMicros) throw new GenerationError(500, 'invalid_provider_setting');
     const frozenSelection = selectionFromSnapshot(frozenPolicy.contextVersionIds, frozenPolicy.contextSnapshot);
     continuityContext = buildFrozenContinuityContext(frozenSelection);
-  } catch (error) { return abortAfterFreeze(deps, command, attemptToken, 'frozen_validation_failed', mapPersistence(error)); }
+  } catch (error) { return abortAfterFreeze(deps, effectiveCommand, attemptToken, 'frozen_validation_failed', mapPersistence(error)); }
 
   let reservation: Awaited<ReturnType<GenerationDependencies['reserveAndStart']>>;
-  try { reservation = await deps.reserveAndStart({ jobId: command.jobId, draftId: command.draftId, attemptToken, worstCaseCostMicros: frozenPolicy.worstCaseCostMicros }); }
-  catch (error) { return abortAfterFreeze(deps, command, attemptToken, 'reservation_failed', mapPersistence(error)); }
-  if (reservation.status === 'blocked') return abortAfterFreeze(deps, command, attemptToken, 'budget_blocked', new GenerationError(402, 'budget_blocked', { budgetStatus: reservation.budgetStatus, remainingMicros: reservation.remainingMicros }));
+  try { reservation = await deps.reserveAndStart({ jobId: effectiveCommand.jobId, draftId: effectiveCommand.draftId, attemptToken, worstCaseCostMicros: frozenPolicy.worstCaseCostMicros }); }
+  catch (error) { return abortAfterFreeze(deps, effectiveCommand, attemptToken, 'reservation_failed', mapPersistence(error)); }
+  if (reservation.status === 'blocked') return abortAfterFreeze(deps, effectiveCommand, attemptToken, 'budget_blocked', new GenerationError(402, 'budget_blocked', { budgetStatus: reservation.budgetStatus, remainingMicros: reservation.remainingMicros }));
 
-  const outputCap = command.mode === 'revise_selection' ? Math.min(frozenPolicy.maxOutputTokens, frozenPolicy.maxRevisionOutputTokens) : frozenPolicy.maxOutputTokens;
+  const outputCap = effectiveCommand.mode === 'revise_selection' ? Math.min(frozenPolicy.maxOutputTokens, frozenPolicy.maxRevisionOutputTokens) : frozenPolicy.maxOutputTokens;
   const request: GenerationRequest = {
-    kind: command.kind, mode: command.mode, modelKey: frozenPolicy.modelKey, ...(command.seed === undefined ? {} : { seed: command.seed }),
+    kind: effectiveCommand.kind, mode: effectiveCommand.mode, modelKey: frozenPolicy.modelKey, ...(effectiveCommand.seed === undefined ? {} : { seed: effectiveCommand.seed }),
     maxInputTokens: frozenPolicy.maxInputTokens, maxOutputTokens: outputCap,
     contextVersionIds: frozenPolicy.contextVersionIds, contextMemories: frozenPolicy.contextSnapshot,
-    ...(command.revision ? { revision: command.revision } : {}),
+    ...(effectiveCommand.revision ? { revision: effectiveCommand.revision } : {}),
   };
 
   let raw: unknown;
@@ -316,30 +367,30 @@ export async function runGeneration(deps: GenerationDependencies, command: Gener
     const provider = await deps.resolveProvider(ownerId, loadedPolicy, frozenPolicy);
     raw = await provider.generate(request);
   }
-  catch { return abortAfterFreeze(deps, command, attemptToken, 'provider_generation_failed', new GenerationError(502, 'provider_generation_failed')); }
+  catch { return abortAfterFreeze(deps, effectiveCommand, attemptToken, 'provider_generation_failed', new GenerationError(502, 'provider_generation_failed')); }
   let providerResponse: NarrativeProviderResponse;
   try { providerResponse = deps.parseProviderResponse(raw); }
-  catch { return abortAfterFreeze(deps, command, attemptToken, 'provider_response_invalid', new GenerationError(502, 'provider_response_invalid')); }
+  catch { return abortAfterFreeze(deps, effectiveCommand, attemptToken, 'provider_response_invalid', new GenerationError(502, 'provider_response_invalid')); }
   let trustedActualCost: number;
   try { trustedActualCost = estimateActualCostMicros(frozenPolicy, providerResponse.usage); }
-  catch { return abortAfterFreeze(deps, command, attemptToken, 'provider_usage_exceeds_reservation', new GenerationError(502, 'provider_usage_exceeds_reservation')); }
-  if (providerResponse.result.kind !== command.kind) return abortAfterFreeze(deps, command, attemptToken, 'provider_result_kind_mismatch', new GenerationError(502, 'provider_result_kind_mismatch'));
+  catch { return abortAfterFreeze(deps, effectiveCommand, attemptToken, 'provider_usage_exceeds_reservation', new GenerationError(502, 'provider_usage_exceeds_reservation')); }
+  if (providerResponse.result.kind !== effectiveCommand.kind) return abortAfterFreeze(deps, effectiveCommand, attemptToken, 'provider_result_kind_mismatch', new GenerationError(502, 'provider_result_kind_mismatch'));
   if (providerResponse.usage.inputTokens > frozenPolicy.maxInputTokens
     || providerResponse.usage.outputTokens > outputCap
     || trustedActualCost > frozenPolicy.worstCaseCostMicros) {
-    return abortAfterFreeze(deps, command, attemptToken, 'provider_usage_exceeds_reservation', new GenerationError(502, 'provider_usage_exceeds_reservation'));
+    return abortAfterFreeze(deps, effectiveCommand, attemptToken, 'provider_usage_exceeds_reservation', new GenerationError(502, 'provider_usage_exceeds_reservation'));
   }
 
   let continuity: ContinuityCheck;
   try { continuity = deps.checkContinuity(providerResponse.result, continuityContext); }
-  catch { return abortAfterFreeze(deps, command, attemptToken, 'continuity_check_failed', new GenerationError(500, 'continuity_check_failed')); }
+  catch { return abortAfterFreeze(deps, effectiveCommand, attemptToken, 'continuity_check_failed', new GenerationError(500, 'continuity_check_failed')); }
   const actualCostMicros = trustedActualCost;
   try {
-    const stored = await deps.finalizeSuccess({ ownerId, jobId: command.jobId, draftId: command.draftId, attemptToken, result: providerResponse.result, usage: providerResponse.usage, actualCostMicros, contextVersionIds: frozenPolicy.contextVersionIds, continuityLevel: continuity.level, findings: continuity.findings, providerResponseId: providerResponse.rawId, providerResponseModel: providerResponse.responseModel, visibility: 'private', continuityPolicyVersion: CONTINUITY_POLICY_VERSION });
+    const stored = await deps.finalizeSuccess({ ownerId, jobId: effectiveCommand.jobId, draftId: effectiveCommand.draftId, attemptToken, result: providerResponse.result, usage: providerResponse.usage, actualCostMicros, contextVersionIds: frozenPolicy.contextVersionIds, continuityLevel: continuity.level, findings: continuity.findings, providerResponseId: providerResponse.rawId, providerResponseModel: providerResponse.responseModel, visibility: 'private', continuityPolicyVersion: CONTINUITY_POLICY_VERSION });
     return { ...stored, continuityLevel: continuity.level };
   } catch (error) {
     const mapped = mapPersistence(error, 'finalization_failed');
-    return abortAfterFreeze(deps, command, attemptToken, 'finalization_failed', mapped);
+    return abortAfterFreeze(deps, effectiveCommand, attemptToken, 'finalization_failed', mapped);
   }
 }
 
@@ -457,10 +508,10 @@ export function createSupabaseGenerationDependencies(
     authorize: async (_ownerId, command) => {
       const draft = row<{ status: DraftStatus; kind: DraftKind }>(await call(`/rest/v1/drafts?select=status,kind&id=eq.${encodeURIComponent(command.draftId)}`));
       if (!draft) throw new GenerationError(404, 'draft_not_found');
-      const job = row<{ id: string; draft_id: string | null }>(await call(`/rest/v1/generation_jobs?select=id,draft_id&id=eq.${encodeURIComponent(command.jobId)}`));
+      const job = row<{ id: string; draft_id: string | null; payload: unknown }>(await call(`/rest/v1/generation_jobs?select=id,draft_id,payload&id=eq.${encodeURIComponent(command.jobId)}`));
       if (!job || (job.draft_id !== null && job.draft_id !== command.draftId)) throw new GenerationError(404, 'generation_target_not_found');
       const workflowPhase = command.mode.startsWith('major_event_') ? row<{ phase: string }>(await call(`/rest/v1/major_event_workflows?select=phase&draft_id=eq.${encodeURIComponent(command.draftId)}`))?.phase ?? null : null;
-      return { draftStatus: draft.status, draftKind: draft.kind, workflowPhase };
+      return { draftStatus: draft.status, draftKind: draft.kind, workflowPhase, jobPayload: job.payload };
     },
     findIdempotent: async (_ownerId, command) => {
       const job = row<{

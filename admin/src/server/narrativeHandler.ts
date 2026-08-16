@@ -135,9 +135,26 @@ export function createNarrativeHandler({ supabaseUrl, supabaseAnonKey, fetch = g
             p_selected_text: revision.selectedText, p_instruction: revision.instruction,
             p_requested_max_output_tokens: command.requestedMaxOutputTokens, p_confirmed_maximum_cost_micros: command.confirmedMaximumCostMicros,
           });
-          command.jobId = queued.job_id; command.idempotencyKey = queued.idempotency_key; command.draftId = queued.draft_id; command.kind = queued.kind;
-          delete command.expectedVersionId; delete command.expectedState; delete command.maximumCostConfirmed; delete command.confirmedMaximumCostMicros;
-          return json(await upstream('/functions/v1/generate-draft', { method: 'POST', body: JSON.stringify(command) }));
+          const canonicalRevision = queued.revision as Record<string, unknown> | undefined;
+          if (typeof queued.job_id !== 'string' || !queued.job_id.trim()
+            || typeof queued.idempotency_key !== 'string' || !queued.idempotency_key.trim()
+            || typeof queued.draft_id !== 'string' || !queued.draft_id.trim()
+            || queued.mode !== 'revise_selection'
+            || !['short_dialogue', 'daily_event', 'major_event_proposal'].includes(String(queued.kind))
+            || !canonicalRevision
+            || typeof canonicalRevision.selectedText !== 'string' || !canonicalRevision.selectedText.trim() || canonicalRevision.selectedText.length > 4_000
+            || typeof canonicalRevision.instruction !== 'string' || !canonicalRevision.instruction.trim() || canonicalRevision.instruction.length > 1_000
+            || !Number.isSafeInteger(queued.requested_max_output_tokens)
+            || Number(queued.requested_max_output_tokens) < 1 || Number(queued.requested_max_output_tokens) > 2_147_483_647) {
+            throw { status: 500, code: 'request_failed' };
+          }
+          const edgeCommand = {
+            jobId: queued.job_id, idempotencyKey: queued.idempotency_key, draftId: queued.draft_id,
+            mode: 'revise_selection', kind: queued.kind,
+            revision: { selectedText: canonicalRevision.selectedText, instruction: canonicalRevision.instruction },
+            requestedMaxOutputTokens: queued.requested_max_output_tokens,
+          };
+          return json(await upstream('/functions/v1/generate-draft', { method: 'POST', body: JSON.stringify(edgeCommand) }));
         }
         if (!['new', 'major_event_scene_plan', 'major_event_draft'].includes(String(command.mode))) return json({ error: 'unsupported_generation_mode' }, 400);
         const allowed = command.mode === 'new'

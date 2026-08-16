@@ -247,7 +247,7 @@ insert into public.generation_jobs (
   provider_setting_id, worst_case_cost_micros, attempt_token
 )
 select 'b4000000-0000-0000-0000-000000000002', '10000000-0000-0000-0000-000000000001',
-  'b2000000-0000-0000-0000-000000000002', 'stale-reserve', now(), '{"source":"schedule"}', 'stale-reserve-key',
+  'b2000000-0000-0000-0000-000000000002', 'stale-reserve', now(), '{"source":"schedule","budgetPolicy":"block_at_risk"}', 'stale-reserve-key',
   id, 1, 'b5000000-0000-4000-8000-000000000002'
 from public.provider_settings where owner_id = '10000000-0000-0000-0000-000000000001' and enabled;
 update public.provider_settings set pricing_verified_at = public.narrative_business_date(current_timestamp) - 31

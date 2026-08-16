@@ -26,8 +26,9 @@ const setup = await runPsql(`
 update public.provider_settings set enabled = true where id = '12000000-0000-0000-0000-000000000001';
 insert into public.drafts (id, owner_id, kind, title)
 values ('${draftId}', '10000000-0000-0000-0000-000000000001', 'daily_event', 'concurrent generation');
-insert into public.generation_jobs (id, owner_id, draft_id, schedule_key, scheduled_for)
-values ('${jobId}', '10000000-0000-0000-0000-000000000001', '${draftId}', 'attempt-${jobId}', '2026-08-15T00:00:00Z');
+insert into public.generation_jobs (id, owner_id, draft_id, schedule_key, scheduled_for, payload)
+values ('${jobId}', '10000000-0000-0000-0000-000000000001', '${draftId}', 'attempt-${jobId}', '2026-08-15T00:00:00Z',
+  '{"source":"schedule","budgetPolicy":"block_at_risk","kind":"daily_event"}');
 `);
 if (setup.code !== 0) throw new Error(`attempt concurrency setup failed\n${setup.stdout}\n${setup.stderr}`);
 

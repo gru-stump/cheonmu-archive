@@ -46,7 +46,7 @@ function harness(overrides: Partial<GenerationDependencies> & { provider?: Narra
   const deps = {
     createAttemptToken: () => attemptToken,
     authenticate: async () => { events.push('authenticate'); return { ownerId: 'owner-1' }; },
-    authorize: async () => { events.push('authorize'); return { draftStatus: 'queued', draftKind: 'short_dialogue', workflowPhase: null }; },
+    authorize: async () => { events.push('authorize'); return { draftStatus: 'queued', draftKind: 'short_dialogue', workflowPhase: null, jobPayload: { source: 'schedule', budgetPolicy: 'block_at_risk', kind: 'short_dialogue' } }; },
     findIdempotent: async () => { events.push('idempotency'); return null; },
     loadPolicy: async () => { events.push('policy'); return policy; },
     selectContext: async () => { events.push('select'); return selection; },
@@ -116,7 +116,7 @@ describe('runGeneration', () => {
 
   it('returns a completed result before state and workflow checks', async () => {
     const existing = { draftId: 'draft-1', versionId: 'old', status: 'generated' as const, continuityLevel: 'review' as const };
-    const h = harness({ authorize: async () => ({ draftStatus: 'generated', draftKind: 'short_dialogue', workflowPhase: 'final_approved' }), findIdempotent: async () => existing });
+    const h = harness({ authorize: async () => ({ draftStatus: 'generated', draftKind: 'short_dialogue', workflowPhase: 'final_approved', jobPayload: { source: 'schedule', budgetPolicy: 'block_at_risk', kind: 'short_dialogue' } }), findIdempotent: async () => existing });
     await expect(runGeneration(h.deps, baseCommand)).resolves.toEqual(existing);
     expect(h.providerRequests).toEqual([]);
   });
@@ -132,6 +132,64 @@ describe('runGeneration', () => {
     expect(missingRevision.events).not.toContain('idempotency');
   });
 
+  it.each([
+    ['changed', { revision: { selectedText: 'browser selection', instruction: 'browser instruction' }, requestedMaxOutputTokens: 1, seed: 'browser seed', tags: ['browser-tag'] }],
+    ['omitted', {}],
+  ] as const)('uses the persisted manual revision when caller content is %s', async (_case, callerContent) => {
+    const contextCommands: unknown[] = [];
+    const persistedRevision = { selectedText: 'database selection', instruction: 'database instruction' };
+    const h = harness({
+      authorize: async () => ({
+        draftStatus: 'queued', draftKind: 'short_dialogue', workflowPhase: null,
+        jobPayload: {
+          source: 'manual', mode: 'revise_selection', kind: 'short_dialogue', manualRequestKey: 'request-1',
+          revision: persistedRevision, requestedMaxOutputTokens: 80,
+        },
+      }),
+      selectContext: async (_ownerId, effectiveCommand) => { contextCommands.push(effectiveCommand); return selection; },
+    });
+
+    await expect(runGeneration(h.deps, { ...baseCommand, mode: 'revise_selection', ...callerContent })).resolves.toMatchObject({ status: 'generated' });
+    expect(contextCommands).toMatchObject([{ revision: persistedRevision, requestedMaxOutputTokens: 80 }]);
+    expect(contextCommands[0]).not.toHaveProperty('seed');
+    expect(contextCommands[0]).not.toHaveProperty('tags');
+    expect(h.providerRequests).toMatchObject([{ revision: persistedRevision, maxOutputTokens: 80 }]);
+    expect(h.providerRequests[0]).not.toHaveProperty('seed');
+  });
+
+  it('uses only persisted manual seed and tags for context selection and provider input', async () => {
+    const contextCommands: unknown[] = [];
+    const h = harness({
+      authorize: async () => ({
+        draftStatus: 'queued', draftKind: 'short_dialogue', workflowPhase: null,
+        jobPayload: {
+          source: 'manual', mode: 'new', kind: 'short_dialogue', manualRequestKey: 'request-1',
+          seed: 'database seed', tags: ['database-tag'],
+        },
+      }),
+      selectContext: async (_ownerId, effectiveCommand) => { contextCommands.push(effectiveCommand); return selection; },
+    });
+
+    await expect(runGeneration(h.deps, { ...baseCommand, seed: 'browser seed', tags: ['browser-tag'] })).resolves.toMatchObject({ status: 'generated' });
+    expect(contextCommands).toMatchObject([{ seed: 'database seed', tags: ['database-tag'] }]);
+    expect(h.providerRequests).toMatchObject([{ seed: 'database seed' }]);
+  });
+
+  it.each([
+    ['revision without a ceiling', { source: 'manual', mode: 'revise_selection', kind: 'short_dialogue', manualRequestKey: 'request-1', revision: { selectedText: 'database selection', instruction: 'database instruction' } }],
+    ['blank revision text', { source: 'manual', mode: 'revise_selection', kind: 'short_dialogue', manualRequestKey: 'request-1', revision: { selectedText: '   ', instruction: 'database instruction' }, requestedMaxOutputTokens: 80 }],
+    ['oversized new tags', { source: 'manual', mode: 'new', kind: 'short_dialogue', manualRequestKey: 'request-1', tags: Array.from({ length: 11 }, (_, index) => `tag-${index}`) }],
+  ])('fails closed on malformed persisted manual content: %s', async (_case, jobPayload) => {
+    const h = harness({ authorize: async () => ({ draftStatus: 'queued', draftKind: 'short_dialogue', workflowPhase: null, jobPayload }) });
+    await expect(runGeneration(h.deps, {
+      ...baseCommand, mode: jobPayload.mode as 'new' | 'revise_selection',
+      ...(jobPayload.mode === 'revise_selection' ? { revision: { selectedText: 'browser selection', instruction: 'browser instruction' }, requestedMaxOutputTokens: 80 } : {}),
+    })).rejects.toMatchObject({ status: 409, code: 'manual_generation_binding_changed' });
+    expect(h.events).not.toContain('idempotency');
+    expect(h.events).not.toContain('select');
+    expect(h.providerRequests).toEqual([]);
+  });
+
   it('returns honest 402 state after safe idempotent cleanup without calling provider', async () => {
     const h = harness({ reserveAndStart: async () => ({ status: 'blocked', budgetStatus: 'period_limit_reached', remainingMicros: 12 }) });
     await expect(runGeneration(h.deps, baseCommand)).rejects.toMatchObject({ status: 402, code: 'budget_blocked', details: { budgetStatus: 'period_limit_reached', remainingMicros: 12 } });
@@ -140,7 +198,7 @@ describe('runGeneration', () => {
   });
 
   it.each([['major_event_scene_plan', 'proposal_approved'], ['major_event_draft', 'scene_plan_approved']] as const)('allows %s only for a major-event draft after its prerequisite', async (mode, workflowPhase) => {
-    const h = harness({ authorize: async () => ({ draftStatus: 'queued', draftKind: 'major_event_proposal', workflowPhase }) });
+    const h = harness({ authorize: async () => ({ draftStatus: 'queued', draftKind: 'major_event_proposal', workflowPhase, jobPayload: { source: 'schedule', budgetPolicy: 'block_at_risk', kind: 'major_event_proposal' } }) });
     await expect(runGeneration(h.deps, { ...baseCommand, mode, kind: 'major_event_proposal' })).resolves.toMatchObject({ status: 'generated' });
     expect(h.providerRequests).toMatchObject([{ mode, kind: 'major_event_proposal' }]);
   });
@@ -385,6 +443,50 @@ describe('generate-draft HTTP boundary', () => {
     expect(response.status).toBe(502);
     expect(JSON.stringify(await response.json())).toBe('{"error":"provider_generation_failed"}');
   });
+
+  it.each([
+    ['changed', { revision: { selectedText: 'browser selection', instruction: 'browser instruction' }, requestedMaxOutputTokens: 1, seed: 'browser seed', tags: ['browser-tag'] }],
+    ['omitted', {}],
+  ] as const)('uses the database manual revision for a direct Edge request with %s caller content', async (_case, callerContent) => {
+    const persistedRevision = { selectedText: 'database selection', instruction: 'database instruction' };
+    const h = harness({ authorize: async () => ({
+      draftStatus: 'queued', draftKind: 'short_dialogue', workflowPhase: null,
+      jobPayload: {
+        source: 'manual', mode: 'revise_selection', kind: 'short_dialogue', manualRequestKey: 'request-1',
+        revision: persistedRevision, requestedMaxOutputTokens: 80,
+      },
+    }) });
+    const { authToken: _authToken, ...body } = { ...baseCommand, mode: 'revise_selection' as const, ...callerContent };
+    const response = await createGenerateDraftHandler(h.deps)(new Request('http://local/generate', {
+      method: 'POST', headers: { authorization: 'Bearer token', 'content-type': 'application/json' }, body: JSON.stringify(body),
+    }));
+
+    expect(response.status).toBe(200);
+    expect(h.providerRequests).toMatchObject([{ revision: persistedRevision, maxOutputTokens: 80 }]);
+    expect(h.providerRequests[0]).not.toHaveProperty('seed');
+  });
+
+  it.each([
+    ['missing source', {}],
+    ['unknown source', { source: 'browser' }],
+    ['schedule missing policy', { source: 'schedule' }],
+    ['schedule unknown policy', { source: 'schedule', budgetPolicy: 'allow' }],
+    ['access missing policy', { source: 'access' }],
+    ['access warning policy', { source: 'access', budgetPolicy: 'block_at_warning' }],
+  ])('returns stable invalid_generation_source for %s before provider work', async (_case, jobPayload) => {
+    const h = harness({
+      authorize: async () => ({ draftStatus: 'queued', draftKind: 'short_dialogue', workflowPhase: null, jobPayload }),
+      freezeContext: async () => { throw new PersistenceError('invalid_generation_source'); },
+    });
+    const { authToken: _authToken, ...body } = baseCommand;
+    const response = await createGenerateDraftHandler(h.deps)(new Request('http://local/generate', {
+      method: 'POST', headers: { authorization: 'Bearer token', 'content-type': 'application/json' }, body: JSON.stringify(body),
+    }));
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toEqual({ error: 'invalid_generation_source' });
+    expect(h.providerRequests).toEqual([]);
+  });
 });
 
 describe('Supabase generation adapter', () => {
@@ -418,11 +520,14 @@ describe('Supabase generation adapter', () => {
       const path = new URL(String(input)).pathname;
       seen.push(`${path}:${new Headers(init?.headers).get('authorization')}`);
       if (path.endsWith('/drafts')) return Response.json([{ status: 'queued', kind: 'short_dialogue' }]);
-      if (path.endsWith('/generation_jobs')) return Response.json([{ id: 'job-1', draft_id: 'draft-1' }]);
+      if (path.endsWith('/generation_jobs')) return Response.json([{ id: 'job-1', draft_id: 'draft-1', payload: { source: 'manual', mode: 'new', kind: 'short_dialogue', manualRequestKey: 'request-1', seed: 'database seed', tags: ['database-tag'] } }]);
       return Response.json([]);
     };
     const deps = createSupabaseGenerationDependencies({ url: 'http://supabase', anonKey: 'anon', serviceRoleKey: 'service-secret', fetch }, 'token', async () => new FakeNarrativeProvider(result));
-    await expect(deps.authorize('owner-1', baseCommand)).resolves.toMatchObject({ draftStatus: 'queued', draftKind: 'short_dialogue' });
+    await expect(deps.authorize('owner-1', baseCommand)).resolves.toMatchObject({
+      draftStatus: 'queued', draftKind: 'short_dialogue',
+      jobPayload: { source: 'manual', mode: 'new', kind: 'short_dialogue', manualRequestKey: 'request-1', seed: 'database seed', tags: ['database-tag'] },
+    });
     expect(seen).toEqual(['/rest/v1/drafts:Bearer token', '/rest/v1/generation_jobs:Bearer token']);
   });
 
@@ -431,8 +536,8 @@ describe('Supabase generation adapter', () => {
       const url = new URL(String(input));
       if (url.pathname === '/auth/v1/user') return Response.json({ id: 'owner-1' });
       if (url.pathname === '/rest/v1/drafts') return Response.json([{ status: 'queued', kind: 'short_dialogue' }]);
-      if (url.pathname === '/rest/v1/generation_jobs' && url.searchParams.get('select') === 'id,draft_id') {
-        return Response.json([{ id: 'job-1', draft_id: 'draft-1' }]);
+      if (url.pathname === '/rest/v1/generation_jobs' && url.searchParams.get('select') === 'id,draft_id,payload') {
+        return Response.json([{ id: 'job-1', draft_id: 'draft-1', payload: { kind: 'short_dialogue', mode: 'new', manualRequestKey: 'queued-a-key' } }]);
       }
       if (url.pathname === '/rest/v1/generation_jobs') {
         if (url.searchParams.has('idempotency_key')) {
@@ -459,7 +564,7 @@ describe('Supabase generation adapter', () => {
       const url = new URL(String(input));
       if (url.pathname === '/auth/v1/user') return Response.json({ id: 'owner-1' });
       if (url.pathname === '/rest/v1/drafts') return Response.json([{ status: 'approved_private', kind: 'short_dialogue' }]);
-      if (url.pathname === '/rest/v1/generation_jobs' && url.searchParams.get('select') === 'id,draft_id') return Response.json([{ id: 'job-1', draft_id: 'draft-1' }]);
+      if (url.pathname === '/rest/v1/generation_jobs' && url.searchParams.get('select') === 'id,draft_id,payload') return Response.json([{ id: 'job-1', draft_id: 'draft-1', payload: { kind: 'short_dialogue', mode: 'revise_selection', manualRequestKey: 'revision-key' } }]);
       if (url.pathname === '/rest/v1/generation_jobs') return Response.json([{
         id: 'job-1', draft_id: 'draft-1', status: 'completed', idempotency_key: 'revision-key', generation_mode: 'revise_selection',
         payload: { kind: 'short_dialogue', mode: 'revise_selection', manualRequestKey: 'revision-key' },
@@ -477,7 +582,7 @@ describe('Supabase generation adapter', () => {
       const url = new URL(String(input));
       if (url.pathname === '/auth/v1/user') return Response.json({ id: 'owner-1' });
       if (url.pathname === '/rest/v1/drafts') return Response.json([{ status: 'approved_private', kind: 'short_dialogue' }]);
-      if (url.pathname === '/rest/v1/generation_jobs' && url.searchParams.get('select') === 'id,draft_id') return Response.json([{ id: 'job-1', draft_id: 'draft-1' }]);
+      if (url.pathname === '/rest/v1/generation_jobs' && url.searchParams.get('select') === 'id,draft_id,payload') return Response.json([{ id: 'job-1', draft_id: 'draft-1', payload: { kind: 'short_dialogue', mode: 'revise_selection', manualRequestKey: 'revision-key' } }]);
       if (url.pathname === '/rest/v1/generation_jobs') return Response.json([{
         id: 'job-1', draft_id: 'draft-1', status: 'completed', idempotency_key: 'revision-key', generation_mode: 'revise_selection',
         payload: { kind: 'short_dialogue', mode: 'revise_selection', manualRequestKey: 'revision-key' },
@@ -490,6 +595,32 @@ describe('Supabase generation adapter', () => {
     await expect(runGeneration(deps, {
       ...baseCommand, mode: 'revise_selection', idempotencyKey: 'revision-key',
       revision: { selectedText: '문장', instruction: '수정' },
+    })).resolves.toEqual({ draftId: 'draft-1', versionId: 'version-1', status: 'generated', continuityLevel: 'review' });
+  });
+
+  it('returns an exact completed manual revision replay when caller content is omitted', async () => {
+    const persistedRevision = { selectedText: 'database selection', instruction: 'database instruction' };
+    const payload = {
+      source: 'manual', mode: 'revise_selection', kind: 'short_dialogue', manualRequestKey: 'revision-key',
+      revision: persistedRevision, requestedMaxOutputTokens: 64,
+    };
+    const fetch: typeof globalThis.fetch = async (input) => {
+      const url = new URL(String(input));
+      if (url.pathname === '/auth/v1/user') return Response.json({ id: 'owner-1' });
+      if (url.pathname === '/rest/v1/drafts') return Response.json([{ status: 'approved_private', kind: 'short_dialogue' }]);
+      if (url.pathname === '/rest/v1/generation_jobs' && ['id,draft_id', 'id,draft_id,payload'].includes(url.searchParams.get('select') ?? '')) {
+        return Response.json([{ id: 'job-1', draft_id: 'draft-1', payload }]);
+      }
+      if (url.pathname === '/rest/v1/generation_jobs') return Response.json([{
+        id: 'job-1', draft_id: 'draft-1', status: 'completed', idempotency_key: 'revision-key', generation_mode: 'revise_selection', payload,
+      }]);
+      if (url.pathname === '/rest/v1/draft_versions') return Response.json([{ id: 'version-1', continuity_level: 'review' }]);
+      return Response.json([]);
+    };
+    const deps = createSupabaseGenerationDependencies({ url: 'http://supabase', anonKey: 'anon', serviceRoleKey: 'service-secret', fetch }, 'token', async () => new FakeNarrativeProvider(result));
+
+    await expect(runGeneration(deps, {
+      ...baseCommand, mode: 'revise_selection', idempotencyKey: 'revision-key',
     })).resolves.toEqual({ draftId: 'draft-1', versionId: 'version-1', status: 'generated', continuityLevel: 'review' });
   });
 

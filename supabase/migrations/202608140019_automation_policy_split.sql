@@ -444,7 +444,12 @@ begin
     'sourceVersionId', locked_version.id, 'generationJobId', created_job.id,
     'requestedMaxOutputTokens', p_requested_max_output_tokens,
     'confirmedMaximumCostMicros', p_confirmed_maximum_cost_micros));
-  return jsonb_build_object('job_id', created_job.id, 'idempotency_key', generation_key, 'draft_id', locked_draft.id, 'kind', locked_draft.kind);
+  return jsonb_build_object(
+    'job_id', created_job.id, 'idempotency_key', generation_key, 'draft_id', locked_draft.id,
+    'mode', 'revise_selection', 'kind', locked_draft.kind,
+    'revision', jsonb_build_object('selectedText', p_selected_text, 'instruction', p_instruction),
+    'requested_max_output_tokens', p_requested_max_output_tokens
+  );
 end;
 $$;
 
@@ -590,11 +595,20 @@ declare
   locked_job public.generation_jobs;
   frozen_job public.generation_jobs;
   confirmed_cost bigint;
+  job_source text;
+  budget_policy text;
 begin
   if auth.role() is distinct from 'service_role' then raise exception 'generation freeze caller is not authorized' using errcode = '42501'; end if;
   if p_attempt_token is null then raise exception 'invalid_attempt_token' using errcode = '22023'; end if;
   select job.* into locked_job from public.generation_jobs as job where job.id = p_job_id for update;
   if locked_job.id is null then raise exception 'generation target not found' using errcode = 'P0002'; end if;
+  job_source := locked_job.payload ->> 'source';
+  budget_policy := locked_job.payload ->> 'budgetPolicy';
+  if job_source is null or job_source not in ('manual', 'schedule', 'access')
+    or (job_source = 'schedule' and (budget_policy is null or budget_policy not in ('block_at_risk', 'block_at_warning')))
+    or (job_source = 'access' and budget_policy is distinct from 'block_at_risk') then
+    raise exception 'invalid_generation_source' using errcode = 'P0001';
+  end if;
   if locked_job.attempt_token is not null then raise exception 'duplicate_generation' using errcode = 'P0001'; end if;
   if locked_job.payload ->> 'source' = 'manual' and not narrative_private.manual_generation_binding_valid(
     locked_job, p_draft_id, p_generation_mode, p_idempotency_key, p_provider_setting_id
@@ -882,7 +896,7 @@ begin
     end if;
   end if;
   if job_source is null or job_source not in ('manual', 'schedule', 'access')
-    or (job_source = 'schedule' and budget_policy not in ('block_at_risk', 'block_at_warning'))
+    or (job_source = 'schedule' and (budget_policy is null or budget_policy not in ('block_at_risk', 'block_at_warning')))
     or (job_source = 'access' and budget_policy is distinct from 'block_at_risk') then
     raise exception 'invalid_generation_source' using errcode = 'P0001';
   end if;
