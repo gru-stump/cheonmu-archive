@@ -36,7 +36,10 @@ const policy: TrustedGenerationPolicy = { providerSettingId: 'setting-1', modelK
 const baseCommand = { authToken: 'valid-token', jobId: 'job-1', draftId: 'draft-1', idempotencyKey: 'request-1', mode: 'new' as const, kind: 'short_dialogue' as const };
 const attemptToken = 'd3000000-0000-4000-8000-000000000001';
 
-function harness(overrides: Partial<GenerationDependencies> & { provider?: NarrativeProvider } = {}) {
+function harness(overrides: Partial<GenerationDependencies> & {
+  provider?: NarrativeProvider;
+  fenceProviderDispatch?: (input: { jobId: string; attemptToken: string }) => Promise<{ outcome: 'fenced' }>;
+} = {}) {
   const events: string[] = [];
   const providerRequests: unknown[] = [];
   const finalized: unknown[] = [];
@@ -52,6 +55,7 @@ function harness(overrides: Partial<GenerationDependencies> & { provider?: Narra
     selectContext: async () => { events.push('select'); return selection; },
     freezeContext: async (input) => { events.push('freeze'); return { ...policy, attemptToken: input.attemptToken, worstCaseCostMicros: estimateWorstCaseCostMicros(policy, input.mode), contextVersionIds: input.contextVersionIds, contextSnapshot: input.contextSnapshot }; },
     reserveAndStart: async () => { events.push('reserve-start'); return { status: 'reserved', budgetStatus: 'normal', remainingMicros: 999 }; },
+    fenceProviderDispatch: async () => { events.push('fence'); return { outcome: 'fenced' as const }; },
     provider,
     resolveProvider: async () => { events.push('resolve-provider'); return provider; },
     parseProviderResponse: (value) => { events.push('parse'); return value as never; },
@@ -100,12 +104,25 @@ describe('runGeneration', () => {
   it('reserves before one provider call and atomically finalizes the result', async () => {
     const h = harness();
     await expect(runGeneration(h.deps, baseCommand)).resolves.toEqual({ draftId: 'draft-1', versionId: 'version-1', status: 'generated', continuityLevel: 'review' });
-    expect(h.events).toEqual(['authenticate', 'authorize', 'idempotency', 'policy', 'select', 'freeze', 'reserve-start', 'resolve-provider', 'provider', 'parse', 'continuity', 'finalize']);
+    expect(h.events).toEqual(['authenticate', 'authorize', 'idempotency', 'policy', 'select', 'freeze', 'reserve-start', 'resolve-provider', 'fence', 'provider', 'parse', 'continuity', 'finalize']);
     expect(h.providerRequests).toMatchObject([{ modelKey: 'fake-model', maxInputTokens: 500, maxOutputTokens: 200, contextVersionIds: selection.versionIds,
       contextMemories: [{ versionId: 'canon-v1', content: canon.content, claims: canon.claims }, { versionId: 'feedback-v3', content: feedback.content }, { versionId: 'continuity-v2', content: continuity.content }],
     }]);
     expect(h.finalized).toMatchObject([{ continuityPolicyVersion: CONTINUITY_POLICY_VERSION, actualCostMicros: 203, contextVersionIds: selection.versionIds, providerResponseModel: 'canonical-fake-model' }]);
     expect(h.aborts).toEqual([]);
+  });
+
+  it.each([
+    ['lost', async () => { throw new Error('lost fence response'); }],
+    ['rejected', async () => ({ outcome: 'rejected' as const })],
+    ['already dispatched', async () => ({ outcome: 'already_dispatched' as const })],
+  ])('never calls the provider when the exact provider fence is %s', async (_case, fenceProviderDispatch) => {
+    const h = harness({ fenceProviderDispatch: fenceProviderDispatch as never });
+
+    await expect(runGeneration(h.deps, baseCommand)).rejects.toMatchObject({ code: 'generation_provider_fence_uncertain' });
+    expect(h.events).toEqual(expect.arrayContaining(['reserve-start', 'resolve-provider', 'abort']));
+    expect(h.providerRequests).toEqual([]);
+    expect(h.events).not.toContain('provider');
   });
 
   it('stores blocked prose privately under policy', async () => {
