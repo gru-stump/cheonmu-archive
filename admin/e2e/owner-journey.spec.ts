@@ -3,6 +3,7 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import {
   authenticateSeedOwner,
+  dispatchGenerationWorker,
   edgePost,
   routeRealNarrativeApi,
   seedOwnerId,
@@ -81,13 +82,7 @@ test('authenticated owner journey persists budget, private approval, rejection f
     await servicePatch(session.config, `generation_jobs?id=eq.${accessJob.id}`, { draft_id: accessDraftId });
     const [persistedJob] = await serviceGet<Array<{ id: string; draft_id: string }>>(session.config, `generation_jobs?select=id,draft_id&id=eq.${accessJob.id}`);
     expect(persistedJob?.draft_id).toBe(accessDraftId);
-    const generationResponsePromise = edgePost(session, 'generate-draft', {
-      jobId: accessJob.id,
-      draftId: persistedJob!.draft_id,
-      idempotencyKey: `e2e-access-${randomUUID()}`,
-      mode: 'new',
-      kind: 'short_dialogue',
-    });
+    const generationResponsePromise = dispatchGenerationWorker(session);
     await expect.poll(async () => {
       const pending = await serviceGet<Array<{ amount_micros: number }>>(session.config, `budget_entries?select=amount_micros&generation_job_id=eq.${accessJob.id}&entry_type=eq.reservation`);
       return pending[0]?.amount_micros ?? null;
@@ -95,8 +90,13 @@ test('authenticated owner journey persists budget, private approval, rejection f
     await page.reload();
     const reservationSection = page.locator('.admin-section').filter({ has: page.getByRole('heading', { name: '예약 비용' }) });
     await expect(reservationSection).toContainText('4,200 μUSD');
-    const generated = await edgeJson<{ versionId: string; continuityLevel: string }>(await generationResponsePromise);
-    expect(generated.continuityLevel).toBe('review');
+    const generated = await edgeJson<{ outcome: string; jobId: string }>(await generationResponsePromise, 202);
+    expect(generated).toEqual({ outcome: 'completed', jobId: accessJob.id });
+    const generatedVersions = await serviceGet<Array<{ continuity_level: string }>>(
+      session.config,
+      `draft_versions?select=continuity_level&generation_job_id=eq.${accessJob.id}`,
+    );
+    expect(generatedVersions).toEqual([{ continuity_level: 'review' }]);
     await page.reload();
     await expect(page.locator('.admin-section').filter({ has: page.getByRole('heading', { name: '일일 예산' }) })).toContainText('2,700 μUSD');
     await expect(page.locator('.admin-section').filter({ has: page.getByRole('heading', { name: '예약 비용' }) })).toContainText('0 μUSD');

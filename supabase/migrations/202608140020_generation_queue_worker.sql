@@ -295,6 +295,7 @@ declare
   key_value text;
   title_value text;
   policy_failure text;
+  claim_time timestamptz;
 begin
   if auth.role() is distinct from 'service_role' then
     raise exception 'generation worker claim caller is not authorized' using errcode = '42501';
@@ -410,13 +411,14 @@ begin
     end if;
   end if;
 
+  claim_time := pg_catalog.clock_timestamp();
   update public.generation_jobs
   set draft_id = bound_draft.id,
       provider_setting_id = active_provider.id,
       worker_attempt_token = p_worker_attempt_token,
       worker_attempt_count = worker_attempt_count + 1,
-      worker_claimed_at = pg_catalog.clock_timestamp(),
-      worker_lease_expires_at = pg_catalog.clock_timestamp() + interval '90 seconds',
+      worker_claimed_at = claim_time,
+      worker_lease_expires_at = claim_time + interval '90 seconds',
       worker_retry_at = null,
       worker_completed_at = null,
       worker_failure_code = null,
@@ -667,6 +669,9 @@ declare locked_job public.generation_jobs;
 begin
   select job.* into locked_job from public.generation_jobs as job where job.id = p_job_id for update;
   if locked_job.worker_attempt_token is not null then raise exception 'generation_worker_claim_required' using errcode = 'P0001'; end if;
+  if locked_job.attempt_token is distinct from p_attempt_token then
+    raise exception 'stale_attempt' using errcode = 'P0001';
+  end if;
   if locked_job.provider_dispatch_generation_attempt_token is distinct from p_attempt_token then
     raise exception 'provider_dispatch_not_fenced' using errcode = 'P0001';
   end if;
@@ -714,6 +719,9 @@ declare locked_job public.generation_jobs;
 begin
   select job.* into locked_job from public.generation_jobs as job where job.id = p_job_id for update;
   if locked_job.worker_attempt_token is not null then return jsonb_build_object('outcome', 'stale'); end if;
+  if locked_job.status = 'completed' then
+    return public.generation_direct_abort_attempt_v2(p_job_id, p_attempt_token, p_idempotency_key, p_failure_code);
+  end if;
   if locked_job.provider_dispatch_recorded_at is not null then
     return narrative_private.dead_letter_generation_worker_job(locked_job.id, 'provider_outcome_unknown', true);
   end if;

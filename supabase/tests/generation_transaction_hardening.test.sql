@@ -1,6 +1,6 @@
 begin;
 
-select plan(40);
+select plan(42);
 
 update public.provider_settings
 set enabled = true,
@@ -105,6 +105,9 @@ select lives_ok(
   'the same job and key can be frozen again after a 402'
 );
 select is((select public.reserve_and_start_generation('a2000000-0000-0000-0000-000000000001', 'a5000000-0000-4000-8000-000000000002', 100) ->> 'status'), 'reserved', 'retry can reserve and start');
+select is(public.fence_generation_provider_dispatch(
+  'a2000000-0000-0000-0000-000000000001', 'a5000000-0000-4000-8000-000000000002', null) ->> 'outcome',
+  'fenced', 'retry crosses the provider side-effect fence before finalization');
 select throws_ok(
   $$ select public.finalize_generation_success(
     'a2000000-0000-0000-0000-000000000001', 'a5000000-0000-4000-8000-000000000002', 1, '{"inputTokens":14,"outputTokens":10,"costMicros":1}',
@@ -148,15 +151,18 @@ select lives_ok(
   'failure fixture freezes'
 );
 select is((select public.reserve_and_start_generation('a2000000-0000-0000-0000-000000000002', 'a5000000-0000-4000-8000-000000000003', 100) ->> 'status'), 'reserved', 'failure fixture reserves before provider work');
+select is(public.fence_generation_provider_dispatch(
+  'a2000000-0000-0000-0000-000000000002', 'a5000000-0000-4000-8000-000000000003', null) ->> 'outcome',
+  'fenced', 'failure fixture records the provider side-effect boundary');
 select lives_ok(
   $$ select public.abort_generation_attempt('a2000000-0000-0000-0000-000000000002', 'a5000000-0000-4000-8000-000000000003', 'failure-retry-key', 'provider_generation_failed') $$,
   'abort conservatively settles a reservation after response loss'
 );
 select is((select status from public.generation_jobs where id = 'a2000000-0000-0000-0000-000000000002'), 'failed', 'failure finalization leaves a clear terminal job state');
 select is((select status from public.drafts where id = 'a1000000-0000-0000-0000-000000000002'), 'queued', 'failure finalization legally returns the draft to queued');
-select is((select idempotency_key from public.generation_jobs where id = 'a2000000-0000-0000-0000-000000000002'), null, 'failure finalization releases the idempotency key');
+select is((select idempotency_key from public.generation_jobs where id = 'a2000000-0000-0000-0000-000000000002'), 'failure-retry-key', 'unknown provider outcome preserves the terminal binding');
 select is((select sum(amount_micros) from public.budget_entries where generation_job_id = 'a2000000-0000-0000-0000-000000000002'), 100::numeric, 'missing usage conservatively charges the reservation');
-select lives_ok(
+select throws_ok(
   $$ select public.freeze_generation_context(
     'a2000000-0000-0000-0000-000000000003',
     'a1000000-0000-0000-0000-000000000002',
@@ -167,11 +173,11 @@ select lives_ok(
     '12000000-0000-0000-0000-000000000001',
     'a5000000-0000-4000-8000-000000000004'
   ) $$,
-  'a new queued job can reuse the failed attempt idempotency key'
+  'P0001', 'duplicate_generation', 'a new queued job cannot replay an unknown provider outcome key'
 );
-select is((select public.abort_generation_attempt('a2000000-0000-0000-0000-000000000003', 'a5000000-0000-4000-8000-000000000004', 'failure-retry-key', 'freeze_failed') ->> 'jobStatus'), 'queued', 'an unreserved frozen attempt resets to queued');
-select is((select idempotency_key from public.generation_jobs where id = 'a2000000-0000-0000-0000-000000000003'), null, 'unreserved abort clears its frozen idempotency key');
-select lives_ok(
+select is((select public.abort_generation_attempt('a2000000-0000-0000-0000-000000000003', 'a5000000-0000-4000-8000-000000000004', 'failure-retry-key', 'freeze_failed') ->> 'outcome'), 'stale', 'cleanup for a rejected replay is a stale no-op');
+select is((select idempotency_key from public.generation_jobs where id = 'a2000000-0000-0000-0000-000000000003'), null, 'rejected replay leaves the queued job unfrozen');
+select throws_ok(
   $$ select public.freeze_generation_context(
     'a2000000-0000-0000-0000-000000000003',
     'a1000000-0000-0000-0000-000000000002',
@@ -182,7 +188,7 @@ select lives_ok(
     '12000000-0000-0000-0000-000000000001',
     'a5000000-0000-4000-8000-000000000005'
   ) $$,
-  'the same job can refreeze after an unreserved abort'
+  'P0001', 'duplicate_generation', 'later attempts still cannot replay the unknown provider outcome key'
 );
 
 reset role;

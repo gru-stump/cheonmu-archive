@@ -36,6 +36,9 @@ const claimDraft = randomUUID();
 const firstToken = randomUUID();
 const secondToken = randomUUID();
 const setup = await runPsql(`
+update public.generation_jobs
+set scheduled_for = clock_timestamp() + interval '1 day'
+where status = 'queued' and worker_attempt_token is null;
 update public.narrative_admin_settings set manual_generation_enabled = true, schedule_automation_enabled = true where owner_id = '${ownerId}';
 update public.provider_settings set enabled = true, pricing_verified_at = public.narrative_business_date(current_timestamp)
 where id = '12000000-0000-0000-0000-000000000001';
@@ -140,13 +143,13 @@ assertResult(await runPsql(`
 insert into public.drafts (id, owner_id, kind, status, title) values ('${fenceDraft}', '${ownerId}', 'daily_event', 'queued', 'fence replacement');
 insert into public.generation_jobs (id, owner_id, draft_id, schedule_key, scheduled_for, payload, provider_setting_id)
 values ('${fenceJob}', '${ownerId}', '${fenceDraft}', 'worker-fence:${fenceJob}', clock_timestamp() - interval '1 minute',
-  '{"source":"manual","mode":"new","kind":"daily_event","manualRequestKey":"worker-fence:${fenceJob}"}',
+  '{"source":"schedule","kind":"daily_event","budgetPolicy":"block_at_risk"}',
   '12000000-0000-0000-0000-000000000001');
 `), 'fence fixture setup failed');
 assertResult(await runPsql(service(`
 select public.claim_generation_worker_job('${workerToken}');
 select public.freeze_generation_worker_context(
-  '${fenceJob}', '${fenceDraft}', 'new', 'worker-fence:${fenceJob}',
+  '${fenceJob}', '${fenceDraft}', 'new', 'generation-worker:${fenceJob}',
   array['15000000-0000-0000-0000-000000000001'],
   '[{"versionId":"15000000-0000-0000-0000-000000000001","memoryType":"canon","content":"race","tokenCount":1}]',
   '12000000-0000-0000-0000-000000000001', '${generationToken}', '${workerToken}');

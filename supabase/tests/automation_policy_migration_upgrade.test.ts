@@ -112,7 +112,7 @@ commit;
 
   await success('migration 019 failed over migration 018 data', runProcess(npx, ['supabase', 'migration', 'up', '--local', '--yes']));
   headApplied = true;
-  assert.equal(await scalar('select max(version) from supabase_migrations.schema_migrations;'), '202608140019');
+  assert.equal(await scalar('select max(version) from supabase_migrations.schema_migrations;'), '202608140020');
   assert.equal(
     await scalar(`select string_agg(concat(automation_enabled, '|', manual_generation_enabled, '|', schedule_automation_enabled), ',' order by owner_id)
       from public.narrative_admin_settings where owner_id in ('${trueOwner}', '${falseOwner}');`),
@@ -139,8 +139,8 @@ select public.reserve_and_start_generation('${revisionJob}', '${legacyAttemptTok
     await scalar(`select concat(status, '|', attempt_token, '|',
       (select count(*) from public.budget_entries where generation_job_id = '${revisionJob}'))
       from public.generation_jobs where id = '${revisionJob}';`),
-    `queued|${legacyAttemptToken}|0`,
-    'failed post-upgrade reserve preserves attempt evidence and creates no budget entry',
+    `failed|${legacyAttemptToken}|0`,
+    'migration 020 fail-closes frozen legacy work while preserving attempt evidence and creating no budget entry',
   );
   await success('restore provider independence fixture after reserve proof failed', runPsql(
     `update public.provider_settings set enabled = false where id = '99000000-0000-0000-0000-000000000021';`,

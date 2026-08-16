@@ -48,14 +48,14 @@ async function waitForGateway(child, logs) {
   throw new Error(`Supabase function gateway did not become ready\n${logs.value}`);
 }
 
-async function dispatch(anonKey) {
+async function dispatch(anonKey, logs) {
   const response = await fetch(gatewayUrl, {
     method: 'POST',
     headers: { apikey: anonKey, 'content-type': 'application/json', 'x-schedule-dispatch-token': dispatchToken },
     body: JSON.stringify({ action: 'dispatch' }),
   });
   const body = await response.json().catch(() => null);
-  if (response.status !== 202) throw new Error(`generation worker returned ${response.status}: ${JSON.stringify(body)}`);
+  if (response.status !== 202) throw new Error(`generation worker returned ${response.status}: ${JSON.stringify(body)}\n${logs.value}`);
   return body;
 }
 
@@ -109,7 +109,7 @@ try {
   await waitForGateway(child, logs);
   const { anon } = localKeys();
 
-  const [first, concurrent] = await Promise.all([dispatch(anon), dispatch(anon)]);
+  const [first, concurrent] = await Promise.all([dispatch(anon, logs), dispatch(anon, logs)]);
   assert([first.outcome, concurrent.outcome].sort().join('|') === 'completed|idle', `concurrent dispatch did not serialize: ${JSON.stringify([first, concurrent])}`);
   assertExactlyOnce(scheduleJob, 'schedule dispatch');
 
@@ -117,10 +117,10 @@ try {
   const lostClaim = psql(service(`select public.claim_generation_worker_job('${lostClaimToken}') ->> 'outcome';`));
   assert(lostClaim.includes('claimed'), `lost-claim fixture was not claimed: ${lostClaim}`);
   psql(`update public.generation_jobs set worker_lease_expires_at = clock_timestamp() - interval '1 second' where id = '${accessJob}';`);
-  const cleanup = await dispatch(anon);
+  const cleanup = await dispatch(anon, logs);
   assert(cleanup.outcome === 'retry_wait' && cleanup.jobId === accessJob, `expired pre-provider attempt was not safely delayed: ${JSON.stringify(cleanup)}`);
   psql(`update public.generation_jobs set worker_retry_at = clock_timestamp() - interval '1 second' where id = '${accessJob}';`);
-  const replacement = await dispatch(anon);
+  const replacement = await dispatch(anon, logs);
   assert(replacement.outcome === 'completed' && replacement.jobId === accessJob, `replacement attempt did not complete: ${JSON.stringify(replacement)}`);
   assertExactlyOnce(accessJob, 'lost-claim replacement dispatch');
 

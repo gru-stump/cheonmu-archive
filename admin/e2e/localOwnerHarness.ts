@@ -10,6 +10,7 @@ export const seedOwnerId = '10000000-0000-0000-0000-000000000001';
 const seedOwnerEmail = 'narrative-seed-owner@local.invalid';
 const repoRoot = path.resolve('..');
 const adminOrigin = 'http://127.0.0.1:4184';
+const localDispatchToken = 'local-owner-e2e';
 
 export interface LocalSupabaseConfig {
   url: string;
@@ -122,6 +123,18 @@ export async function edgePost(session: LocalOwnerSession, functionName: string,
   });
 }
 
+export async function dispatchGenerationWorker(session: LocalOwnerSession): Promise<Response> {
+  return fetch(`${session.config.url}/functions/v1/run-generation-worker`, {
+    method: 'POST',
+    headers: {
+      apikey: session.config.anonKey,
+      'content-type': 'application/json',
+      'x-schedule-dispatch-token': localDispatchToken,
+    },
+    body: JSON.stringify({ action: 'dispatch' }),
+  });
+}
+
 function command(name: string) {
   return process.platform === 'win32' ? `${name}.cmd` : name;
 }
@@ -133,7 +146,7 @@ export async function startFakeProviderFunctions(): Promise<{ stop(): Promise<vo
     'FAKE_PROVIDER_MODE=fixture',
     'NARRATIVE_FAKE_LOCAL_FIXTURE=true',
     `NARRATIVE_ADMIN_ORIGINS=${adminOrigin}`,
-    'NARRATIVE_SCHEDULE_DISPATCH_TOKEN=local-owner-e2e',
+    `NARRATIVE_SCHEDULE_DISPATCH_TOKEN=${localDispatchToken}`,
     '',
   ].join('\n'), 'utf8');
   const child = spawn(command('npx'), ['supabase', 'functions', 'serve', '--env-file', envFile], {
