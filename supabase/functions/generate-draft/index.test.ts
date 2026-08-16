@@ -759,6 +759,24 @@ describe('Supabase generation adapter', () => {
     expect(seen).toEqual([{ authorization: 'Bearer service-credential', body: { p_owner_id: 'owner-1', p_secret_kind: 'openai' } }]);
   });
 
+  it('caps Vault secret reads at ten seconds and propagates an outer abort signal', async () => {
+    vi.useFakeTimers();
+    let requestSignal: AbortSignal | null | undefined;
+    try {
+      const fetch: typeof globalThis.fetch = async (_input, init) => {
+        requestSignal = init?.signal;
+        return await new Promise((_resolve, reject) => init?.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')), { once: true }));
+      };
+      const outer = new AbortController();
+      const read = createSupabaseProviderSecretReader({ url: 'http://supabase', anonKey: 'anon', serviceRoleKey: 'service-secret', fetch, timeoutMs: 99_000 });
+      const pending = (read as (ownerId: string, providerKey: 'openai', signal?: AbortSignal) => Promise<string>)('owner-1', 'openai', outer.signal);
+      const rejected = expect(pending).rejects.toMatchObject({ code: 'provider_secret_unavailable' });
+      await vi.advanceTimersByTimeAsync(10_000);
+      await rejected;
+      expect(requestSignal?.aborted).toBe(true);
+    } finally { vi.useRealTimers(); }
+  });
+
   it.each([
     ['zero', []],
     ['multiple', [

@@ -70,6 +70,20 @@ describe.each([
     expect(cleared).toEqual([77, 77]);
   });
 
+  it('propagates an outer cancellation into the single provider request', async () => {
+    let requestSignal: AbortSignal | null | undefined;
+    const fetch: typeof globalThis.fetch = async (_input, init) => {
+      requestSignal = init?.signal;
+      return await new Promise((_resolve, reject) => init?.signal?.addEventListener('abort', () => reject(new DOMException('outer cancelled', 'AbortError')), { once: true }));
+    };
+    const provider = create({ fetch, setTimer: (() => 77 as never) as typeof setTimeout });
+    const controller = new AbortController();
+    const pending = (provider.generate as (request: GenerationRequest, signal?: AbortSignal) => ReturnType<typeof provider.generate>)(request, controller.signal);
+    controller.abort();
+    await expect(pending).rejects.toMatchObject({ code: 'timeout' });
+    expect(requestSignal?.aborted).toBe(true);
+  });
+
   it.each([
     ['absent', undefined],
     ['malformed', { input_tokens: -1, output_tokens: '34' }],

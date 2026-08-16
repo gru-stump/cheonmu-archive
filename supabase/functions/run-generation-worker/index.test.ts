@@ -125,6 +125,49 @@ describe('generation worker HTTP boundary', () => {
       expect(clear).toHaveBeenCalled();
     } finally { clear.mockRestore(); vi.useRealTimers(); }
   });
+
+  it('starts the whole deadline before reading a stalled request body and cancels the reader', async () => {
+    vi.useFakeTimers();
+    const cancel = vi.fn();
+    try {
+      const body = new ReadableStream<Uint8Array>({ pull: () => new Promise(() => undefined), cancel });
+      const h = harness();
+      const pending = createGenerationWorkerHandler(h.deps, 'dispatch-secret', { dispatchTimeoutMs: 100 })(new Request('http://local/run-generation-worker', {
+        method: 'POST', headers: { 'content-type': 'application/json', 'x-schedule-dispatch-token': 'dispatch-secret' },
+        body, duplex: 'half',
+      } as RequestInit));
+      let response: Response | undefined;
+      void pending.then((value) => { response = value; });
+      await vi.advanceTimersByTimeAsync(100);
+      expect(response?.status).toBe(504);
+      expect(cancel).toHaveBeenCalledTimes(1);
+      expect(h.events).toEqual([]);
+    } finally { vi.useRealTimers(); }
+  });
+
+  it('aborts in-flight generation at the whole deadline so it cannot fail or complete after the 504', async () => {
+    vi.useFakeTimers();
+    let receivedSignal: AbortSignal | undefined;
+    try {
+      const h = harness({
+        generate: async (_command, _token, _claim, signal?: AbortSignal) => {
+          receivedSignal = signal;
+          return await new Promise((resolve, reject) => {
+            const timer = setTimeout(() => resolve({ draftId: claim.draftId, versionId: 'late-version', status: 'generated', continuityLevel: 'pass' }), 200);
+            signal?.addEventListener('abort', () => { clearTimeout(timer); reject(new DOMException('aborted', 'AbortError')); }, { once: true });
+          });
+        },
+      });
+      const pending = createGenerationWorkerHandler(h.deps, 'dispatch-secret', { dispatchTimeoutMs: 100 })(new Request('http://local/run-generation-worker', {
+        method: 'POST', headers: { 'content-type': 'application/json', 'x-schedule-dispatch-token': 'dispatch-secret' }, body: '{"action":"dispatch"}',
+      }));
+      await vi.advanceTimersByTimeAsync(100);
+      expect((await pending).status).toBe(504);
+      await vi.advanceTimersByTimeAsync(200);
+      expect(receivedSignal?.aborted).toBe(true);
+      expect(h.events).toEqual(['claim', 'generate']);
+    } finally { vi.useRealTimers(); }
+  });
 });
 
 describe('generation worker Supabase adapter', () => {
@@ -150,5 +193,19 @@ describe('generation worker Supabase adapter', () => {
     const fetch: typeof globalThis.fetch = async () => Response.json({ outcome: 'claimed', jobId: claim.jobId, ownerId: claim.ownerId });
     const deps = createSupabaseGenerationWorkerDependencies({ url: 'http://supabase', serviceRoleKey: 'service-secret', fetch }, async () => ({ ...claim }) as never);
     await expect(deps.claim('a1000000-0000-4000-8000-000000000005')).rejects.toMatchObject({ code: 'generation_worker_claim_invalid' });
+  });
+
+  it('propagates an outer abort into an in-flight Supabase RPC', async () => {
+    let requestSignal: AbortSignal | null | undefined;
+    const fetch: typeof globalThis.fetch = async (_input, init) => {
+      requestSignal = init?.signal;
+      return await new Promise((_resolve, reject) => init?.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')), { once: true }));
+    };
+    const deps = createSupabaseGenerationWorkerDependencies({ url: 'http://supabase', serviceRoleKey: 'service-secret', fetch }, async () => ({ ...claim }) as never);
+    const controller = new AbortController();
+    const pending = (deps.claim as (token: string, signal?: AbortSignal) => ReturnType<typeof deps.claim>)('a1000000-0000-4000-8000-000000000005', controller.signal);
+    controller.abort();
+    await expect(pending).rejects.toMatchObject({ code: 'generation_worker_cancelled' });
+    expect(requestSignal?.aborted).toBe(true);
   });
 });
