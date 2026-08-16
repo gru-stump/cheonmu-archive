@@ -131,4 +131,9 @@ const fencedState = requireSuccess('direct fenced-state verification failed', aw
 if (fencedState !== 'running|t|t|0') failures.push(`worker interfered with direct fenced state: ${fencedState}`);
 
 if (failures.length) throw new Error(failures.join('\n'));
+requireSuccess('could not clean direct/worker race fixtures', await runPsql(`
+delete from public.budget_entries where generation_job_id in ('${queued.job_id}', '${fenced.job_id}');
+delete from public.generation_jobs where id in ('${queued.job_id}', '${fenced.job_id}');
+delete from public.drafts where id in ('${queued.draft_id}', '${fenced.draft_id}');
+`));
 console.log('PASS: a database-owned direct lease excludes worker claim/cleanup both immediately after manual queueing and after the direct provider fence.');
