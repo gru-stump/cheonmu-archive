@@ -101,10 +101,10 @@ describe('frozen continuity context', () => {
 });
 
 describe('runGeneration', () => {
-  it('reserves before one provider call and atomically finalizes the result', async () => {
+  it('resolves provider material before reserving, then fences one provider call and atomically finalizes', async () => {
     const h = harness();
     await expect(runGeneration(h.deps, baseCommand)).resolves.toEqual({ draftId: 'draft-1', versionId: 'version-1', status: 'generated', continuityLevel: 'review' });
-    expect(h.events).toEqual(['authenticate', 'authorize', 'idempotency', 'policy', 'select', 'freeze', 'reserve-start', 'resolve-provider', 'fence', 'provider', 'parse', 'continuity', 'finalize']);
+    expect(h.events).toEqual(['authenticate', 'authorize', 'idempotency', 'policy', 'select', 'freeze', 'resolve-provider', 'reserve-start', 'fence', 'provider', 'parse', 'continuity', 'finalize']);
     expect(h.providerRequests).toMatchObject([{ modelKey: 'fake-model', maxInputTokens: 500, maxOutputTokens: 200, contextVersionIds: selection.versionIds,
       contextMemories: [{ versionId: 'canon-v1', content: canon.content, claims: canon.claims }, { versionId: 'feedback-v3', content: feedback.content }, { versionId: 'continuity-v2', content: continuity.content }],
     }]);
@@ -272,10 +272,11 @@ describe('runGeneration', () => {
     expect(replacementActive).toBe(true);
   });
 
-  it('aborts a reservation that committed before its response was lost', async () => {
-    const h = harness({ reserveAndStart: async () => { throw new Error('response lost after reserve commit'); } });
-    await expect(runGeneration(h.deps, baseCommand)).rejects.toMatchObject({ status: 500, code: 'internal_error' });
-    expect(h.aborts).toMatchObject([{ failureCode: 'reservation_failed' }]);
+  it('does not reserve or settle when definite provider resolution fails before dispatch', async () => {
+    const h = harness({ resolveProvider: async () => { h.events.push('resolve-provider'); throw new Error('provider adapter or Vault material unavailable'); } });
+    await expect(runGeneration(h.deps, baseCommand)).rejects.toMatchObject({ status: 502, code: 'provider_generation_failed' });
+    expect(h.events).not.toContain('reserve-start');
+    expect(h.aborts).toMatchObject([{ failureCode: 'provider_generation_failed' }]);
     expect(h.providerRequests).toEqual([]);
   });
 
@@ -298,12 +299,12 @@ describe('runGeneration', () => {
     expect(h.aborts).toMatchObject([{ failureCode: 'frozen_validation_failed' }]);
   });
 
-  it('resolves the provider only after reserve using the loaded owner setting and exact frozen policy', async () => {
+  it('resolves the provider before reserve using the loaded owner setting and exact frozen policy', async () => {
     const seen: unknown[] = [];
     const h = harness({ resolveProvider: async (ownerId, loaded, frozen) => { seen.push({ ownerId, loaded, frozen }); return h.provider; } });
     await runGeneration(h.deps, baseCommand);
     expect(seen).toMatchObject([{ ownerId: 'owner-1', loaded: { providerSettingId: 'setting-1', providerKey: 'fake-local-provider', modelKey: 'fake-model' }, frozen: { providerSettingId: 'setting-1', modelKey: 'fake-model', attemptToken } }]);
-    expect(h.events.indexOf('reserve-start')).toBeLessThan(h.events.indexOf('provider'));
+    expect(h.events.indexOf('resolve-provider')).toBeLessThan(h.events.indexOf('reserve-start'));
   });
 
   it('recovers a completed result when finalization committed before response loss', async () => {
@@ -698,6 +699,35 @@ describe('Supabase generation adapter', () => {
     expect(calls.some((call) => call.includes('reconcile_generation_budget') || call.includes('store_generation_result'))).toBe(false);
     expect(authorizations.find(({ path }) => path.startsWith('/rest/v1/provider_settings?'))?.value).toBe('Bearer service-secret');
     expect(authorizations.filter(({ path }) => path.startsWith('/rest/v1/rpc/')).map(({ value }) => value)).toEqual(['Bearer service-secret', 'Bearer service-secret', 'Bearer service-secret', 'Bearer service-secret']);
+  });
+
+  it('recovers one lost worker reservation response by repeating the exact idempotent RPC', async () => {
+    let reservationCalls = 0;
+    const fetch: typeof globalThis.fetch = async (input) => {
+      const path = new URL(String(input)).pathname;
+      if (!path.endsWith('/rpc/reserve_and_start_worker_generation')) throw new Error(`unexpected request: ${path}`);
+      reservationCalls += 1;
+      if (reservationCalls === 1) throw new TypeError('response lost after reservation commit');
+      return Response.json({ status: 'reserved', budgetStatus: 'normal', remainingMicros: 50 });
+    };
+    const worker = {
+      workerAttemptToken: 'd3000000-0000-4000-8000-000000000099',
+      claim: {
+        ownerId: 'owner-1', jobId: 'job-1', draftId: 'draft-1', providerSettingId: 'setting-1',
+        idempotencyKey: 'generation-worker:job-1', mode: 'new' as const, kind: 'short_dialogue' as const,
+        source: 'schedule' as const, policyClass: 'schedule' as const,
+      },
+    };
+    const deps = createSupabaseGenerationDependencies(
+      { url: 'http://supabase', anonKey: 'anon', serviceRoleKey: 'service-secret', fetch },
+      '',
+      async () => new FakeNarrativeProvider(result),
+      worker,
+    );
+
+    await expect(deps.reserveAndStart({ jobId: 'job-1', draftId: 'draft-1', attemptToken, worstCaseCostMicros: 905 }))
+      .resolves.toEqual({ status: 'reserved', budgetStatus: 'normal', remainingMicros: 50 });
+    expect(reservationCalls).toBe(2);
   });
 
   it('selects exactly one active row for the authenticated owner without being affected by another owner', async () => {
