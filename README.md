@@ -39,6 +39,7 @@ Vite 개발 서버는 `http://localhost:5173`, 편집 서비스는 IPv4 loopback
 npm run validate
 npm run test:run
 npm run build
+npm run narrative:security
 ```
 
 프로덕션 빌드의 핵심 사용자 경로까지 확인하려면 Playwright용 Chromium을 한 번 설치하고 엔드투엔드 테스트를 실행합니다.
@@ -65,3 +66,10 @@ Claude Code에서는 슬래시 명령으로 호출합니다(`.claude/skills/cheo
 ## 배포
 
 GitHub Actions는 `main` 브랜치에 푸시된 커밋을 검증하고 `dist/`를 GitHub Pages에 배포합니다. 로컬 파일을 수정하거나 빌드하는 것만으로는 공개 사이트가 바뀌지 않으며, 변경 사항을 커밋한 뒤 `main`에 푸시해야 공개 사이트에 반영됩니다.
+
+## 자율 서사 운영
+
+소유자 계정, Supabase RLS·Vault, AI 예산, GitHub 게시, 비상 정지와 복구 절차는
+[자율 서사 운영 가이드](docs/narrative-operations.md)를 따릅니다. 라이브 AI 호출,
+임시 GitHub 브랜치 게시, 배포, 생산 일정 활성화는 가이드의 명시적 외부 작업
+체크포인트를 통과하기 전에 실행하지 않습니다.
