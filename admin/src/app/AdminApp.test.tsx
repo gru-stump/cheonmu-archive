@@ -47,7 +47,7 @@ function previewApi(): NarrativeApi {
     getMemory: vi.fn().mockResolvedValue({ fixedCanon: [{ id: 'local-preview-canon', memoryType: 'canon', content: '천령과 무영의 유대는 비공개다.', enabled: true, createdAt: '2026-08-01T00:00:00Z', correctionHistory: [] }], continuity: [{ id: 'local-preview-continuity', memoryType: 'continuity', content: '비 오는 날 다시 만나기로 약속했다.', enabled: true, createdAt: '2026-08-14T00:00:00Z', correctionHistory: [] }], recent: [], feedback: [], unresolved: [] }),
     getSchedules: vi.fn().mockResolvedValue({ schedules: [{ id: 'local-preview-schedule', scheduleKey: 'daily', scheduleType: 'automatic', enabled: true, seoulTime: '09:00', weekday: null, specialDate: null, minimumIntervalMinutes: 1440, kind: 'daily_event', lastRunAt: '2026-08-15T00:00:00Z', nextRunAt: '2026-08-16T00:00:00Z' }] }),
     getSettings: vi.fn().mockResolvedValue({ manualGenerationEnabled: true, scheduleAutomationEnabled: false, pricingValidDays: 30, providers: [], budget: { monthlyLimitMicros: 100000000, dailyLimitMicros: 20000000, spentMicros: 8400, reservedMicros: 300, manualCallLimit: 3, warningThresholdPercent: 80, riskThresholdPercent: 95, krwPerUsd: 1380 }, secrets: { openai: false, anthropic: false, github: false } }),
-    generate: forbidden, saveManualVersion: forbidden, review: forbidden, retryPublish: forbidden,
+    triggerAccess: forbidden, generate: forbidden, saveManualVersion: forbidden, review: forbidden, retryPublish: forbidden,
     archive: forbidden, restore: forbidden, setMemoryEnabled: forbidden, correctMemory: forbidden,
     saveSchedule: forbidden, saveSettings: forbidden, saveSecret: forbidden,
   } as NarrativeApi;
@@ -73,6 +73,7 @@ describe('AdminApp local preview composition', () => {
     await user.click(await screen.findByRole('button', { name: '둘러보기' }));
 
     expect(await screen.findByRole('heading', { name: '오늘' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '접속 생성 요청' })).not.toBeInTheDocument();
     await user.click(screen.getByRole('link', { name: '초안' }));
     await user.click(await screen.findByRole('link', { name: /비 갠 뒤의 약속/ }));
     expect((await screen.findAllByText('천령과 무영은 젖은 처마 아래에서 조용히 웃었다.')).length).toBeGreaterThan(0);

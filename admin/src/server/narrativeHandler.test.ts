@@ -2,6 +2,62 @@ import { describe, expect, it, vi } from 'vitest';
 import { createNarrativeHandler } from './narrativeHandler';
 
 describe('same-origin narrative server boundary', () => {
+  it('invokes the authenticated access scheduler with a server-owned command and returns only the persisted job projection', async () => {
+    const calls: Array<{ path: string; authorization: string | null; body: unknown }> = [];
+    const fetch: typeof globalThis.fetch = vi.fn(async (input, init) => {
+      const path = new URL(String(input)).pathname;
+      calls.push({
+        path,
+        authorization: new Headers(init?.headers).get('authorization'),
+        body: init?.body ? JSON.parse(String(init.body)) : null,
+      });
+      if (path === '/auth/v1/user') return Response.json({ id: 'owner-1' });
+      if (path === '/rest/v1/owner_profiles') return Response.json([{ owner_id: 'owner-1' }]);
+      return Response.json({
+        id: 'persisted-access-job', ownerId: 'owner-1', scheduleKey: 'access:owner-1',
+        scheduledFor: '2026-08-16T09:00:00Z', payload: { kind: 'short_dialogue', source: 'access' },
+        attemptToken: 'must-not-pass', providerSettingId: 'must-not-pass',
+      }, { status: 202 });
+    });
+    const handler = createNarrativeHandler({ supabaseUrl: 'https://db.example.test', supabaseAnonKey: 'anon', fetch });
+
+    const response = await handler(new Request('https://admin.example.test/api/narrative/access', {
+      method: 'POST', headers: { authorization: 'Bearer owner-token' },
+    }));
+
+    expect(response.status).toBe(202);
+    await expect(response.json()).resolves.toEqual({ id: 'persisted-access-job', scheduledFor: '2026-08-16T09:00:00Z' });
+    expect(calls).toEqual([
+      { path: '/auth/v1/user', authorization: 'Bearer owner-token', body: null },
+      { path: '/rest/v1/owner_profiles', authorization: 'Bearer owner-token', body: null },
+      { path: '/functions/v1/run-schedules', authorization: 'Bearer owner-token', body: { action: 'access' } },
+    ]);
+  });
+
+  it.each([
+    ['body', 'https://admin.example.test/api/narrative/access', JSON.stringify({ ownerId: 'other-owner', jobId: 'browser-job', provider: 'browser-provider', price: 1, mode: 'new', kind: 'daily_event', idempotencyKey: 'browser-key' })],
+    ['query', 'https://admin.example.test/api/narrative/access?ownerId=other-owner&scheduleId=browser-schedule', undefined],
+  ])('rejects access trigger %s input before invoking the scheduler', async (_label, url, requestBody) => {
+    const calls: string[] = [];
+    const fetch: typeof globalThis.fetch = vi.fn(async (input) => {
+      const path = new URL(String(input)).pathname;
+      calls.push(path);
+      if (path === '/auth/v1/user') return Response.json({ id: 'owner-1' });
+      if (path === '/rest/v1/owner_profiles') return Response.json([{ owner_id: 'owner-1' }]);
+      return Response.json({ unexpected: true });
+    });
+    const handler = createNarrativeHandler({ supabaseUrl: 'https://db.example.test', supabaseAnonKey: 'anon', fetch });
+
+    const response = await handler(new Request(url, {
+      method: 'POST', headers: { authorization: 'Bearer owner-token', ...(requestBody ? { 'content-type': 'application/json' } : {}) },
+      ...(requestBody ? { body: requestBody } : {}),
+    }));
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({ error: 'access_input_not_allowed' });
+    expect(calls).toEqual(['/auth/v1/user', '/rest/v1/owner_profiles']);
+  });
+
   it('returns only the sanitized queue projection from the dashboard RPC', async () => {
     const fetch: typeof globalThis.fetch = vi.fn(async (input) => {
       const path = new URL(String(input)).pathname;

@@ -3,6 +3,7 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import {
   authenticateSeedOwner,
+  cleanupImmutableAccessFixture,
   dispatchGenerationWorker,
   edgePost,
   routeRealNarrativeApi,
@@ -67,6 +68,9 @@ test('authenticated owner journey persists budget, private approval, rejection f
   });
   const functions = await startFakeProviderFunctions();
   let accessJobId: string | null = null;
+  let historicalAccessJobId: string | null = null;
+  let historicalDraftId: string | null = null;
+  let historicalVersionId: string | null = null;
   let rejectedDraftId = '';
   let rejectedReason = '';
   try {
@@ -74,24 +78,51 @@ test('authenticated owner journey persists budget, private approval, rejection f
     await expect(page.getByRole('button', { name: '로그아웃' })).toBeVisible();
     await expect(page.getByLabel('상태: 소유자 세션 · E2E')).toHaveCount(0);
     await servicePatch(session.config, `narrative_admin_settings?owner_id=eq.${seedOwnerId}`, { schedule_automation_enabled: true, manual_call_limit: 10 });
+    historicalDraftId = randomUUID();
+    historicalAccessJobId = randomUUID();
+    historicalVersionId = randomUUID();
+    const historicalAt = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+    await serviceInsert(session.config, 'drafts', { id: historicalDraftId, owner_id: seedOwnerId, kind: 'short_dialogue', status: 'queued', title: 'E2E 이전 접속 대화' });
+    await serviceInsert(session.config, 'generation_jobs', {
+      id: historicalAccessJobId, owner_id: seedOwnerId, draft_id: historicalDraftId,
+      schedule_key: `access:${seedOwnerId}`, scheduled_for: historicalAt, status: 'completed', created_at: historicalAt,
+      payload: { kind: 'short_dialogue', source: 'access', budgetPolicy: 'block_at_risk' },
+    });
+    await serviceInsert(session.config, 'draft_versions', {
+      id: historicalVersionId, owner_id: seedOwnerId, draft_id: historicalDraftId, generation_job_id: historicalAccessJobId,
+      version_number: 1, content: { title: 'E2E 이전 접속 대화', body: '한 시간보다 오래된 완료 증거', canonChangeCandidates: [] },
+      context_version_ids: [], continuity_level: 'pass', continuity_findings: [], created_at: historicalAt,
+    });
 
-    const accessJob = await edgeJson<{ id: string }>(await edgePost(session, 'run-schedules', { action: 'access' }), 202);
+    await page.getByRole('button', { name: '접속 생성 요청' }).click();
+    await expect(page.getByRole('status')).toContainText('대기열에 확인했습니다.');
+    const [accessJob] = await serviceGet<Array<{ id: string }>>(session.config, `generation_jobs?select=id&owner_id=eq.${seedOwnerId}&schedule_key=eq.${encodeURIComponent(`access:${seedOwnerId}`)}&status=eq.queued`);
+    expect(accessJob?.id).toBeTruthy();
+    expect(accessJob!.id).not.toBe(historicalAccessJobId);
+    await expect(page.getByRole('status')).toContainText(accessJob!.id);
     accessJobId = accessJob.id;
-    const accessDraftId = randomUUID();
-    await serviceInsert(session.config, 'drafts', { id: accessDraftId, owner_id: seedOwnerId, kind: 'short_dialogue', status: 'queued', title: 'E2E 접속 대화' });
-    await servicePatch(session.config, `generation_jobs?id=eq.${accessJob.id}`, { draft_id: accessDraftId });
-    const [persistedJob] = await serviceGet<Array<{ id: string; draft_id: string }>>(session.config, `generation_jobs?select=id,draft_id&id=eq.${accessJob.id}`);
-    expect(persistedJob?.draft_id).toBe(accessDraftId);
+    const repeated = await page.evaluate(async (accessToken) => Promise.all([1, 2].map(async () => {
+      const response = await fetch('/api/narrative/access', { method: 'POST', headers: { authorization: `Bearer ${accessToken}` } });
+      return { status: response.status, body: await response.json() };
+    })), session.accessToken);
+    expect(repeated).toEqual([
+      { status: 202, body: { id: accessJob.id, scheduledFor: expect.any(String) } },
+      { status: 202, body: { id: accessJob.id, scheduledFor: expect.any(String) } },
+    ]);
+    expect(await serviceGet(session.config, `generation_jobs?select=id&owner_id=eq.${seedOwnerId}&schedule_key=eq.${encodeURIComponent(`access:${seedOwnerId}`)}&status=eq.queued`)).toEqual([{ id: accessJob.id }]);
     const generationResponsePromise = dispatchGenerationWorker(session);
     await expect.poll(async () => {
       const pending = await serviceGet<Array<{ amount_micros: number }>>(session.config, `budget_entries?select=amount_micros&generation_job_id=eq.${accessJob.id}&entry_type=eq.reservation`);
       return pending[0]?.amount_micros ?? null;
-    }).toBe(4_200);
+    }, { timeout: 20_000 }).toBe(4_200);
     await page.reload();
     const reservationSection = page.locator('.admin-section').filter({ has: page.getByRole('heading', { name: '예약 비용' }) });
     await expect(reservationSection).toContainText('4,200 μUSD');
     const generated = await edgeJson<{ outcome: string; jobId: string }>(await generationResponsePromise, 202);
     expect(generated).toEqual({ outcome: 'completed', jobId: accessJob.id });
+    expect(functions.providerInvocationCount('short_dialogue')).toBe(1);
+    const [persistedJob] = await serviceGet<Array<{ id: string; draft_id: string }>>(session.config, `generation_jobs?select=id,draft_id&id=eq.${accessJob.id}`);
+    expect(persistedJob?.draft_id).toEqual(expect.any(String));
     const generatedVersions = await serviceGet<Array<{ continuity_level: string }>>(
       session.config,
       `draft_versions?select=continuity_level&generation_job_id=eq.${accessJob.id}`,
@@ -254,11 +285,15 @@ test('authenticated owner journey persists budget, private approval, rejection f
     expect(majorVersions.map((version) => version.version_number)).toEqual([1, 2, 3]);
   } finally {
     if (accessJobId) await servicePatch(session.config, `generation_jobs?id=eq.${accessJobId}`, { schedule_key: `retired-access-${accessJobId}` }).catch(() => undefined);
+    if (historicalVersionId && historicalAccessJobId && historicalDraftId) {
+      try { cleanupImmutableAccessFixture({ versionId: historicalVersionId, jobId: historicalAccessJobId, draftId: historicalDraftId }); } catch { /* Final reset remains authoritative. */ }
+    }
     await servicePatch(session.config, 'provider_settings?id=eq.12000000-0000-0000-0000-000000000001', {
       max_input_tokens: 4096, max_output_tokens: 1024, max_revision_output_tokens: 256,
       input_cost_micros_per_million: 0, output_cost_micros_per_million: 0, fixed_cost_micros: 100,
     }).catch(() => undefined);
     await servicePatch(session.config, `narrative_admin_settings?owner_id=eq.${seedOwnerId}`, { schedule_automation_enabled: false, manual_call_limit: 3 }).catch(() => undefined);
+    await servicePatch(session.config, 'schedules?id=eq.14000000-0000-0000-0000-000000000001', { cron_expression: '0 9 * * *', seoul_time: '09:00:00' }).catch(() => undefined);
     await serviceDelete(session.config, 'schedules?schedule_key=eq.special-date').catch(() => undefined);
     await functions.stop();
   }

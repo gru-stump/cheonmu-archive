@@ -47,7 +47,7 @@ export function AdminShell({ children, utility, notice }: { children: ReactNode;
 export function PrivateAdminRoutes({ api, readOnly = false, utility, notice }: { api: NarrativeApi; readOnly?: boolean; utility?: ReactNode; notice?: ReactNode }) {
   return <AdminShell utility={utility} notice={notice}>
     <Routes>
-        <Route path="/" element={<TodayPage api={api} />} />
+        <Route path="/" element={<TodayPage api={api} readOnly={readOnly} />} />
         <Route path="/drafts" element={<DraftListPage api={api} />} />
         <Route path="/drafts/:draftId" element={<DraftRoute api={api} readOnly={readOnly} />} />
         <Route path="/memory" element={<MemoryPage api={api} readOnly={readOnly} />} />

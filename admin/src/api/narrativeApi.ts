@@ -79,6 +79,11 @@ export interface DashboardData {
   }>;
 }
 
+export interface AccessJob {
+  id: string;
+  scheduledFor: string;
+}
+
 export type MemoryType = 'canon' | 'continuity' | 'summary' | 'feedback' | 'unresolved';
 export interface MemoryHistoryEntry { id: string; content: string; note: string | null; createdAt: string }
 export interface MemoryItem {
@@ -192,6 +197,7 @@ export interface ReviewInput {
 
 export interface NarrativeApi {
   getDashboard(): Promise<DashboardData>;
+  triggerAccess(): Promise<AccessJob>;
   listDrafts(input?: { status?: DraftStatus | 'active' }): Promise<DraftSummary[]>;
   getDraft(draftId: string): Promise<DraftDetail>;
   generate(input: GenerateInput): Promise<{ draftId: string; versionId: string; status: 'generated'; continuityLevel: 'pass' | 'review' | 'block' }>;
@@ -235,6 +241,7 @@ export function createNarrativeApi({ tokenProvider, fetch = globalThis.fetch }: 
 
   return {
     getDashboard: () => request<DashboardData>('dashboard'),
+    triggerAccess: () => request<AccessJob>('access', { method: 'POST' }),
     listDrafts: async (input = {}) => {
       const result = await request<{ drafts: DraftSummary[] }>(`drafts${input.status ? `?status=${encodeURIComponent(input.status)}` : ''}`);
       return result.drafts;

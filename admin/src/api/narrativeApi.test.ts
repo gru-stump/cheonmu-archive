@@ -13,6 +13,18 @@ describe('NarrativeApi', () => {
     }));
   });
 
+  it('triggers owner access with a bodyless same-origin POST carrying only the current bearer token', async () => {
+    const fetch = vi.fn().mockResolvedValue(Response.json({ id: 'access-job-1', scheduledFor: '2026-08-16T09:00:00Z' }, { status: 202 }));
+    const api = createNarrativeApi({ tokenProvider: async () => 'owner-token', fetch });
+
+    await expect(api.triggerAccess()).resolves.toEqual({ id: 'access-job-1', scheduledFor: '2026-08-16T09:00:00Z' });
+
+    expect(fetch).toHaveBeenCalledWith('/api/narrative/access', {
+      method: 'POST',
+      headers: { accept: 'application/json', authorization: 'Bearer owner-token' },
+    });
+  });
+
   it('sends immutable-version and focused-revision concurrency fields', async () => {
     const fetch = vi.fn()
       .mockResolvedValueOnce(Response.json({ version: { id: 'v3' } }))

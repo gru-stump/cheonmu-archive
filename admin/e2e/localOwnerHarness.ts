@@ -1,4 +1,4 @@
-import { execSync, spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
+import { execFileSync, execSync, spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -110,6 +110,16 @@ export async function serviceDelete(config: LocalSupabaseConfig, pathName: strin
   if (!response.ok) throw new Error(`service DELETE ${pathName} failed (${response.status})`);
 }
 
+export function cleanupImmutableAccessFixture(ids: { versionId: string; jobId: string; draftId: string }): void {
+  const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  if (!Object.values(ids).every((value) => uuid.test(value))) throw new Error('invalid immutable fixture id');
+  const sql = `set session_replication_role = replica;
+delete from public.draft_versions where id = '${ids.versionId}';
+delete from public.generation_jobs where id = '${ids.jobId}';
+delete from public.drafts where id = '${ids.draftId}';`;
+  execFileSync(command('npx'), ['supabase', 'db', 'query', '--local', sql], { cwd: repoRoot, stdio: 'ignore' });
+}
+
 export async function edgePost(session: LocalOwnerSession, functionName: string, value: unknown): Promise<Response> {
   return fetch(`${session.config.url}/functions/v1/${functionName}`, {
     method: 'POST',
@@ -141,7 +151,7 @@ function command(name: string) {
   return process.platform === 'win32' ? `${name}.cmd` : name;
 }
 
-export async function startFakeProviderFunctions(): Promise<{ stop(): Promise<void> }> {
+export async function startFakeProviderFunctions(): Promise<{ providerInvocationCount(kind: 'short_dialogue' | 'daily_event'): number; stop(): Promise<void> }> {
   const temp = await mkdtemp(path.join(tmpdir(), 'cheonmu-owner-e2e-'));
   const envFile = path.join(temp, 'functions.env');
   await writeFile(envFile, [
@@ -187,6 +197,7 @@ export async function startFakeProviderFunctions(): Promise<{ stop(): Promise<vo
   }
   if (!ready) throw new Error(`Local functions did not become ready: ${logs.slice(-1000)}`);
   return {
+    providerInvocationCount: (kind) => [...logs.matchAll(new RegExp(`FAKE_LOCAL_PROVIDER_INVOKED:${kind}`, 'g'))].length,
     stop: async () => {
       if (child.exitCode === null) {
         if (process.platform === 'win32') {

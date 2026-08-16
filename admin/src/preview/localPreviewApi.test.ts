@@ -18,6 +18,7 @@ describe('localPreviewApi', () => {
   it('fails every mutation locally without making a network call', async () => {
     const fetchSpy = vi.spyOn(globalThis, 'fetch');
     const calls = [
+      localPreviewApi.triggerAccess(),
       localPreviewApi.generate({} as never),
       localPreviewApi.saveManualVersion({} as never),
       localPreviewApi.review({} as never),
@@ -31,7 +32,7 @@ describe('localPreviewApi', () => {
     ];
 
     const results = await Promise.allSettled(calls);
-    expect(results).toHaveLength(10);
+    expect(results).toHaveLength(11);
     for (const result of results) {
       expect(result).toMatchObject({ status: 'rejected', reason: expect.objectContaining({ message: 'local_preview_read_only' }) });
     }

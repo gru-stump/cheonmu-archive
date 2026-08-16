@@ -58,6 +58,7 @@ export function createE2EFixture() {
   };
   const api: NarrativeApi = {
     getDashboard: async () => ({ budget: { dailySpentMicros: 2_700, monthlySpentMicros: 18_400, reservedMicros: 0, dailyRemainingMicros: 19_997_300, monthlyRemainingMicros: 99_981_600 }, nextScheduleAt: '2026-08-16T00:00:00.000Z', lastSuccessAt: createdAt, failures: [], queue: [] }),
+    triggerAccess: async () => ({ id: 'e2e-access-job', scheduledFor: createdAt }),
     listDrafts: async () => [...store.drafts.values()].filter((draft) => draft.status !== 'archived').map((draft) => ({ id: draft.id, kind: draft.kind, status: draft.status, title: draft.title, updatedAt: draft.latestVersion.createdAt, latestVersionId: draft.latestVersionId, continuityLevel: draft.latestVersion.continuityLevel })),
     getDraft: async (id) => {
       const draft = store.drafts.get(id);

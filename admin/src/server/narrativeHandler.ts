@@ -7,6 +7,7 @@ const conflicts = new Set([
   'manual_call_limit_reached', 'invalid_generation_source', 'workflow_phase_not_approved',
   'manual_generation_mode_mismatch', 'manual_generation_binding_changed', 'generation_replay_mismatch',
   'budget_limit_below_committed', 'duplicate_schedule_key', 'active_provider_setting_required',
+  'access_interval_not_elapsed', 'daily_access_limit', 'budget_risk',
   'publication_in_progress', 'publication_queue_busy', 'publication_idempotency_mismatch',
   'publication_not_approved', 'publication_attempt_mismatch', 'publication_already_finalized', 'publication_not_configured',
 ]);
@@ -121,6 +122,18 @@ export function createNarrativeHandler({ supabaseUrl, supabaseAnonKey, fetch = g
       const path = url.pathname.replace(/^\/api\/narrative\/?/, '').split('/').filter(Boolean).map(decodeURIComponent);
 
       if (request.method === 'GET' && path.join('/') === 'dashboard') return json(sanitizeDashboard(await rpc('get_narrative_dashboard', {})));
+      if (request.method === 'POST' && path.join('/') === 'access') {
+        if (request.body !== null || url.search) return json({ error: 'access_input_not_allowed' }, 400);
+        const queued = await upstream('/functions/v1/run-schedules', { method: 'POST', body: JSON.stringify({ action: 'access' }) });
+        const payload = queued.payload as Record<string, unknown> | undefined;
+        if (typeof queued.id !== 'string' || !queued.id
+          || queued.ownerId !== user.id || queued.scheduleKey !== `access:${user.id}`
+          || typeof queued.scheduledFor !== 'string' || !queued.scheduledFor
+          || payload?.source !== 'access' || payload.kind !== 'short_dialogue') {
+          throw { status: 500, code: 'request_failed' };
+        }
+        return json({ id: queued.id, scheduledFor: queued.scheduledFor }, 202);
+      }
       if (request.method === 'GET' && path.join('/') === 'memory') return json(await rpc('get_narrative_memory', {}));
       if (request.method === 'GET' && path.join('/') === 'schedules') return json(await rpc('get_narrative_schedules', {}));
       if (request.method === 'GET' && path.join('/') === 'settings') return json(await rpc('get_narrative_settings', {}));

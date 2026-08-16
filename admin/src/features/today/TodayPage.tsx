@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { DashboardData, NarrativeApi } from '../../api/narrativeApi';
+import { NarrativeApiError, type DashboardData, type NarrativeApi } from '../../api/narrativeApi';
 import { AdminNotice } from '../../components/AdminNotice';
 import { AdminPageHeader } from '../../components/AdminPageHeader';
 import { AdminSection } from '../../components/AdminSection';
@@ -14,10 +14,26 @@ const seoulDate = (value: string | null) => {
   return `${parts.year}. ${Number(parts.month)}. ${Number(parts.day)}. ${hour < 12 ? '오전' : '오후'} ${hour % 12 || 12}:${parts.minute}`;
 };
 
-export function TodayPage({ api }: { api: NarrativeApi }) {
+export function TodayPage({ api, readOnly = false }: { api: NarrativeApi; readOnly?: boolean }) {
   const [data, setData] = useState<DashboardData | null>(null);
   const [error, setError] = useState(false);
+  const [accessPending, setAccessPending] = useState(false);
+  const [accessMessage, setAccessMessage] = useState<string | null>(null);
   const load = async () => { setError(false); try { setData(await api.getDashboard()); } catch { setError(true); } };
+  const triggerAccess = async () => {
+    setAccessPending(true);
+    setAccessMessage(null);
+    try {
+      const job = await api.triggerAccess();
+      setAccessMessage(`접속 생성 작업 ${job.id}을(를) 대기열에 확인했습니다.`);
+      await load();
+    } catch (caught) {
+      const code = caught instanceof NarrativeApiError ? caught.code : 'request_failed';
+      setAccessMessage(`접속 생성 요청을 처리하지 못했습니다: ${code}`);
+    } finally {
+      setAccessPending(false);
+    }
+  };
   useEffect(() => { let active = true; void api.getDashboard().then((value) => { if (active) setData(value); }).catch(() => { if (active) setError(true); }); return () => { active = false; }; }, [api]);
   const header = <AdminPageHeader eyebrow="운영 기록" title="오늘" description="오늘의 생성 흐름, 예산, 다음 실행을 한눈에 살핍니다." />;
   if (error) return <section>{header}<AdminNotice tone="danger" action={<button type="button" onClick={() => void load()}>다시 시도</button>}>오늘 현황을 불러오지 못했습니다.</AdminNotice></section>;
@@ -31,6 +47,10 @@ export function TodayPage({ api }: { api: NarrativeApi }) {
         <AdminSection title="예약 비용"><p className="metric-value">{micros(data.budget.reservedMicros)}</p></AdminSection>
         <AdminSection title="실행 현황"><dl><dt>다음 예약</dt><dd>{seoulDate(data.nextScheduleAt)}</dd><dt>마지막 성공</dt><dd>{seoulDate(data.lastSuccessAt)}</dd></dl></AdminSection>
       </div>
+      {!readOnly && <AdminSection title="접속 생성" description="소유자가 명시적으로 요청할 때만 서버 정책에 따라 접속 생성 작업을 확인합니다.">
+        <button type="button" disabled={accessPending} onClick={() => void triggerAccess()}>{accessPending ? '확인 중…' : '접속 생성 요청'}</button>
+        {accessMessage ? <p role="status">{accessMessage}</p> : null}
+      </AdminSection>}
       <AdminSection title="Generation queue" description="Recent automatic and manual generation worker state." className="incident-section">
         {data.queue.length === 0 ? <p className="empty-copy">Queue empty</p> : <ul className="incident-list">{data.queue.map((item) => (
           <li key={item.id}>
