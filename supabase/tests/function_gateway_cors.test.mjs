@@ -7,6 +7,7 @@ const allowedOrigin = 'https://admin.example.test';
 const deniedOrigin = 'https://evil.example.test';
 const gatewayUrl = 'http://127.0.0.1:54321/functions/v1';
 const standardHeaders = ['authorization', 'apikey', 'x-client-info', 'content-type'];
+const dispatchToken = crypto.randomUUID();
 
 function command(name) {
   return process.platform === 'win32' ? `${name}.cmd` : name;
@@ -124,12 +125,45 @@ async function verifyPublicationChecker(anonKey) {
   assert(wrong.status === 401, `check-publication wrong dispatch token returned ${wrong.status}`);
 
   const valid = await fetch(`${gatewayUrl}/check-publication`, {
-    method: 'POST', headers: { apikey: anonKey, 'content-type': 'application/json', 'x-schedule-dispatch-token': 'local-gateway-test' },
+    method: 'POST', headers: { apikey: anonKey, 'content-type': 'application/json', 'x-schedule-dispatch-token': dispatchToken },
     body: JSON.stringify({ action: 'poll' }),
   });
   const body = await valid.json();
   assert(valid.status !== 401, `check-publication valid dispatch token was rejected: ${JSON.stringify(body)}`);
-  assert(!JSON.stringify(body).includes('local-gateway-test'), 'check-publication response echoed dispatch credentials');
+  assert(!JSON.stringify(body).includes(dispatchToken), 'check-publication response echoed dispatch credentials');
+}
+
+async function verifyGenerationWorker(anonKey) {
+  for (const token of [undefined, 'wrong-token']) {
+    const response = await fetch(`${gatewayUrl}/run-generation-worker`, {
+      method: 'POST',
+      headers: {
+        origin: allowedOrigin, apikey: anonKey, 'content-type': 'application/json',
+        ...(token ? { 'x-schedule-dispatch-token': token } : {}),
+      },
+      body: JSON.stringify({ action: 'dispatch' }),
+    });
+    assert(response.status === 401, `run-generation-worker ${token ? 'wrong' : 'missing'} dispatch token returned ${response.status}`);
+    assert((await response.json())?.error === 'dispatch_not_authorized', 'run-generation-worker auth failure exposed application data');
+    assert([null, '*'].includes(response.headers.get('access-control-allow-origin')), 'run-generation-worker emitted an unexpected CORS origin');
+    assert(response.headers.get('access-control-allow-credentials') !== 'true', 'run-generation-worker enabled credentialed CORS');
+  }
+
+  const preflight = await fetch(`${gatewayUrl}/run-generation-worker`, {
+    method: 'OPTIONS', headers: { origin: allowedOrigin, 'access-control-request-method': 'POST' },
+  });
+  assert([200, 204, 405].includes(preflight.status), `run-generation-worker preflight returned ${preflight.status}`);
+  const allowedMethods = (preflight.headers.get('access-control-allow-methods') ?? '').toLowerCase();
+  const allowedHeaders = (preflight.headers.get('access-control-allow-headers') ?? '').toLowerCase();
+  assert(!allowedMethods.includes('post') || !allowedHeaders.includes('x-schedule-dispatch-token'), 'run-generation-worker preflight authorized browser dispatch');
+  assert(preflight.headers.get('access-control-allow-credentials') !== 'true', 'run-generation-worker preflight enabled credentialed CORS');
+
+  const valid = await fetch(`${gatewayUrl}/run-generation-worker`, {
+    method: 'POST',
+    headers: { apikey: anonKey, 'content-type': 'application/json', 'x-schedule-dispatch-token': dispatchToken },
+    body: JSON.stringify({ action: 'dispatch' }),
+  });
+  assert(valid.status === 202, `run-generation-worker valid dispatch returned ${valid.status}: ${await valid.text()}`);
 }
 
 async function createTestUser(keys) {
@@ -191,7 +225,7 @@ function stopServer(child) {
 const temp = await mkdtemp(join(tmpdir(), 'cheonmu-gateway-'));
 const envFile = join(temp, 'functions.env');
 const fixtureEnv = await readFile(new URL('../.env.test', import.meta.url), 'utf8');
-await writeFile(envFile, `${fixtureEnv.trim()}\nNARRATIVE_ADMIN_ORIGINS=${allowedOrigin}\nNARRATIVE_SCHEDULE_DISPATCH_TOKEN=local-gateway-test\n`, 'utf8');
+await writeFile(envFile, `${fixtureEnv.trim()}\nNARRATIVE_ADMIN_ORIGINS=${allowedOrigin}\nNARRATIVE_SCHEDULE_DISPATCH_TOKEN=${dispatchToken}\n`, 'utf8');
 
 const logs = { value: '' };
 const child = spawn(command('npx'), ['supabase', 'functions', 'serve', '--env-file', envFile], {
@@ -207,10 +241,11 @@ try {
   try {
     for (const name of ['generate-draft', 'review-draft', 'publish-draft', 'run-schedules', 'manage-settings']) await verifyFunction(name, keys.anon, user.accessToken);
     await verifyPublicationChecker(keys.anon);
+    await verifyGenerationWorker(keys.anon);
   } finally {
     await deleteTestUser(user.id, keys.service);
   }
-  console.log('Actual local Supabase gateway auth probes passed for 6 functions (five browser boundaries and one server dispatcher).');
+  console.log('Actual local Supabase gateway auth probes passed for 7 functions (five browser boundaries and two server dispatchers).');
 } finally {
   stopServer(child);
   await rm(temp, { recursive: true, force: true });

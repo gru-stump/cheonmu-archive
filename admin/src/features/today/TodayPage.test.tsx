@@ -41,8 +41,10 @@ describe('TodayPage', () => {
     expect(screen.getByRole('heading', { name: /generation queue/i })).toBeInTheDocument();
     expect(screen.getByText('schedule · queued · attempt 0')).toBeInTheDocument();
     expect(screen.getByText('access · running · attempt 1')).toBeInTheDocument();
-    expect(screen.getByText(/retry-wait.*worker_retry_scheduled/)).toBeInTheDocument();
-    expect(screen.getByText(/failed\/dead-letter.*provider_outcome_unknown/)).toBeInTheDocument();
+    expect(screen.getByText('manual · retry-wait · attempt 2')).toBeInTheDocument();
+    expect(screen.getByText(/worker_retry_scheduled/)).toBeInTheDocument();
+    expect(screen.getByText('schedule · failed/dead-letter · attempt 3')).toBeInTheDocument();
+    expect(screen.getByText(/provider_outcome_unknown/)).toBeInTheDocument();
     expect(screen.getByText(/lease.*2026\. 8\. 16/)).toBeInTheDocument();
     expect(screen.getByText(/retry.*2026\. 8\. 16/)).toBeInTheDocument();
   });

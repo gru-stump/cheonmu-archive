@@ -31,6 +31,20 @@ export function TodayPage({ api }: { api: NarrativeApi }) {
         <AdminSection title="예약 비용"><p className="metric-value">{micros(data.budget.reservedMicros)}</p></AdminSection>
         <AdminSection title="실행 현황"><dl><dt>다음 예약</dt><dd>{seoulDate(data.nextScheduleAt)}</dd><dt>마지막 성공</dt><dd>{seoulDate(data.lastSuccessAt)}</dd></dl></AdminSection>
       </div>
+      <AdminSection title="Generation queue" description="Recent automatic and manual generation worker state." className="incident-section">
+        {data.queue.length === 0 ? <p className="empty-copy">Queue empty</p> : <ul className="incident-list">{data.queue.map((item) => (
+          <li key={item.id}>
+            <span>
+              <strong>{item.source} · {item.state} · attempt {item.attemptCount}</strong>
+              {item.failureCode ? <> · {item.failureCode}</> : null}
+            </span>
+            <span>
+              {item.retryAt ? <>retry {seoulDate(item.retryAt)}</> : null}
+              {item.leaseExpiresAt ? <>lease {seoulDate(item.leaseExpiresAt)}</> : null}
+            </span>
+          </li>
+        ))}</ul>}
+      </AdminSection>
       <AdminSection title="최근 실패" description="운영 확인이 필요한 최근 기록입니다." className="incident-section">{data.failures.length === 0 ? <p className="empty-copy">실패 없음</p> : <ul className="incident-list">{data.failures.map((failure) => <li key={failure.id}><strong>{failure.code}</strong><time dateTime={failure.occurredAt}>{seoulDate(failure.occurredAt)}</time></li>)}</ul>}</AdminSection>
     </section>
   );

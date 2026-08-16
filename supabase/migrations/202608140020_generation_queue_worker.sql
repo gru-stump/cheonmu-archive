@@ -440,6 +440,7 @@ begin
   return jsonb_strip_nulls(jsonb_build_object(
     'outcome', 'claimed', 'jobId', candidate.id, 'ownerId', candidate.owner_id,
     'draftId', candidate.worker_draft_id, 'idempotencyKey', candidate.worker_idempotency_key,
+    'providerSettingId', candidate.worker_provider_setting_id,
     'mode', candidate.worker_generation_mode, 'kind', candidate.worker_kind,
     'source', candidate.worker_source, 'policyClass', candidate.worker_policy_class,
     'seed', candidate.payload ->> 'seed', 'tags', candidate.payload -> 'tags',
@@ -713,6 +714,9 @@ declare locked_job public.generation_jobs;
 begin
   select job.* into locked_job from public.generation_jobs as job where job.id = p_job_id for update;
   if locked_job.worker_attempt_token is not null then return jsonb_build_object('outcome', 'stale'); end if;
+  if locked_job.provider_dispatch_recorded_at is not null then
+    return narrative_private.dead_letter_generation_worker_job(locked_job.id, 'provider_outcome_unknown', true);
+  end if;
   return public.generation_direct_abort_attempt_v2(p_job_id, p_attempt_token, p_idempotency_key, p_failure_code);
 end;
 $$;

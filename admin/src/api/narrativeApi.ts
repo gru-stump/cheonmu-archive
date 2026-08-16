@@ -67,6 +67,16 @@ export interface DashboardData {
   nextScheduleAt: string | null;
   lastSuccessAt: string | null;
   failures: Array<{ id: string; occurredAt: string; code: string }>;
+  queue: Array<{
+    id: string;
+    source: 'manual' | 'schedule' | 'access' | 'unknown';
+    state: 'queued' | 'running' | 'retry-wait' | 'completed' | 'failed/dead-letter';
+    attemptCount: number;
+    retryAt: string | null;
+    leaseExpiresAt: string | null;
+    failureCode: string | null;
+    scheduledFor: string;
+  }>;
 }
 
 export type MemoryType = 'canon' | 'continuity' | 'summary' | 'feedback' | 'unresolved';

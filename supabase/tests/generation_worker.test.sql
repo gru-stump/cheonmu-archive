@@ -1,6 +1,6 @@
 begin;
 
-select plan(63);
+select plan(69);
 
 select has_column('public', 'generation_jobs', 'worker_attempt_token', 'generation jobs persist a worker attempt token');
 select has_column('public', 'generation_jobs', 'worker_attempt_count', 'generation jobs persist bounded worker attempt count');
@@ -245,6 +245,37 @@ select is((select count(*) from public.draft_versions where generation_job_id = 
   1::bigint, 'completion creates exactly one generated version');
 select is((select count(*) from public.budget_entries where generation_job_id = 'a0290000-0000-0000-0000-000000000001' and entry_type in ('reconciliation','failure')),
   1::bigint, 'completion settles the reservation exactly once');
+
+insert into public.drafts (id, owner_id, kind, status, title)
+values ('a02c0000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001', 'short_dialogue', 'queued', 'direct fence loss');
+insert into public.generation_jobs (id, owner_id, draft_id, schedule_key, scheduled_for, payload, provider_setting_id) values (
+  'a02d0000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001',
+  'a02c0000-0000-0000-0000-000000000001', 'direct:fence:loss', clock_timestamp(),
+  '{"source":"manual","mode":"new","kind":"short_dialogue","manualRequestKey":"direct:fence:loss"}',
+  '12000000-0000-0000-0000-000000000001'
+);
+select lives_ok(
+  $$ select public.freeze_generation_context(
+    'a02d0000-0000-0000-0000-000000000001', 'a02c0000-0000-0000-0000-000000000001', 'new', 'direct:fence:loss',
+    array['15000000-0000-0000-0000-000000000001'],
+    '[{"versionId":"15000000-0000-0000-0000-000000000001","memoryType":"canon","content":"direct","tokenCount":1}]',
+    '12000000-0000-0000-0000-000000000001', 'a02e0000-0000-4000-8000-000000000001'
+  ) $$,
+  'direct generation still freezes through the established pipeline'
+);
+select is(public.reserve_and_start_generation(
+  'a02d0000-0000-0000-0000-000000000001', 'a02e0000-0000-4000-8000-000000000001', 100) ->> 'status',
+  'reserved', 'direct generation reserves before its provider fence');
+select is(public.fence_generation_provider_dispatch(
+  'a02d0000-0000-0000-0000-000000000001', 'a02e0000-0000-4000-8000-000000000001', null) ->> 'outcome',
+  'fenced', 'direct generation crosses the exact provider fence');
+select is(public.abort_generation_attempt(
+  'a02d0000-0000-0000-0000-000000000001', 'a02e0000-0000-4000-8000-000000000001', 'direct:fence:loss', 'provider_dispatch_uncertain') ->> 'outcome',
+  'dead_lettered', 'a lost direct fence response cannot make the job replayable');
+select is((select concat(status, '|', worker_failure_code) from public.generation_jobs where id = 'a02d0000-0000-0000-0000-000000000001'),
+  'failed|provider_outcome_unknown', 'direct fence uncertainty stores a stable terminal state');
+select is((select count(*) from public.budget_entries where generation_job_id = 'a02d0000-0000-0000-0000-000000000001' and entry_type = 'failure'),
+  1::bigint, 'direct fence uncertainty settles its reservation exactly once');
 
 reset role;
 select set_config('request.jwt.claim.role', 'authenticated', true);

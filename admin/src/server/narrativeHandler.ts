@@ -32,6 +32,28 @@ function mapVersion(row: Record<string, unknown>) {
   };
 }
 
+function sanitizeDashboard(value: Record<string, unknown>) {
+  const sources = new Set(['manual', 'schedule', 'access', 'unknown']);
+  const states = new Set(['queued', 'running', 'retry-wait', 'completed', 'failed/dead-letter']);
+  const queue = Array.isArray(value.queue) ? value.queue.flatMap((item) => {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) return [];
+    const row = item as Record<string, unknown>;
+    if (typeof row.id !== 'string' || !row.id || typeof row.source !== 'string' || !sources.has(row.source)
+      || typeof row.state !== 'string' || !states.has(row.state)
+      || typeof row.attemptCount !== 'number' || !Number.isSafeInteger(row.attemptCount) || row.attemptCount < 0
+      || typeof row.scheduledFor !== 'string'
+      || (row.retryAt !== null && typeof row.retryAt !== 'string')
+      || (row.leaseExpiresAt !== null && typeof row.leaseExpiresAt !== 'string')
+      || (row.failureCode !== null && typeof row.failureCode !== 'string')) return [];
+    return [{
+      id: row.id, source: row.source, state: row.state, attemptCount: row.attemptCount,
+      retryAt: row.retryAt, leaseExpiresAt: row.leaseExpiresAt, failureCode: row.failureCode,
+      scheduledFor: row.scheduledFor,
+    }];
+  }) : [];
+  return { ...value, queue };
+}
+
 function mapPublication(row: Record<string, unknown> | undefined) {
   if (!row) return undefined;
   const owner = typeof row.repository_owner === 'string' && /^[A-Za-z0-9_.-]{1,100}$/.test(row.repository_owner) ? row.repository_owner : '';
@@ -98,7 +120,7 @@ export function createNarrativeHandler({ supabaseUrl, supabaseAnonKey, fetch = g
       const url = new URL(request.url);
       const path = url.pathname.replace(/^\/api\/narrative\/?/, '').split('/').filter(Boolean).map(decodeURIComponent);
 
-      if (request.method === 'GET' && path.join('/') === 'dashboard') return json(await rpc('get_narrative_dashboard', {}));
+      if (request.method === 'GET' && path.join('/') === 'dashboard') return json(sanitizeDashboard(await rpc('get_narrative_dashboard', {})));
       if (request.method === 'GET' && path.join('/') === 'memory') return json(await rpc('get_narrative_memory', {}));
       if (request.method === 'GET' && path.join('/') === 'schedules') return json(await rpc('get_narrative_schedules', {}));
       if (request.method === 'GET' && path.join('/') === 'settings') return json(await rpc('get_narrative_settings', {}));

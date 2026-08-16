@@ -138,8 +138,9 @@ describe('generation worker Supabase adapter', () => {
       };
       const deps = createSupabaseGenerationWorkerDependencies({ url: 'http://supabase', serviceRoleKey: 'service-secret', fetch, timeoutMs: 99_000 }, async () => ({ ...claim, ownerId: 'wrong' }) as never);
       const pending = deps.claim('a1000000-0000-4000-8000-000000000005');
+      const rejected = expect(pending).rejects.toMatchObject({ code: 'generation_worker_rpc_uncertain' });
       await vi.advanceTimersByTimeAsync(10_000);
-      await expect(pending).rejects.toMatchObject({ code: 'generation_worker_rpc_uncertain' });
+      await rejected;
       expect(seen).toMatchObject([{ path: '/rest/v1/rpc/claim_generation_worker_job', authorization: 'Bearer service-secret' }]);
       expect(seen[0]?.signal?.aborted).toBe(true);
     } finally { vi.useRealTimers(); }

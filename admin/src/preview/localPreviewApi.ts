@@ -32,6 +32,7 @@ export const localPreviewApi: NarrativeApi = {
     nextScheduleAt: '2026-08-16T00:00:00.000Z',
     lastSuccessAt: '2026-08-15T03:00:00.000Z',
     failures: [],
+    queue: [{ id: 'local-preview-worker', source: 'schedule', state: 'queued', attemptCount: 0, retryAt: null, leaseExpiresAt: null, failureCode: null, scheduledFor: '2026-08-16T00:00:00.000Z' }],
   }),
   listDrafts: async () => [{ id: draftId, kind: 'short_dialogue', status: 'generated', title: detail.title, updatedAt: version.createdAt, latestVersionId: version.id, continuityLevel: 'pass' }],
   getDraft: async (requestedId) => requestedId === draftId ? detail : Promise.reject(new Error('local_preview_draft_not_found')),

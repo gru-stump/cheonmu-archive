@@ -60,7 +60,7 @@ export type AbortGenerationResult =
 
 export type GenerationFailureCode =
   | 'freeze_failed' | 'frozen_validation_failed' | 'reservation_failed' | 'budget_blocked'
-  | 'provider_generation_failed' | 'provider_response_invalid' | 'provider_result_kind_mismatch'
+  | 'provider_dispatch_uncertain' | 'provider_generation_failed' | 'provider_response_invalid' | 'provider_result_kind_mismatch'
   | 'provider_usage_exceeds_reservation' | 'continuity_check_failed' | 'finalization_failed';
 
 export interface GenerationDependencies {
@@ -78,6 +78,8 @@ export interface GenerationDependencies {
     | { status: 'reserved'; budgetStatus: string; remainingMicros: number | null }
     | { status: 'blocked'; budgetStatus: string; remainingMicros: number | null }
   >;
+  renewWorkerLease?(input: { jobId: string }): Promise<void>;
+  fenceProviderDispatch(input: { jobId: string; attemptToken: string }): Promise<{ outcome: 'fenced' }>;
   resolveProvider(ownerId: string, loadedPolicy: TrustedGenerationPolicy, frozenPolicy: FrozenGenerationPolicy): NarrativeProvider | Promise<NarrativeProvider>;
   parseProviderResponse(value: unknown): NarrativeProviderResponse;
   checkContinuity(result: GenerationResult, context: ContinuityContext): ContinuityCheck;
@@ -90,7 +92,16 @@ export interface GenerationDependencies {
   auditFailure?(stage: string): void;
 }
 
-export interface SupabaseRestConfig { url: string; anonKey: string; serviceRoleKey: string; fetch?: typeof globalThis.fetch }
+export interface SupabaseRestConfig { url: string; anonKey: string; serviceRoleKey: string; fetch?: typeof globalThis.fetch; timeoutMs?: number }
+
+export interface TrustedWorkerGenerationContext {
+  workerAttemptToken: string;
+  claim: {
+    ownerId: string; jobId: string; draftId: string; providerSettingId: string; idempotencyKey: string;
+    mode: GenerationMode; kind: DraftKind; source: 'manual' | 'schedule' | 'access'; policyClass: 'manual' | 'schedule';
+    seed?: string; tags?: string[]; revision?: { selectedText: string; instruction: string }; requestedMaxOutputTokens?: number;
+  };
+}
 
 export class GenerationError extends Error {
   constructor(public readonly status: number, public readonly code: string, public readonly details?: Record<string, unknown>) {
@@ -163,6 +174,8 @@ const abortResultSchema = z.discriminatedUnion('outcome', [
   z.object({ outcome: z.literal('stale') }),
   z.object({ outcome: z.literal('completed'), result: generationResponseSchema }),
 ]);
+const fenceResultSchema = z.object({ outcome: z.literal('fenced') }).strict();
+const renewalResultSchema = z.object({ outcome: z.literal('renewed') }).passthrough();
 
 export function estimateWorstCaseCostMicros(policy: GenerationPolicyValues, mode: GenerationMode): number {
   const outputTokens = mode === 'revise_selection' ? Math.min(policy.maxOutputTokens, policy.maxRevisionOutputTokens) : policy.maxOutputTokens;
@@ -362,11 +375,20 @@ export async function runGeneration(deps: GenerationDependencies, command: Gener
     ...(effectiveCommand.revision ? { revision: effectiveCommand.revision } : {}),
   };
 
-  let raw: unknown;
+  let provider: NarrativeProvider;
   try {
-    const provider = await deps.resolveProvider(ownerId, loadedPolicy, frozenPolicy);
-    raw = await provider.generate(request);
+    provider = await deps.resolveProvider(ownerId, loadedPolicy, frozenPolicy);
   }
+  catch { return abortAfterFreeze(deps, effectiveCommand, attemptToken, 'provider_generation_failed', new GenerationError(502, 'provider_generation_failed')); }
+  try {
+    await deps.renewWorkerLease?.({ jobId: effectiveCommand.jobId });
+    const fence = await deps.fenceProviderDispatch({ jobId: effectiveCommand.jobId, attemptToken });
+    if (fence.outcome !== 'fenced') throw new Error('provider fence rejected');
+  } catch {
+    return abortAfterFreeze(deps, effectiveCommand, attemptToken, 'provider_dispatch_uncertain', new GenerationError(502, 'generation_provider_fence_uncertain'));
+  }
+  let raw: unknown;
+  try { raw = await provider.generate(request); }
   catch { return abortAfterFreeze(deps, effectiveCommand, attemptToken, 'provider_generation_failed', new GenerationError(502, 'provider_generation_failed')); }
   let providerResponse: NarrativeProviderResponse;
   try { providerResponse = deps.parseProviderResponse(raw); }
@@ -480,32 +502,66 @@ export function createSupabaseGenerationDependencies(
   config: SupabaseRestConfig,
   authToken: string,
   resolveProvider: GenerationDependencies['resolveProvider'],
+  worker?: TrustedWorkerGenerationContext,
 ): GenerationDependencies {
   const request = config.fetch ?? globalThis.fetch;
+  const timeoutMs = typeof config.timeoutMs === 'number' && Number.isFinite(config.timeoutMs) && config.timeoutMs > 0
+    ? Math.min(config.timeoutMs, 10_000)
+    : 10_000;
   const userHeaders = { apikey: config.anonKey, authorization: `Bearer ${authToken}`, 'content-type': 'application/json' };
   const serviceHeaders = { apikey: config.serviceRoleKey, authorization: `Bearer ${config.serviceRoleKey}`, 'content-type': 'application/json' };
   const callWith = async (headers: Record<string, string>, path: string, init: RequestInit = {}): Promise<unknown> => {
-    const response = await request(`${config.url}${path}`, { ...init, headers: { ...headers, ...init.headers } });
-    const value = response.status === 204 ? null : await response.json();
-    if (!response.ok) {
-      if (path === '/auth/v1/user' && (response.status === 401 || response.status === 403)) throw new GenerationError(401, 'authentication_required');
-      const databaseCode = value && typeof value === 'object' && 'code' in value ? String(value.code) : '';
-      const message = value && typeof value === 'object' ? String(('message' in value && value.message) || ('msg' in value && value.msg) || `supabase_${response.status}`) : `supabase_${response.status}`;
-      if (databaseCode === 'P0001' && stableConflictCodes.has(message)) throw new PersistenceError(message);
-      throw new Error(`supabase_request_failed_${response.status}`);
+    const controller = new AbortController();
+    let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<never>((_, reject) => {
+      timeoutHandle = setTimeout(() => { controller.abort(); reject(new Error('supabase_request_timeout')); }, timeoutMs);
+    });
+    try {
+      const response = await Promise.race([
+        request(`${config.url}${path}`, { ...init, signal: controller.signal, headers: { ...headers, ...init.headers } }),
+        timeout,
+      ]);
+      const value = response.status === 204 ? null : await Promise.race([response.json(), timeout]);
+      if (!response.ok) {
+        if (path === '/auth/v1/user' && (response.status === 401 || response.status === 403)) throw new GenerationError(401, 'authentication_required');
+        const databaseCode = value && typeof value === 'object' && 'code' in value ? String(value.code) : '';
+        const message = value && typeof value === 'object' ? String(('message' in value && value.message) || ('msg' in value && value.msg) || `supabase_${response.status}`) : `supabase_${response.status}`;
+        if (databaseCode === 'P0001' && stableConflictCodes.has(message)) throw new PersistenceError(message);
+        throw new Error(`supabase_request_failed_${response.status}`);
+      }
+      return value;
+    } finally {
+      if (timeoutHandle !== undefined) clearTimeout(timeoutHandle);
     }
-    return value;
   };
-  const call = (path: string, init: RequestInit = {}) => callWith(userHeaders, path, init);
+  const call = (path: string, init: RequestInit = {}) => callWith(worker ? serviceHeaders : userHeaders, path, init);
   const rpc = (name: string, body: Record<string, unknown>) => callWith(serviceHeaders, `/rest/v1/rpc/${name}`, { method: 'POST', body: JSON.stringify(body) });
   return {
     createAttemptToken: () => crypto.randomUUID(),
     authenticate: async () => {
+      if (worker) return { ownerId: worker.claim.ownerId };
       const user = row<{ id: string }>(await call('/auth/v1/user'));
       if (!user?.id) throw new GenerationError(401, 'authentication_required');
       return { ownerId: user.id };
     },
     authorize: async (_ownerId, command) => {
+      if (worker) {
+        const claim = worker.claim;
+        if (command.jobId !== claim.jobId || command.draftId !== claim.draftId || command.idempotencyKey !== claim.idempotencyKey
+          || command.mode !== claim.mode || command.kind !== claim.kind) throw new GenerationError(409, 'generation_worker_binding_changed');
+        const workflowPhase = claim.mode.startsWith('major_event_')
+          ? row<{ phase: string }>(await call(`/rest/v1/major_event_workflows?select=phase&draft_id=eq.${encodeURIComponent(claim.draftId)}`))?.phase ?? null
+          : null;
+        return {
+          draftStatus: 'queued' as const, draftKind: claim.kind, workflowPhase,
+          jobPayload: {
+            source: claim.source, mode: claim.mode, kind: claim.kind, manualRequestKey: claim.idempotencyKey,
+            ...(claim.seed === undefined ? {} : { seed: claim.seed }), ...(claim.tags === undefined ? {} : { tags: claim.tags }),
+            ...(claim.revision === undefined ? {} : { revision: claim.revision }),
+            ...(claim.requestedMaxOutputTokens === undefined ? {} : { requestedMaxOutputTokens: claim.requestedMaxOutputTokens }),
+          },
+        };
+      }
       const draft = row<{ status: DraftStatus; kind: DraftKind }>(await call(`/rest/v1/drafts?select=status,kind&id=eq.${encodeURIComponent(command.draftId)}`));
       if (!draft) throw new GenerationError(404, 'draft_not_found');
       const job = row<{ id: string; draft_id: string | null; payload: unknown }>(await call(`/rest/v1/generation_jobs?select=id,draft_id,payload&id=eq.${encodeURIComponent(command.jobId)}`));
@@ -548,7 +604,11 @@ export function createSupabaseGenerationDependencies(
       const ownerSettings = (Array.isArray(values) ? values : []).filter((candidate) => candidate && typeof candidate === 'object'
         && (candidate as Record<string, unknown>).owner_id === ownerId && (candidate as Record<string, unknown>).enabled === true);
       if (ownerSettings.length !== 1) throw new GenerationError(409, 'active_provider_setting_required');
-      try { return trustedSettingFromRecord(ownerSettings[0] as Record<string, unknown>, ownerId); }
+      try {
+        const setting = trustedSettingFromRecord(ownerSettings[0] as Record<string, unknown>, ownerId);
+        if (worker && setting.providerSettingId !== worker.claim.providerSettingId) throw new Error('worker provider changed');
+        return setting;
+      }
       catch { throw new GenerationError(500, 'invalid_provider_setting'); }
     },
     selectContext: async (_ownerId, command, inputTokenBudget) => {
@@ -563,7 +623,12 @@ export function createSupabaseGenerationDependencies(
       return selectNarrativeContext({ memories, tokenBudget: inputTokenBudget, tags: command.tags, currentRelationshipStage });
     },
     freezeContext: async (input) => {
-      const value = row<Record<string, unknown>>(await rpc('freeze_generation_context', { p_job_id: input.jobId, p_draft_id: input.draftId, p_generation_mode: input.mode, p_idempotency_key: input.idempotencyKey, p_context_version_ids: input.contextVersionIds, p_context_snapshot: input.contextSnapshot, p_provider_setting_id: input.providerSettingId, p_attempt_token: input.attemptToken }));
+      const value = row<Record<string, unknown>>(await rpc(worker ? 'freeze_generation_worker_context' : 'freeze_generation_context', {
+        p_job_id: input.jobId, p_draft_id: input.draftId, p_generation_mode: input.mode, p_idempotency_key: input.idempotencyKey,
+        p_context_version_ids: input.contextVersionIds, p_context_snapshot: input.contextSnapshot,
+        p_provider_setting_id: input.providerSettingId, p_attempt_token: input.attemptToken,
+        ...(worker ? { p_worker_attempt_token: worker.workerAttemptToken } : {}),
+      }));
       if (!value) throw new Error('freeze_failed');
       return {
         ...policyFromRecord(value), attemptToken: z.string().uuid().parse(value.attempt_token), worstCaseCostMicros: safeInteger(value.worst_case_cost_micros, 0),
@@ -571,14 +636,35 @@ export function createSupabaseGenerationDependencies(
         contextSnapshot: z.array(frozenMemorySchema).parse(value.context_snapshot),
       };
     },
-    reserveAndStart: async (input) => reservationResultSchema.parse(await rpc('reserve_and_start_generation', { p_job_id: input.jobId, p_attempt_token: input.attemptToken, p_amount_micros: input.worstCaseCostMicros })),
+    reserveAndStart: async (input) => reservationResultSchema.parse(await rpc(worker ? 'reserve_and_start_worker_generation' : 'reserve_and_start_generation', {
+      p_job_id: input.jobId, p_attempt_token: input.attemptToken, p_amount_micros: input.worstCaseCostMicros,
+      ...(worker ? { p_worker_attempt_token: worker.workerAttemptToken } : {}),
+    })),
+    ...(worker ? {
+      renewWorkerLease: async (input: { jobId: string }) => {
+        renewalResultSchema.parse(await rpc('renew_generation_worker_claim', { p_job_id: input.jobId, p_worker_attempt_token: worker.workerAttemptToken }));
+      },
+    } : {}),
+    fenceProviderDispatch: async (input) => fenceResultSchema.parse(await rpc('fence_generation_provider_dispatch', {
+      p_job_id: input.jobId, p_generation_attempt_token: input.attemptToken,
+      p_worker_attempt_token: worker?.workerAttemptToken ?? null,
+    })),
     resolveProvider, parseProviderResponse: parseNarrativeProviderResponse, checkContinuity,
     finalizeSuccess: async (input) => {
-      const version = row<{ id: string; draft_id?: string }>(await rpc('finalize_generation_success', { p_job_id: input.jobId, p_attempt_token: input.attemptToken, p_actual_micros: input.actualCostMicros, p_usage_json: input.usage, p_content: input.result, p_continuity_level: input.continuityLevel, p_continuity_findings: input.findings, p_provider_response_id: input.providerResponseId, p_provider_response_model: input.providerResponseModel, p_policy_version: input.continuityPolicyVersion }));
+      const version = row<{ id: string; draft_id?: string }>(await rpc(worker ? 'finalize_worker_generation_success' : 'finalize_generation_success', {
+        p_job_id: input.jobId, p_attempt_token: input.attemptToken, p_actual_micros: input.actualCostMicros,
+        p_usage_json: input.usage, p_content: input.result, p_continuity_level: input.continuityLevel,
+        p_continuity_findings: input.findings, p_provider_response_id: input.providerResponseId,
+        p_provider_response_model: input.providerResponseModel, p_policy_version: input.continuityPolicyVersion,
+        ...(worker ? { p_worker_attempt_token: worker.workerAttemptToken } : {}),
+      }));
       if (!version?.id) throw new Error('success_finalization_missing_version');
       return { draftId: version.draft_id ?? input.draftId, versionId: version.id, status: 'generated' };
     },
-    abortGenerationAttempt: async (input) => abortResultSchema.parse(await rpc('abort_generation_attempt', { p_job_id: input.jobId, p_attempt_token: input.attemptToken, p_idempotency_key: input.idempotencyKey, p_failure_code: input.failureCode })),
+    abortGenerationAttempt: async (input) => abortResultSchema.parse(await rpc(worker ? 'abort_worker_generation_attempt' : 'abort_generation_attempt', {
+      p_job_id: input.jobId, p_attempt_token: input.attemptToken, p_idempotency_key: input.idempotencyKey,
+      p_failure_code: input.failureCode, ...(worker ? { p_worker_attempt_token: worker.workerAttemptToken } : {}),
+    })),
     auditFailure: (stage) => console.error('generate-draft failure', { stage }),
   };
 }
@@ -594,17 +680,19 @@ export function createLocalFixtureProvider(sleep: (milliseconds: number) => Prom
     },
   };
 }
-if (typeof Deno !== 'undefined' && (import.meta as ImportMeta & { main?: boolean }).main) {
-  const url = Deno.env.get('SUPABASE_URL'); const anonKey = Deno.env.get('SUPABASE_ANON_KEY'); const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-  if (!url || !anonKey || !serviceRoleKey) throw new Error('SUPABASE_URL, SUPABASE_ANON_KEY, and SUPABASE_SERVICE_ROLE_KEY are required');
-  const fakeLocalProvider: NarrativeProvider | undefined = Deno.env.get('NARRATIVE_FAKE_LOCAL_FIXTURE') === 'true' ? createLocalFixtureProvider() : undefined;
-  const readVaultSecret = createSupabaseProviderSecretReader({ url, anonKey, serviceRoleKey });
-  const resolveProvider: GenerationDependencies['resolveProvider'] = async (ownerId, loadedPolicy) => {
+
+export function createRuntimeGenerationProviderResolver(
+  config: SupabaseRestConfig,
+  environment: (name: string) => string | undefined,
+  fakeLocalProvider?: NarrativeProvider,
+): GenerationDependencies['resolveProvider'] {
+  const readVaultSecret = createSupabaseProviderSecretReader(config);
+  return async (ownerId, loadedPolicy) => {
     const resolvedSecret = loadedPolicy.providerKey === 'fake-local-provider'
       ? undefined
       : loadedPolicy.secretSource === 'vault'
         ? await readVaultSecret(ownerId, loadedPolicy.providerKey)
-        : loadedPolicy.secretRef ? Deno.env.get(loadedPolicy.secretRef) : undefined;
+        : loadedPolicy.secretRef ? environment(loadedPolicy.secretRef) : undefined;
     const configuration = loadedPolicy.providerKey === 'fake-local-provider'
       ? { mode: 'fixture' }
       : { apiKeyEnv: 'NARRATIVE_RESOLVED_PROVIDER_SECRET' };
@@ -614,6 +702,13 @@ if (typeof Deno !== 'undefined' && (import.meta as ImportMeta & { main?: boolean
       { timeoutMs: 30_000, ...(fakeLocalProvider ? { fakeLocalProvider } : {}) },
     );
   };
+}
+
+if (typeof Deno !== 'undefined' && (import.meta as ImportMeta & { main?: boolean }).main) {
+  const url = Deno.env.get('SUPABASE_URL'); const anonKey = Deno.env.get('SUPABASE_ANON_KEY'); const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+  if (!url || !anonKey || !serviceRoleKey) throw new Error('SUPABASE_URL, SUPABASE_ANON_KEY, and SUPABASE_SERVICE_ROLE_KEY are required');
+  const fakeLocalProvider: NarrativeProvider | undefined = Deno.env.get('NARRATIVE_FAKE_LOCAL_FIXTURE') === 'true' ? createLocalFixtureProvider() : undefined;
+  const resolveProvider = createRuntimeGenerationProviderResolver({ url, anonKey, serviceRoleKey }, (name) => Deno.env.get(name), fakeLocalProvider);
   const cors = corsPolicyFromEnvironment(Deno.env.get('NARRATIVE_ADMIN_ORIGINS'));
   Deno.serve((request) => {
     const token = bearerToken(request) ?? '';

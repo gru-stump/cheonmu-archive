@@ -125,6 +125,17 @@ describe('runGeneration', () => {
     expect(h.events).not.toContain('provider');
   });
 
+  it('renews a worker lease before the exact fence and fails closed when renewal is uncertain', async () => {
+    const renewed = harness({ renewWorkerLease: async () => { renewed.events.push('renew'); } });
+    await expect(runGeneration(renewed.deps, baseCommand)).resolves.toMatchObject({ status: 'generated' });
+    expect(renewed.events.slice(renewed.events.indexOf('resolve-provider'))).toEqual(['resolve-provider', 'renew', 'fence', 'provider', 'parse', 'continuity', 'finalize']);
+
+    const uncertain = harness({ renewWorkerLease: async () => { uncertain.events.push('renew'); throw new Error('lost renewal response'); } });
+    await expect(runGeneration(uncertain.deps, baseCommand)).rejects.toMatchObject({ code: 'generation_provider_fence_uncertain' });
+    expect(uncertain.events).not.toContain('fence');
+    expect(uncertain.events).not.toContain('provider');
+  });
+
   it('stores blocked prose privately under policy', async () => {
     const h = harness({ checkContinuity: () => ({ level: 'block', findings: [{ code: 'forbidden', level: 'block', message: 'blocked', sourceIds: ['canon-v1'] }] }) });
     await expect(runGeneration(h.deps, baseCommand)).resolves.toMatchObject({ continuityLevel: 'block' });
@@ -507,6 +518,25 @@ describe('generate-draft HTTP boundary', () => {
 });
 
 describe('Supabase generation adapter', () => {
+  it('loads the trusted major-event workflow phase for an internal worker claim', async () => {
+    const seen: Array<{ path: string; authorization: string | null }> = [];
+    const fetch: typeof globalThis.fetch = async (input, init) => {
+      seen.push({ path: new URL(String(input)).pathname, authorization: new Headers(init?.headers).get('authorization') });
+      return Response.json([{ phase: 'proposal_approved' }]);
+    };
+    const command = { ...baseCommand, mode: 'major_event_scene_plan' as const, kind: 'major_event_proposal' as const };
+    const deps = createSupabaseGenerationDependencies(
+      { url: 'http://supabase', anonKey: 'anon', serviceRoleKey: 'service-secret', fetch }, '',
+      async () => new FakeNarrativeProvider(result),
+      { workerAttemptToken: 'a1000000-0000-4000-8000-000000000005', claim: {
+        ownerId: 'owner-1', jobId: command.jobId, draftId: command.draftId, providerSettingId: 'setting-1',
+        idempotencyKey: command.idempotencyKey, mode: command.mode, kind: command.kind, source: 'manual', policyClass: 'manual',
+      } },
+    );
+
+    await expect(deps.authorize('owner-1', command)).resolves.toMatchObject({ workflowPhase: 'proposal_approved' });
+    expect(seen).toEqual([{ path: '/rest/v1/major_event_workflows', authorization: 'Bearer service-secret' }]);
+  });
   it('maps an expired or invalid bearer response to 401', async () => {
     const deps = createSupabaseGenerationDependencies({
       url: 'http://supabase', anonKey: 'anon', serviceRoleKey: 'service-secret',

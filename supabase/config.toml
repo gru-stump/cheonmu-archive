@@ -32,6 +32,11 @@ verify_jwt = false
 # explicitly by the handler before it evaluates or queues anything.
 verify_jwt = false
 
+[functions.run-generation-worker]
+# Cron authenticates with the server-only dispatch secret; no browser/JWT
+# request can invoke the service-role generation lifecycle.
+verify_jwt = false
+
 [functions.manage-settings]
 # Secret writes authenticate the owner inside the function before the
 # service-only Vault RPC is invoked.

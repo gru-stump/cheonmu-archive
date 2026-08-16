@@ -15,17 +15,12 @@
 - GitHub 임시 브랜치 생성·게시·삭제와 Pages 배포
 - 일간·접속 시·주간·특별일 생산 활성화
 
-또한 다음 두 가지 생산 차단 조건이 남아 있습니다.
-
-- `run-schedules`는 예정된 작업을 `generation_jobs`에 **대기열로만 넣고**,
-  대기 작업을 `generate-draft`로 실행하는 생산 worker가 저장소에 없습니다.
-- 관리자 UI에는 `action: access`를 호출하는 동일 출처 경로가 없습니다.
-첫째는 대기 job을 선점해 draft·idempotency·attempt를 묶고 `generate-draft`를
-호출하는 신뢰된 worker가 필요합니다. 둘째는 소유자 bearer만 전달하는
+생성 대기열 worker는 구현·검증되었습니다. 남은 생산 차단 조건은 관리자 UI에
+`action: access`를 호출하는 동일 출처 경로가 없다는 점입니다. 이는 소유자 bearer만 전달하는
 `POST /api/narrative/access`와 안정적인 409 응답이 필요합니다. 수동 생성 허용과
 자동 일정 허용은 서로 다른 서버 정책이며, provider 선택은 두 정책과 독립적으로
 유지됩니다. 로컬 캐너리는 `수동 생성 허용=켜짐`, `자동 일정 허용=꺼짐`,
-`fake-local-provider=활성`으로 고정됩니다. 남은 두 경로가 구현되고 로컬·스테이징
+`fake-local-provider=활성`으로 고정됩니다. 남은 access 경로가 구현되고 로컬·스테이징
 검증 증거가 있기 전에는 라이브 캐너리와 생산 일정을
 활성화하지 않습니다. 시계 호출이 성공해도 실제 초안이 생성되지 않을 수 있기 때문입니다.
 
@@ -203,11 +198,39 @@ where owner_id = '<OWNER_UUID>'::uuid;
 스케줄러와 게시 관찰자는 전역 Vault 재료를 사용합니다.
 
 - `narrative_schedule_dispatch_url` = `https://<PROJECT_REF>.supabase.co/functions/v1/run-schedules`
+- `narrative_generation_worker_url` = 생성 worker Edge Function URL
 - `narrative_publication_check_url` = `https://<PROJECT_REF>.supabase.co/functions/v1/check-publication`
 - `narrative_schedule_dispatch_token` = 충분히 긴 무작위 값
 
 마지막 token은 Edge Function 비밀 `NARRATIVE_SCHEDULE_DISPATCH_TOKEN`과 정확히 같아야 합니다.
 정확한 URL과 키를 소스에 쓰지 말고 Dashboard/Vault/Edge secrets에서만 저장합니다.
+
+### 생성 worker 운영
+
+`narrative-generation-worker` cron은 1분마다 Vault의 `narrative_generation_worker_url`과
+`narrative_schedule_dispatch_token`을 읽어 `run-generation-worker`에 빈 dispatch 명령 하나만
+보냅니다. Edge runtime은 같은 token을 `NARRATIVE_SCHEDULE_DISPATCH_TOKEN`으로 읽습니다.
+cron은 대기열을 직접 조회·수정하거나 provider를 호출하지 않습니다.
+
+관리자 **오늘 > Generation queue**에서 source, queue state, attempt count, retry 시각,
+lease 만료 시각, 정제된 failure code를 확인합니다. SQL 조사가 필요하면 token/payload를
+출력하지 않고 다음 열만 조회합니다.
+
+```sql
+select id, status, worker_source, worker_attempt_count, worker_retry_at,
+       worker_lease_expires_at, worker_failure_code, scheduled_for
+from public.generation_jobs
+order by created_at desc
+limit 20;
+```
+
+- `retry-wait`는 1차 실패 뒤 1분, 2차 실패 뒤 5분을 기다립니다. 시각을 수동으로 앞당기지 않습니다.
+- 3차 안전 실패와 정책·가격·예산·binding 오류는 dead-letter입니다. 원인을 고친 뒤에도 기존 row를
+  수동 재생하지 말고 새 정상 명령을 대기열에 넣습니다.
+- `provider_outcome_unknown`은 provider fence 뒤 응답이 불명확한 상태입니다. 자동 재시도하지 말고
+  provider 사용 기록과 budget settlement를 대조하며, 기존 job은 terminal로 보존합니다.
+- `자동 일정 허용`을 끄면 schedule/access claim이 모두 차단됩니다. `수동 생성 허용`은 독립 정책이므로
+  별도로 끄지 않는 한 수동 생성은 계속 허용됩니다.
 
 ## 9. 모델 단가와 계정 하드 한도
 
@@ -279,7 +302,6 @@ project ref와 연결 상태를 먼저 확인합니다.
 이 절차는 다음 모든 조건이 충족되고 소유자가 서면으로 외부 작업을 승인한
 뒤에만 시작합니다.
 
-- 대기열에서 `generate-draft`로 연결되는 worker가 구현·검증됨
 - Admin 새 수동 생성 또는 검증된 수동 dispatcher 경로가 구현됨
 - 수동 생성 허용과 자동 일정 허용이 서버 정책으로 분리되어, 일정 off 상태에서도
   활성 provider·예산·수동 호출 한도를 적용한 수동 생성이 가능함
@@ -383,7 +405,7 @@ returning github_repository_owner, github_repository_name, github_branch;
 
 ## 13. 생산 일정 점진 활성화—현재 보류
 
-제12절의 캐너리가 통과하고 queue worker와 access 호출 경로가 검증되기 전에는
+제12절의 캐너리가 통과하고 access 호출 경로가 검증되기 전에는
 아래 순서를 실행하지 않습니다.
 
 1. **일간만 활성화**: 선택한 서울 시각, 최소 간격, `short_dialogue`로 시작합니다.
@@ -444,9 +466,10 @@ artifact·로그의 노출 범위를 조사합니다.
 3. 수동 호출 한도를 0으로 낮추고, 새 AI 호출을 막기 위해 활성 provider를 해제합니다.
 4. 제공자 콘솔에서 API key를 폐기하거나 프로젝트 한도를 즉시 낮추는 외부 정지를 실행합니다.
 5. 게시가 문제면 GitHub token을 폐기하고, 저장소 Actions/Pages의 진행 중 작업을 GitHub UI에서 중지합니다.
-6. 환경이 연결되지 않는 시간에는 Supabase cron job `narrative-schedule-dispatcher`와
-   `narrative-publication-checker`를 Dashboard에서 비활성화합니다. 이는 호스팅 변경이므로 사고
-   대응자가 실행합니다.
+6. 환경이 연결되지 않는 시간에는 먼저 Supabase cron job `narrative-generation-worker`를 끄고,
+   다음으로 `narrative-schedule-dispatcher`, 마지막으로 `narrative-publication-checker`를 Dashboard에서
+   비활성화합니다. worker를 먼저 멈추면 기존 대기열이 provider 호출로 넘어가지 않습니다. 이는
+   호스팅 변경이므로 사고 대응자가 실행합니다.
 7. 사고 시작 시각을 고정하고 그 시각 이후의 audit, jobs, budget, GitHub, provider 사용 기록을 보존합니다.
 
 정지는 이미 시작한 외부 호출을 취소하지 못할 수 있습니다. 정지 후에도 provider usage와
@@ -469,7 +492,8 @@ artifact·로그의 노출 범위를 조사합니다.
 - 대시보드의 실패 10건과 다음 예정 시각
 - provider/model별 token·비용, 예약과 정산의 차이
 - 일일 예산, 주의/위험/한도 상태, 제공자 계정 usage
-- `queued`/`running`/예약 상태로 비정상적으로 오래 남은 job
+- `queued`/`running`/`retry-wait`로 비정상적으로 오래 남은 job과 lease 만료
+- 새 dead-letter 및 `provider_outcome_unknown`; 후자는 provider 사용 기록과 budget settlement를 즉시 대조
 - 새 `publish_failed`, workflow/pages failure, `tracking_timed_out`
 
 ### 매주

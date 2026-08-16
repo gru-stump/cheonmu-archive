@@ -12,6 +12,7 @@
     "test:db:concurrency": "node supabase/tests/budget_concurrency.test.mjs && node supabase/tests/review_concurrency.test.mjs && node supabase/tests/generation_attempt_concurrency.test.mjs && node supabase/tests/generation_worker_concurrency.test.mjs && node supabase/tests/schedule_access_concurrency.test.mjs && node supabase/tests/schedule_queue_concurrency.test.mjs && node supabase/tests/settings_reservation_concurrency.test.mjs && node supabase/tests/automation_policy_concurrency.test.mjs && node supabase/tests/schedule_save_dispatch_concurrency.test.mjs && node supabase/tests/publication_concurrency.test.mjs",
     "test:db:upgrade": "tsx supabase/tests/schedule_migration_upgrade.test.ts && tsx supabase/tests/publication_migration_upgrade.test.ts && tsx supabase/tests/automation_policy_migration_upgrade.test.ts && tsx supabase/tests/generation_worker_migration_upgrade.test.ts",
     "test:functions:gateway": "node supabase/tests/function_gateway_cors.test.mjs",
+    "test:functions:generation-worker": "node supabase/tests/generation_worker_edge_integration.test.mjs",
     "narrative:security": "tsx scripts/check-narrative-secrets.ts",
     "narrative:canon": "tsx scripts/export-narrative-canon.ts",
     "validate": "tsx scripts/validate-content.ts",
