@@ -56,4 +56,6 @@ export const localPreviewApi: NarrativeApi = {
   saveSchedule: readOnly,
   saveSettings: readOnly,
   saveSecret: readOnly,
+  deleteSecret: readOnly,
+  listModels: async (providerKey) => ({ providerKey, configured: false, live: false, models: [] }),
 };

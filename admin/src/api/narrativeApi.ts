@@ -248,6 +248,8 @@ export interface NarrativeApi {
   getSettings(): Promise<NarrativeSettings>;
   saveSettings(input: SaveSettingsInput): Promise<{ saved: true }>;
   saveSecret(input: { kind: 'openai' | 'anthropic' | 'github'; value: string }): Promise<{ configured: boolean }>;
+  listModels(providerKey: 'openai' | 'anthropic'): Promise<ModelCatalogResponse>;
+  deleteSecret(kind: 'openai' | 'anthropic' | 'github'): Promise<{ configured: false; generationPaused: boolean }>;
 }
 
 export class NarrativeApiError extends Error {
@@ -299,5 +301,7 @@ export function createNarrativeApi({ tokenProvider, fetch = globalThis.fetch }: 
     getSettings: () => request<NarrativeSettings>('settings'),
     saveSettings: (input) => post('settings', input),
     saveSecret: (input) => post('settings/secret', input),
+    listModels: (providerKey) => request<ModelCatalogResponse>(`settings/models?provider=${encodeURIComponent(providerKey)}`),
+    deleteSecret: (kind) => request(`settings/secret/${encodeURIComponent(kind)}`, { method: 'DELETE' }),
   };
 }

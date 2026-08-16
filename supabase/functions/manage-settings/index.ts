@@ -1,22 +1,43 @@
 import { z } from 'zod';
+import { catalogModels, type ProviderCatalogKey } from '../../../shared/narrative/provider-catalog.ts';
 import { bearerToken } from '../_shared/auth.ts';
 import { corsGate, corsPolicyFromEnvironment, createCorsPolicy, withCorsHeaders, type CorsPolicy } from '../_shared/cors.ts';
 
 export type SecretKind = 'openai' | 'anthropic' | 'github';
 export interface SecretWriteCommand { authToken: string; kind: SecretKind; value: string }
+export interface ModelCatalogResult {
+  providerKey: ProviderCatalogKey;
+  configured: boolean;
+  live: boolean;
+  connectionIssue?: 'invalid_key' | 'temporarily_unavailable';
+  models: Array<{
+    id: string; label: string; description: string;
+    quality: 'standard' | 'high'; speed: 'fast' | 'balanced'; cost: 'low' | 'medium' | 'high';
+    recommended: boolean; availability: 'available' | 'unverified';
+    maxInputTokens: number; maxOutputTokens: number; maxRevisionOutputTokens: number;
+    inputPriceMicrosPerMillion: number; outputPriceMicrosPerMillion: number; pricingVerifiedAt: string;
+  }>;
+}
 export interface ManageSettingsDependencies {
   authenticateOwner(token: string): Promise<{ ownerId: string }>;
   storeSecret(input: { ownerId: string; kind: SecretKind; value: string }): Promise<boolean>;
+  listModels(input: { ownerId: string; providerKey: ProviderCatalogKey }): Promise<ModelCatalogResult>;
+  deleteSecret(input: { ownerId: string; kind: SecretKind }): Promise<{ configured: false; generationPaused: boolean }>;
 }
-export interface SupabaseManageSettingsConfig { url: string; anonKey: string; serviceRoleKey: string; fetch?: typeof globalThis.fetch }
+export interface SupabaseManageSettingsConfig {
+  url: string; anonKey: string; serviceRoleKey: string;
+  fetch?: typeof globalThis.fetch;
+  timeoutMs?: number;
+}
 export class ManageSettingsError extends Error {
   constructor(public readonly status: number, public readonly code: string) { super(code); this.name = 'ManageSettingsError'; }
 }
 
-const bodySchema = z.object({
-  kind: z.enum(['openai', 'anthropic', 'github']),
-  value: z.string().trim().min(1).max(20_000),
-}).strict();
+const commandSchema = z.discriminatedUnion('action', [
+  z.object({ action: z.literal('write-secret'), kind: z.enum(['openai', 'anthropic', 'github']), value: z.string().trim().min(1).max(20_000) }).strict(),
+  z.object({ action: z.literal('list-models'), providerKey: z.enum(['openai', 'anthropic']) }).strict(),
+  z.object({ action: z.literal('delete-secret'), kind: z.enum(['openai', 'anthropic', 'github']) }).strict(),
+]);
 
 export async function applySecretWrite(deps: ManageSettingsDependencies, command: SecretWriteCommand): Promise<{ configured: true }> {
   const owner = await deps.authenticateOwner(command.authToken);
@@ -38,9 +59,16 @@ export function createManageSettingsHandler(deps: ManageSettingsDependencies, co
       if (!token) throw new ManageSettingsError(401, 'authentication_required');
       let value: unknown;
       try { value = await request.json(); } catch { throw new ManageSettingsError(400, 'invalid_command'); }
-      const parsed = bodySchema.safeParse(value);
+      const parsed = commandSchema.safeParse(value);
       if (!parsed.success) throw new ManageSettingsError(400, 'invalid_command');
-      return respond(Response.json(await applySecretWrite(deps, { authToken: token, ...parsed.data })));
+      if (parsed.data.action === 'write-secret') {
+        return respond(Response.json(await applySecretWrite(deps, { authToken: token, kind: parsed.data.kind, value: parsed.data.value })));
+      }
+      const owner = await deps.authenticateOwner(token);
+      if (parsed.data.action === 'list-models') {
+        return respond(Response.json(await deps.listModels({ ownerId: owner.ownerId, providerKey: parsed.data.providerKey })));
+      }
+      return respond(Response.json(await deps.deleteSecret({ ownerId: owner.ownerId, kind: parsed.data.kind })));
     } catch (error) {
       const known = error instanceof ManageSettingsError ? error : new ManageSettingsError(500, 'internal_error');
       return respond(Response.json({ error: known.code }, { status: known.status }));
@@ -53,13 +81,55 @@ function record(value: unknown): Record<string, unknown> | null {
   return value && typeof value === 'object' ? value as Record<string, unknown> : null;
 }
 
+function serializeModels(providerKey: ProviderCatalogKey, liveIds: readonly string[] | null): ModelCatalogResult['models'] {
+  return catalogModels(providerKey, liveIds).map((entry) => ({
+    id: entry.id, label: entry.label, description: entry.description,
+    quality: entry.quality, speed: entry.speed, cost: entry.cost,
+    recommended: entry.recommended, availability: entry.availability,
+    maxInputTokens: entry.maxInputTokens, maxOutputTokens: entry.maxOutputTokens,
+    maxRevisionOutputTokens: entry.maxRevisionOutputTokens,
+    inputPriceMicrosPerMillion: entry.inputPriceMicrosPerMillion,
+    outputPriceMicrosPerMillion: entry.outputPriceMicrosPerMillion,
+    pricingVerifiedAt: entry.verifiedAt,
+  }));
+}
+
+async function requestJson(request: typeof globalThis.fetch, url: string, init: RequestInit, timeoutMs: number) {
+  const controller = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      controller.abort();
+      reject(new ManageSettingsError(504, 'upstream_timeout'));
+    }, timeoutMs);
+  });
+  try {
+    return await Promise.race([
+      (async () => {
+        const response = await request(url, { ...init, signal: controller.signal });
+        const value = response.status === 204 ? null : await response.json().catch(() => null);
+        return { response, value };
+      })(),
+      timeout,
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 export function createSupabaseManageSettingsDependencies(config: SupabaseManageSettingsConfig, authToken: string): ManageSettingsDependencies {
   const request = config.fetch ?? globalThis.fetch;
+  const timeoutMs = config.timeoutMs ?? 10_000;
   const userHeaders = { apikey: config.anonKey, authorization: `Bearer ${authToken}`, 'content-type': 'application/json' };
   const serviceHeaders = { apikey: config.serviceRoleKey, authorization: `Bearer ${config.serviceRoleKey}`, 'content-type': 'application/json' };
   const call = async (headers: Record<string, string>, path: string, init: RequestInit = {}): Promise<unknown> => {
-    const response = await request(`${config.url}${path}`, { ...init, headers: { ...headers, ...init.headers } });
-    const value = response.status === 204 ? null : await response.json().catch(() => null);
+    let response: Response;
+    let value: unknown;
+    try {
+      ({ response, value } = await requestJson(request, `${config.url}${path}`, { ...init, headers: { ...headers, ...init.headers } }, timeoutMs));
+    } catch {
+      throw new ManageSettingsError(500, 'internal_error');
+    }
     if (!response.ok) {
       if (path === '/auth/v1/user' && (response.status === 401 || response.status === 403)) throw new ManageSettingsError(401, 'authentication_required');
       throw new ManageSettingsError(response.status === 401 || response.status === 403 ? response.status : 500,
@@ -67,21 +137,59 @@ export function createSupabaseManageSettingsDependencies(config: SupabaseManageS
     }
     return value;
   };
+  const fallback = (providerKey: ProviderCatalogKey, configured: boolean, connectionIssue?: ModelCatalogResult['connectionIssue']): ModelCatalogResult => ({
+    providerKey, configured, live: false,
+    ...(connectionIssue ? { connectionIssue } : {}),
+    models: serializeModels(providerKey, null),
+  });
+
   return {
     authenticateOwner: async () => {
       const user = record(await call(userHeaders, '/auth/v1/user'));
       if (typeof user?.id !== 'string' || !user.id) throw new ManageSettingsError(401, 'authentication_required');
       const owners = await call(userHeaders, `/rest/v1/owner_profiles?select=owner_id&owner_id=eq.${encodeURIComponent(user.id)}`);
-      const ownerRows = Array.isArray(owners) ? owners : [];
-      if (ownerRows.length !== 1 || (ownerRows[0] as { owner_id?: unknown })?.owner_id !== user.id) throw new ManageSettingsError(403, 'owner_access_required');
+      const rows = Array.isArray(owners) ? owners : [];
+      if (rows.length !== 1 || (rows[0] as { owner_id?: unknown })?.owner_id !== user.id) throw new ManageSettingsError(403, 'owner_access_required');
       return { ownerId: user.id };
     },
     storeSecret: async (input) => {
       const value = await call(serviceHeaders, '/rest/v1/rpc/store_narrative_secret', {
-        method: 'POST',
-        body: JSON.stringify({ p_owner_id: input.ownerId, p_secret_kind: input.kind, p_secret_value: input.value }),
+        method: 'POST', body: JSON.stringify({ p_owner_id: input.ownerId, p_secret_kind: input.kind, p_secret_value: input.value }),
       });
       return value === true;
+    },
+    listModels: async ({ ownerId, providerKey }) => {
+      const secret = await call(serviceHeaders, '/rest/v1/rpc/read_narrative_secret', {
+        method: 'POST', body: JSON.stringify({ p_owner_id: ownerId, p_secret_kind: providerKey }),
+      });
+      if (typeof secret !== 'string' || !secret.trim()) return fallback(providerKey, false);
+      const providerUrl = providerKey === 'openai'
+        ? 'https://api.openai.com/v1/models'
+        : 'https://api.anthropic.com/v1/models?limit=100';
+      const providerHeaders: Record<string, string> = providerKey === 'openai'
+        ? { accept: 'application/json', authorization: `Bearer ${secret}` }
+        : { accept: 'application/json', 'x-api-key': secret, 'anthropic-version': '2023-06-01' };
+      try {
+        const { response, value } = await requestJson(request, providerUrl, { method: 'GET', headers: providerHeaders }, timeoutMs);
+        if (response.status === 401 || response.status === 403) return fallback(providerKey, true, 'invalid_key');
+        if (!response.ok) return fallback(providerKey, true, 'temporarily_unavailable');
+        const payload = record(value);
+        if (!Array.isArray(payload?.data)) return fallback(providerKey, true, 'temporarily_unavailable');
+        const ids = payload.data.flatMap((item) => {
+          const row = item && typeof item === 'object' ? item as Record<string, unknown> : null;
+          return typeof row?.id === 'string' && row.id ? [row.id] : [];
+        });
+        return { providerKey, configured: true, live: true, models: serializeModels(providerKey, ids) };
+      } catch {
+        return fallback(providerKey, true, 'temporarily_unavailable');
+      }
+    },
+    deleteSecret: async ({ ownerId, kind }) => {
+      const value = record(await call(serviceHeaders, '/rest/v1/rpc/delete_narrative_secret', {
+        method: 'POST', body: JSON.stringify({ p_owner_id: ownerId, p_secret_kind: kind }),
+      }));
+      if (value?.configured !== false || typeof value.generationPaused !== 'boolean') throw new ManageSettingsError(500, 'internal_error');
+      return { configured: false, generationPaused: value.generationPaused };
     },
   };
 }

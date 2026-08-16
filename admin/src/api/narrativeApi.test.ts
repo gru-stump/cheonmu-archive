@@ -139,4 +139,21 @@ describe('NarrativeApi', () => {
     ]);
     expect(fetch.mock.calls.every(([, init]) => new Headers(init?.headers).get('authorization') === 'Bearer owner-token')).toBe(true);
   });
+
+  it('lists models and deletes a secret through narrow same-origin methods', async () => {
+    const fetch = vi.fn()
+      .mockResolvedValueOnce(Response.json({ providerKey: 'openai', configured: true, live: true, models: [] }))
+      .mockResolvedValueOnce(Response.json({ configured: false, generationPaused: true }));
+    const api = createNarrativeApi({ tokenProvider: async () => 'owner-token', fetch });
+
+    await expect(api.listModels('openai')).resolves.toMatchObject({ providerKey: 'openai', live: true });
+    await expect(api.deleteSecret('openai')).resolves.toEqual({ configured: false, generationPaused: true });
+
+    expect(fetch.mock.calls[0]).toEqual(['/api/narrative/settings/models?provider=openai', expect.objectContaining({
+      headers: expect.objectContaining({ authorization: 'Bearer owner-token' }),
+    })]);
+    expect(fetch.mock.calls[1]).toEqual(['/api/narrative/settings/secret/openai', {
+      method: 'DELETE', headers: { accept: 'application/json', authorization: 'Bearer owner-token' },
+    }]);
+  });
 });

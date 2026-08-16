@@ -68,6 +68,7 @@ describe('same-origin narrative server boundary', () => {
         queue: [{
           id: 'job-1', source: 'schedule', state: 'retry-wait', attemptCount: 2,
           retryAt: '2026-08-16T00:05:00Z', leaseExpiresAt: null, failureCode: 'worker_retry_scheduled', scheduledFor: '2026-08-16T00:00:00Z',
+          createdAt: '2026-08-15T23:59:00Z', completedAt: null, failedAt: null,
           attemptToken: 'must-not-pass', providerResponse: { raw: true }, payload: { seed: 'must-not-pass' },
         }],
       });
@@ -80,6 +81,7 @@ describe('same-origin narrative server boundary', () => {
     expect(value.queue).toEqual([{
       id: 'job-1', source: 'schedule', state: 'retry-wait', attemptCount: 2,
       retryAt: '2026-08-16T00:05:00Z', leaseExpiresAt: null, failureCode: 'worker_retry_scheduled', scheduledFor: '2026-08-16T00:00:00Z',
+      createdAt: '2026-08-15T23:59:00Z', completedAt: null, failedAt: null,
     }]);
     expect(JSON.stringify(value)).not.toMatch(/attemptToken|providerResponse|must-not-pass|payload/);
   });
@@ -535,6 +537,90 @@ describe('same-origin narrative server boundary', () => {
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({ configured: true });
     expect(calls.map(({ path }) => path)).toEqual(['/auth/v1/user', '/rest/v1/owner_profiles', '/functions/v1/manage-settings']);
-    expect(calls[2]).toMatchObject({ authorization: 'Bearer owner-token', body: { kind: 'openai', value: 'write-only-value' } });
+    expect(calls[2]).toMatchObject({ authorization: 'Bearer owner-token', body: { action: 'write-secret', kind: 'openai', value: 'write-only-value' } });
+  });
+
+  it('preserves the safe cancelled state and its exact timestamps', async () => {
+    const fetch: typeof globalThis.fetch = vi.fn(async (input) => {
+      const path = new URL(String(input)).pathname;
+      if (path === '/auth/v1/user') return Response.json({ id: 'owner-1' });
+      if (path === '/rest/v1/owner_profiles') return Response.json([{ owner_id: 'owner-1' }]);
+      return Response.json({
+        budget: {}, nextScheduleAt: null, lastSuccessAt: null, failures: [],
+        queue: [{
+          id: 'job-cancelled', source: 'access', state: 'cancelled', attemptCount: 0,
+          retryAt: null, leaseExpiresAt: null, failureCode: 'owner_cancelled', scheduledFor: '2026-08-16T00:00:00Z',
+          createdAt: '2026-08-15T23:59:00Z', completedAt: '2026-08-16T00:01:00Z', failedAt: '2026-08-16T00:01:00Z',
+        }],
+      });
+    });
+    const handler = createNarrativeHandler({ supabaseUrl: 'https://db.example.test', supabaseAnonKey: 'anon', fetch });
+    const response = await handler(new Request('https://admin.example.test/api/narrative/dashboard', { headers: { authorization: 'Bearer owner-token' } }));
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({ queue: [{
+      id: 'job-cancelled', state: 'cancelled', createdAt: '2026-08-15T23:59:00Z',
+      completedAt: '2026-08-16T00:01:00Z', failedAt: '2026-08-16T00:01:00Z',
+    }] });
+  });
+
+  it('lists allowlisted provider models through manage-settings with no secret fields', async () => {
+    const calls: Array<{ path: string; body: unknown }> = [];
+    const model = {
+      id: 'gpt-5-mini', label: 'GPT-5 mini', description: '권장 모델',
+      quality: 'standard', speed: 'fast', cost: 'low', recommended: true, availability: 'available',
+      maxInputTokens: 4000, maxOutputTokens: 4000, maxRevisionOutputTokens: 2000,
+      inputPriceMicrosPerMillion: 250000, outputPriceMicrosPerMillion: 2000000,
+      pricingVerifiedAt: '2026-08-16',
+    };
+    const fetch: typeof globalThis.fetch = vi.fn(async (input, init) => {
+      const path = new URL(String(input)).pathname;
+      calls.push({ path, body: init?.body ? JSON.parse(String(init.body)) : null });
+      if (path === '/auth/v1/user') return Response.json({ id: 'owner-1' });
+      if (path === '/rest/v1/owner_profiles') return Response.json([{ owner_id: 'owner-1' }]);
+      return Response.json({ providerKey: 'openai', configured: true, live: true, models: [model], ignored: 'drop-me' });
+    });
+    const handler = createNarrativeHandler({ supabaseUrl: 'https://db.example.test', supabaseAnonKey: 'anon', fetch });
+    const response = await handler(new Request('https://admin.example.test/api/narrative/settings/models?provider=openai', {
+      headers: { authorization: 'Bearer owner-token' },
+    }));
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ providerKey: 'openai', configured: true, live: true, models: [model] });
+    expect(calls[2]).toEqual({ path: '/functions/v1/manage-settings', body: { action: 'list-models', providerKey: 'openai' } });
+  });
+
+  it('rejects an unknown model provider before invoking manage-settings', async () => {
+    const fetch: typeof globalThis.fetch = vi.fn(async (input) => {
+      const path = new URL(String(input)).pathname;
+      if (path === '/auth/v1/user') return Response.json({ id: 'owner-1' });
+      return Response.json([{ owner_id: 'owner-1' }]);
+    });
+    const handler = createNarrativeHandler({ supabaseUrl: 'https://db.example.test', supabaseAnonKey: 'anon', fetch });
+    const response = await handler(new Request('https://admin.example.test/api/narrative/settings/models?provider=whisper', {
+      headers: { authorization: 'Bearer owner-token' },
+    }));
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({ error: 'invalid_provider' });
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('deletes a provider secret with an empty-body DELETE and returns only safe state', async () => {
+    const calls: Array<{ path: string; body: unknown }> = [];
+    const fetch: typeof globalThis.fetch = vi.fn(async (input, init) => {
+      const path = new URL(String(input)).pathname;
+      calls.push({ path, body: init?.body ? JSON.parse(String(init.body)) : null });
+      if (path === '/auth/v1/user') return Response.json({ id: 'owner-1' });
+      if (path === '/rest/v1/owner_profiles') return Response.json([{ owner_id: 'owner-1' }]);
+      return Response.json({ configured: false, generationPaused: true, ignored: 'drop-me' });
+    });
+    const handler = createNarrativeHandler({ supabaseUrl: 'https://db.example.test', supabaseAnonKey: 'anon', fetch });
+    const response = await handler(new Request('https://admin.example.test/api/narrative/settings/secret/openai', {
+      method: 'DELETE', headers: { authorization: 'Bearer owner-token' },
+    }));
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ configured: false, generationPaused: true });
+    expect(calls[2]).toEqual({ path: '/functions/v1/manage-settings', body: { action: 'delete-secret', kind: 'openai' } });
   });
 });

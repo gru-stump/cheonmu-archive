@@ -35,7 +35,7 @@ function mapVersion(row: Record<string, unknown>) {
 
 function sanitizeDashboard(value: Record<string, unknown>) {
   const sources = new Set(['manual', 'schedule', 'access', 'unknown']);
-  const states = new Set(['queued', 'running', 'retry-wait', 'completed', 'failed/dead-letter']);
+  const states = new Set(['queued', 'running', 'retry-wait', 'completed', 'cancelled', 'failed/dead-letter']);
   const queue = Array.isArray(value.queue) ? value.queue.flatMap((item) => {
     if (!item || typeof item !== 'object' || Array.isArray(item)) return [];
     const row = item as Record<string, unknown>;
@@ -43,16 +43,49 @@ function sanitizeDashboard(value: Record<string, unknown>) {
       || typeof row.state !== 'string' || !states.has(row.state)
       || typeof row.attemptCount !== 'number' || !Number.isSafeInteger(row.attemptCount) || row.attemptCount < 0
       || typeof row.scheduledFor !== 'string'
+      || typeof row.createdAt !== 'string'
+      || (row.completedAt !== null && typeof row.completedAt !== 'string')
+      || (row.failedAt !== null && typeof row.failedAt !== 'string')
       || (row.retryAt !== null && typeof row.retryAt !== 'string')
       || (row.leaseExpiresAt !== null && typeof row.leaseExpiresAt !== 'string')
       || (row.failureCode !== null && typeof row.failureCode !== 'string')) return [];
     return [{
       id: row.id, source: row.source, state: row.state, attemptCount: row.attemptCount,
       retryAt: row.retryAt, leaseExpiresAt: row.leaseExpiresAt, failureCode: row.failureCode,
-      scheduledFor: row.scheduledFor,
+      scheduledFor: row.scheduledFor, createdAt: row.createdAt,
+      completedAt: row.completedAt, failedAt: row.failedAt,
     }];
   }) : [];
   return { ...value, queue };
+}
+
+function sanitizeModelCatalog(value: Record<string, unknown>) {
+  const providerKey = value.providerKey === 'openai' || value.providerKey === 'anthropic' ? value.providerKey : null;
+  if (!providerKey || typeof value.configured !== 'boolean' || typeof value.live !== 'boolean' || !Array.isArray(value.models)) return null;
+  const connectionIssue = value.connectionIssue === 'invalid_key' || value.connectionIssue === 'temporarily_unavailable'
+    ? value.connectionIssue : undefined;
+  const models = value.models.flatMap((item) => {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) return [];
+    const row = item as Record<string, unknown>;
+    if (typeof row.id !== 'string' || !row.id || typeof row.label !== 'string' || typeof row.description !== 'string'
+      || !['standard', 'high'].includes(String(row.quality)) || !['fast', 'balanced'].includes(String(row.speed))
+      || !['low', 'medium', 'high'].includes(String(row.cost)) || typeof row.recommended !== 'boolean'
+      || !['available', 'unverified'].includes(String(row.availability))
+      || !['maxInputTokens', 'maxOutputTokens', 'maxRevisionOutputTokens', 'inputPriceMicrosPerMillion', 'outputPriceMicrosPerMillion']
+        .every((key) => typeof row[key] === 'number' && Number.isSafeInteger(row[key]) && Number(row[key]) >= 0)
+      || typeof row.pricingVerifiedAt !== 'string') return [];
+    return [{
+      id: row.id, label: row.label, description: row.description,
+      quality: row.quality, speed: row.speed, cost: row.cost,
+      recommended: row.recommended, availability: row.availability,
+      maxInputTokens: row.maxInputTokens, maxOutputTokens: row.maxOutputTokens,
+      maxRevisionOutputTokens: row.maxRevisionOutputTokens,
+      inputPriceMicrosPerMillion: row.inputPriceMicrosPerMillion,
+      outputPriceMicrosPerMillion: row.outputPriceMicrosPerMillion,
+      pricingVerifiedAt: row.pricingVerifiedAt,
+    }];
+  });
+  return { providerKey, configured: value.configured, live: value.live, ...(connectionIssue ? { connectionIssue } : {}), models };
 }
 
 function mapPublication(row: Record<string, unknown> | undefined) {
@@ -137,6 +170,15 @@ export function createNarrativeHandler({ supabaseUrl, supabaseAnonKey, fetch = g
       if (request.method === 'GET' && path.join('/') === 'memory') return json(await rpc('get_narrative_memory', {}));
       if (request.method === 'GET' && path.join('/') === 'schedules') return json(await rpc('get_narrative_schedules', {}));
       if (request.method === 'GET' && path.join('/') === 'settings') return json(await rpc('get_narrative_settings', {}));
+      if (request.method === 'GET' && path.join('/') === 'settings/models') {
+        const providerKey = url.searchParams.get('provider');
+        if (url.searchParams.size !== 1 || (providerKey !== 'openai' && providerKey !== 'anthropic')) return json({ error: 'invalid_provider' }, 400);
+        const result = sanitizeModelCatalog(await upstream('/functions/v1/manage-settings', {
+          method: 'POST', body: JSON.stringify({ action: 'list-models', providerKey }),
+        }));
+        if (!result) throw { status: 500, code: 'request_failed' };
+        return json(result);
+      }
       if (request.method === 'GET' && path.length === 1 && path[0] === 'drafts') {
         const status = url.searchParams.get('status');
         const filter = status === 'active' ? '&status=not.in.(archived)' : status ? `&status=eq.${encodeURIComponent(status)}` : '';
@@ -274,8 +316,16 @@ export function createNarrativeHandler({ supabaseUrl, supabaseAnonKey, fetch = g
         if (!input || !['openai', 'anthropic', 'github'].includes(String(input.kind)) || typeof input.value !== 'string' || !input.value.trim()) {
           return json({ error: 'invalid_command' }, 400);
         }
-        const result = await upstream('/functions/v1/manage-settings', { method: 'POST', body: JSON.stringify({ kind: input.kind, value: input.value }) });
+        const result = await upstream('/functions/v1/manage-settings', { method: 'POST', body: JSON.stringify({ action: 'write-secret', kind: input.kind, value: input.value }) });
         return json({ configured: result.configured === true });
+      }
+      if (request.method === 'DELETE' && path.length === 3 && path[0] === 'settings' && path[1] === 'secret') {
+        if (request.body !== null || url.search || !['openai', 'anthropic', 'github'].includes(path[2]!)) return json({ error: 'invalid_command' }, 400);
+        const result = await upstream('/functions/v1/manage-settings', {
+          method: 'POST', body: JSON.stringify({ action: 'delete-secret', kind: path[2] }),
+        });
+        if (result.configured !== false || typeof result.generationPaused !== 'boolean') throw { status: 500, code: 'request_failed' };
+        return json({ configured: false, generationPaused: result.generationPaused });
       }
       if (request.method === 'POST' && path.length === 3 && path[0] === 'drafts') {
         const input = await body(); if (!input || input.draftId !== path[1]) return json({ error: 'invalid_command' }, 400);

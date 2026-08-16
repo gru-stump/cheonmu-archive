@@ -98,6 +98,15 @@ export function createE2EFixture() {
       return { scheduleId: id };
     },
     getSettings: async () => structuredClone(settings), saveSettings: async () => ({ saved: true }), saveSecret: async () => ({ configured: true }),
+    listModels: async (providerKey) => ({ providerKey, configured: false, live: false, models: [] }),
+    deleteSecret: async (kind) => {
+      settings.secrets[kind] = false;
+      if (kind !== 'github') {
+        settings.manualGenerationEnabled = false;
+        settings.scheduleAutomationEnabled = false;
+      }
+      return { configured: false, generationPaused: kind !== 'github' };
+    },
   };
   const createRejectDraft = () => {
     if (!store.drafts.has('e2e-reject-draft')) store.drafts.set('e2e-reject-draft', makeDraft('e2e-reject-draft', '등불 아래의 농담'));

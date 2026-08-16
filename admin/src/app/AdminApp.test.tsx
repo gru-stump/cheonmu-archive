@@ -49,7 +49,8 @@ function previewApi(): NarrativeApi {
     getSettings: vi.fn().mockResolvedValue({ manualGenerationEnabled: true, scheduleAutomationEnabled: false, pricingValidDays: 30, providers: [], budget: { monthlyLimitMicros: 100000000, dailyLimitMicros: 20000000, spentMicros: 8400, reservedMicros: 300, manualCallLimit: 3, warningThresholdPercent: 80, riskThresholdPercent: 95, krwPerUsd: 1380 }, secrets: { openai: false, anthropic: false, github: false } }),
     triggerAccess: forbidden, generate: forbidden, saveManualVersion: forbidden, review: forbidden, retryPublish: forbidden,
     archive: forbidden, restore: forbidden, setMemoryEnabled: forbidden, correctMemory: forbidden,
-    saveSchedule: forbidden, saveSettings: forbidden, saveSecret: forbidden,
+    saveSchedule: forbidden, saveSettings: forbidden, saveSecret: forbidden, deleteSecret: forbidden,
+    listModels: vi.fn().mockResolvedValue({ providerKey: 'openai', configured: false, live: false, models: [] }),
   } as NarrativeApi;
 }
 
