@@ -76,7 +76,41 @@ export interface DashboardData {
     leaseExpiresAt: string | null;
     failureCode: string | null;
     scheduledFor: string;
+    createdAt?: string;
+    completedAt?: string | null;
+    failedAt?: string | null;
   }>;
+}
+
+export interface ModelOption {
+  id: string;
+  label: string;
+  description: string;
+  quality: 'standard' | 'high';
+  speed: 'fast' | 'balanced';
+  cost: 'low' | 'medium' | 'high';
+  recommended: boolean;
+  availability: 'available' | 'unverified';
+  maxInputTokens: number;
+  maxOutputTokens: number;
+  maxRevisionOutputTokens: number;
+  inputPriceMicrosPerMillion: number;
+  outputPriceMicrosPerMillion: number;
+  pricingVerifiedAt: string;
+}
+
+export interface ModelCatalogResponse {
+  providerKey: 'openai' | 'anthropic';
+  configured: boolean;
+  live: boolean;
+  connectionIssue?: 'invalid_key' | 'temporarily_unavailable';
+  models: ModelOption[];
+}
+
+export interface AccessEstimate {
+  maximumCostMicros: number;
+  maximumCostKrw: number;
+  modelLabel: string;
 }
 
 export interface AccessJob {
