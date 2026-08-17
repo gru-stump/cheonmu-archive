@@ -255,10 +255,18 @@ describe('DraftReviewPage', () => {
   });
 
   it('does not offer another rejection after a blocked draft is already rejected', async () => {
-    const rejected = { ...detail, latestVersion: { ...detail.latestVersion, continuityLevel: 'block' as const }, status: 'rejected' as const };
+    const rejected = {
+      ...detail,
+      latestVersion: { ...detail.latestVersion, continuityLevel: 'block' as const },
+      status: 'rejected' as const,
+      rejection: { reason: '가벼운 부상에는 피를 쓰지 않는다.', createdAt: '2026-08-17T01:28:00Z' },
+    };
     render(<DraftReviewPage api={api({ getDraft: vi.fn().mockResolvedValue(rejected) })} draftId="draft-1" />);
 
-    expect(await screen.findByText('차단된 버전')).toBeInTheDocument();
+    expect(await screen.findByText('거절됨')).toBeInTheDocument();
+    expect(screen.queryByText('차단된 버전')).not.toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent('거절 사유가 다음 생성의 수정 지침에 반영됐습니다.');
+    expect(screen.getByText('가벼운 부상에는 피를 쓰지 않는다.')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '거절' })).not.toBeInTheDocument();
   });
 

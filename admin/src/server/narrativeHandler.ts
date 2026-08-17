@@ -202,7 +202,7 @@ export function createNarrativeHandler({ supabaseUrl, supabaseAnonKey, fetch = g
       }
       if (request.method === 'GET' && path.length === 1 && path[0] === 'drafts') {
         const status = url.searchParams.get('status');
-        const filter = status === 'active' ? '&status=not.in.(archived)' : status ? `&status=eq.${encodeURIComponent(status)}` : '';
+        const filter = status === 'active' ? '&status=not.in.(archived,rejected)' : status ? `&status=eq.${encodeURIComponent(status)}` : '';
         const rows = await upstream(`/rest/v1/drafts?select=id,kind,status,title,updated_at&order=updated_at.desc${filter}`) as unknown as Array<Record<string, unknown>>;
         const versions = await upstream('/rest/v1/draft_versions?select=id,draft_id,version_number,continuity_level&order=version_number.desc') as unknown as Array<Record<string, unknown>>;
         const latest = new Map<string, Record<string, unknown>>();
@@ -220,7 +220,10 @@ export function createNarrativeHandler({ supabaseUrl, supabaseAnonKey, fetch = g
         const publicationSelect = encodeURIComponent('id,draft_id,draft_version_id,status,repository_owner,repository_name,commit_sha,publication_phase,tracking_status,workflow_status,workflow_run_id,pages_status,pages_deployment_id,pages_url');
         const publicationRows = await upstream(`/rest/v1/publish_jobs?select=${publicationSelect}&draft_id=eq.${encodeURIComponent(path[1]!)}&draft_version_id=eq.${encodeURIComponent(String(latestVersion.id))}&limit=2`) as unknown as Array<Record<string, unknown>>;
         const publication = publicationRows.length === 1 ? mapPublication(publicationRows[0]) : undefined;
-        return json({ id: draft.id, kind: draft.kind, status: draft.status, title: draft.title, latestVersionId: latestVersion.id, latestVersion, versions, ...(publication ? { publication } : {}), ...(setting ? { revisionPricing: { maximumInputTokens: setting.max_input_tokens, maximumRevisionOutputTokens: setting.max_revision_output_tokens, inputCostMicrosPerMillion: setting.input_cost_micros_per_million, outputCostMicrosPerMillion: setting.output_cost_micros_per_million, fixedCostMicros: setting.fixed_cost_micros } } : {}) });
+        const reviewRows = draft.status === 'rejected' ? await upstream(`/rest/v1/draft_review_actions?select=reason,created_at&draft_id=eq.${encodeURIComponent(path[1]!)}&draft_version_id=eq.${encodeURIComponent(String(latestVersion.id))}&action=eq.reject&order=created_at.desc&limit=1`) as unknown as Array<Record<string, unknown>> : [];
+        const review = reviewRows[0];
+        const rejection = review && typeof review.reason === 'string' && review.reason.trim() && typeof review.created_at === 'string' ? { reason: review.reason, createdAt: review.created_at } : undefined;
+        return json({ id: draft.id, kind: draft.kind, status: draft.status, title: draft.title, latestVersionId: latestVersion.id, latestVersion, versions, ...(rejection ? { rejection } : {}), ...(publication ? { publication } : {}), ...(setting ? { revisionPricing: { maximumInputTokens: setting.max_input_tokens, maximumRevisionOutputTokens: setting.max_revision_output_tokens, inputCostMicrosPerMillion: setting.input_cost_micros_per_million, outputCostMicrosPerMillion: setting.output_cost_micros_per_million, fixedCostMicros: setting.fixed_cost_micros } } : {}) });
       }
       if (request.method === 'POST' && path.join('/') === 'generate') {
         const command = await body(); if (!command) return json({ error: 'invalid_command' }, 400);

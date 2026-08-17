@@ -14,7 +14,7 @@ const kindLabels: Record<string, string> = {
 };
 const statusLabels: Record<string, string> = {
   queued: '대기 중', generating: '만드는 중', generated: '검토 필요', reviewing: '검토 중',
-  rejected: '수정 필요', archived: '보관됨', approved_private: '비공개 승인', approved: '게시 승인',
+  rejected: '거절됨', archived: '보관됨', approved_private: '비공개 승인', approved: '게시 승인',
   publishing: '게시 중', published: '공개 완료', publish_failed: '게시 실패',
 };
 const continuityLabels: Record<string, string> = {
@@ -109,7 +109,7 @@ function PublicationStatus({ detail }: { detail: DraftDetail }) {
   </section>;
 }
 
-export function DraftReviewPage({ api, draftId, readOnly = false }: { api: NarrativeApi; draftId: string; readOnly?: boolean }) {
+export function DraftReviewPage({ api, draftId, readOnly = false, onRejected }: { api: NarrativeApi; draftId: string; readOnly?: boolean; onRejected?(reason: string): void }) {
   const [detail, setDetail] = useState<DraftDetail | null>(null);
   const [loadError, setLoadError] = useState(false);
   const [dialog, setDialog] = useState<DialogKind>(null);
@@ -155,7 +155,9 @@ export function DraftReviewPage({ api, draftId, readOnly = false }: { api: Narra
     setMessage(null); setProblem(false); setStale(false);
     try {
       const result = await api.review({ draftId, expectedVersionId: detail.latestVersionId, expectedState: detail.status === 'generated' ? 'generated' : 'reviewing', action, ...(reviewReason ? { reason: reviewReason } : {}) });
-      setDetail({ ...detail, status: result.status }); setMessage('검토 결과를 저장했습니다.'); closeDialog(true);
+      setDetail({ ...detail, status: result.status, ...(action === 'reject' && reviewReason ? { rejection: { reason: reviewReason, createdAt: new Date().toISOString() } } : {}) });
+      if (action === 'reject' && reviewReason) { closeDialog(true); onRejected?.(reviewReason); return; }
+      setMessage('검토 결과를 저장했습니다.'); closeDialog(true);
     } catch (error) { if (!handleConflict(error)) setMessage('요청을 처리하지 못했습니다.'); }
   };
   const saveManual = async (event: FormEvent) => {
@@ -199,8 +201,9 @@ export function DraftReviewPage({ api, draftId, readOnly = false }: { api: Narra
 
   return (
     <article className="draft-review">
-      <AdminPageHeader eyebrow={kindLabels[detail.kind] ?? '이야기'} title={detail.title} description="이야기를 읽고 이어짐 문제가 없는지 확인한 뒤 승인합니다." action={<AdminStatusBadge tone={blocked ? 'danger' : detail.status === 'approved_private' ? 'plum' : 'green'}>{statusLabels[detail.status] ?? '상태 확인 필요'}</AdminStatusBadge>} />
-      {blocked && <AdminNotice tone="danger"><strong>차단된 버전</strong> · {reviewable ? '이 버전은 사유를 남겨 거절만 할 수 있습니다.' : '검토가 종료되어 추가 작업을 할 수 없습니다.'}</AdminNotice>}
+      <AdminPageHeader eyebrow={kindLabels[detail.kind] ?? '이야기'} title={detail.title} description="이야기를 읽고 이어짐 문제가 없는지 확인한 뒤 승인합니다." action={<AdminStatusBadge tone={detail.status === 'rejected' || blocked ? 'danger' : detail.status === 'approved_private' ? 'plum' : 'green'}>{statusLabels[detail.status] ?? '상태 확인 필요'}</AdminStatusBadge>} />
+      {detail.status === 'rejected' && <AdminNotice tone="info"><strong>거절 완료</strong> · 거절 사유가 다음 생성의 수정 지침에 반영됐습니다.{detail.rejection && <><p>{detail.rejection.reason}</p><time dateTime={detail.rejection.createdAt}>거절 {seoulDate(detail.rejection.createdAt)}</time></>}</AdminNotice>}
+      {blocked && detail.status !== 'rejected' && <AdminNotice tone="danger"><strong>차단된 버전</strong> · {reviewable ? '이 버전은 사유를 남겨 거절만 할 수 있습니다.' : '검토가 종료되어 추가 작업을 할 수 없습니다.'}</AdminNotice>}
       {!dialog && message && <AdminNotice tone={stale || problem ? 'danger' : 'success'}>{message}</AdminNotice>}
       {!dialog && stale && <button type="button" onClick={() => void load()}>새로 불러오기</button>}
       <PublicationStatus detail={detail} />

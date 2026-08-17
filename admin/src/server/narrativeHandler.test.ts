@@ -133,14 +133,19 @@ describe('same-origin narrative server boundary', () => {
   });
 
   it('omits drafts that have no generated version from the draft list', async () => {
+    let draftListUrl = '';
     const fetch: typeof globalThis.fetch = vi.fn(async (input) => {
-      const path = new URL(String(input)).pathname;
+      const requestUrl = new URL(String(input));
+      const path = requestUrl.pathname;
       if (path === '/auth/v1/user') return Response.json({ id: 'owner-1' });
       if (path === '/rest/v1/owner_profiles') return Response.json([{ owner_id: 'owner-1' }]);
-      if (path === '/rest/v1/drafts') return Response.json([
+      if (path === '/rest/v1/drafts') {
+        draftListUrl = requestUrl.href;
+        return Response.json([
         { id: 'empty-draft', kind: 'short_dialogue', status: 'queued', title: 'failed generation', updated_at: '2026-08-16T12:00:00Z' },
         { id: 'ready-draft', kind: 'short_dialogue', status: 'generated', title: 'ready generation', updated_at: '2026-08-16T11:00:00Z' },
-      ]);
+        ]);
+      }
       if (path === '/rest/v1/draft_versions') return Response.json([
         { id: 'version-1', draft_id: 'ready-draft', version_number: 1, continuity_level: 'pass' },
       ]);
@@ -157,6 +162,29 @@ describe('same-origin narrative server boundary', () => {
       id: 'ready-draft', kind: 'short_dialogue', status: 'generated', title: 'ready generation',
       updatedAt: '2026-08-16T11:00:00Z', latestVersionId: 'version-1', continuityLevel: 'pass',
     }] });
+    expect(decodeURIComponent(draftListUrl)).toContain('status=not.in.(archived,rejected)');
+  });
+
+  it('returns the latest rejection reason with a rejected draft detail', async () => {
+    const fetch: typeof globalThis.fetch = vi.fn(async (input) => {
+      const url = new URL(String(input));
+      if (url.pathname === '/auth/v1/user') return Response.json({ id: 'owner-1' });
+      if (url.pathname === '/rest/v1/owner_profiles') return Response.json([{ owner_id: 'owner-1' }]);
+      if (url.pathname === '/rest/v1/drafts') return Response.json([{ id: 'draft-1', kind: 'short_dialogue', status: 'rejected', title: '거절된 초안', updated_at: '2026-08-17T01:28:00Z' }]);
+      if (url.pathname === '/rest/v1/draft_versions') return Response.json([{ id: 'version-1', version_number: 1, created_at: '2026-08-17T01:20:00Z', content: { title: '거절된 초안', body: '본문', canonChangeCandidates: [] }, context_version_ids: [], continuity_level: 'review', continuity_findings: [] }]);
+      if (url.pathname === '/rest/v1/provider_settings' || url.pathname === '/rest/v1/publish_jobs') return Response.json([]);
+      if (url.pathname === '/rest/v1/draft_review_actions') return Response.json([{ reason: '가벼운 부상에는 피를 쓰지 않는다.', created_at: '2026-08-17T01:28:00Z' }]);
+      return Response.json({ error: 'unexpected_request' }, { status: 500 });
+    });
+    const handler = createNarrativeHandler({ supabaseUrl: 'https://db.example.test', supabaseAnonKey: 'anon', fetch });
+
+    const response = await handler(new Request('https://admin.example.test/api/narrative/drafts/draft-1', { headers: { authorization: 'Bearer owner-token' } }));
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      status: 'rejected',
+      rejection: { reason: '가벼운 부상에는 피를 쓰지 않는다.', createdAt: '2026-08-17T01:28:00Z' },
+    });
   });
 
   it('submits generated latest version before invoking guarded review', async () => {

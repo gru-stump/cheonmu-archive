@@ -9,6 +9,7 @@ describe('DraftListPage', () => {
   it('switches from active drafts to the archived listing', async () => {
     const listDrafts = vi.fn()
       .mockResolvedValueOnce([{ id: 'active-1', kind: 'short_dialogue', status: 'generated', title: '검토 중 초안', updatedAt: '2026-08-15T03:00:00Z', latestVersionId: 'version-1', continuityLevel: 'review' }])
+      .mockResolvedValueOnce([{ id: 'rejected-1', kind: 'short_dialogue', status: 'rejected', title: '거절된 초안', updatedAt: '2026-08-17T01:28:00Z', latestVersionId: 'version-r', continuityLevel: 'review' }])
       .mockResolvedValueOnce([{ id: 'archive-1', kind: 'short_dialogue', status: 'archived', title: '보관된 초안', updatedAt: '2026-08-14T03:00:00Z', latestVersionId: 'version-2', continuityLevel: 'pass' }]);
     render(<MemoryRouter><DraftListPage api={{ listDrafts } as unknown as NarrativeApi} /></MemoryRouter>);
 
@@ -18,11 +19,19 @@ describe('DraftListPage', () => {
     expect(screen.getByText('이어짐 확인 필요')).toBeInTheDocument();
     expect(screen.getByText('2026.08.15 12:00')).toBeInTheDocument();
     expect(screen.queryByText(/short_dialogue|generated|continuity|review/)).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: '거절됨' }));
+    expect(await screen.findByRole('link', { name: /거절된 초안/ })).toBeInTheDocument();
+    expect(screen.getByLabelText('상태: 거절됨')).toBeInTheDocument();
+    expect(screen.getByText('거절 사유 반영됨')).toBeInTheDocument();
+    expect(screen.queryByText('이어짐 확인 필요')).not.toBeInTheDocument();
+
     await userEvent.click(screen.getByRole('button', { name: '보관됨' }));
 
     expect(await screen.findByRole('link', { name: /보관된 초안/ })).toBeInTheDocument();
     expect(listDrafts).toHaveBeenNthCalledWith(1, { status: 'active' });
-    expect(listDrafts).toHaveBeenNthCalledWith(2, { status: 'archived' });
+    expect(listDrafts).toHaveBeenNthCalledWith(2, { status: 'rejected' });
+    expect(listDrafts).toHaveBeenNthCalledWith(3, { status: 'archived' });
   });
 
   it('retries the real list request and recovers from an initial route error', async () => {

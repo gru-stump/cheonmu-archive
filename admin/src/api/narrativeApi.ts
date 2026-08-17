@@ -38,6 +38,7 @@ export interface DraftDetail extends Omit<DraftSummary, 'updatedAt' | 'continuit
   latestVersionId: string;
   latestVersion: DraftVersion;
   versions: DraftVersion[];
+  rejection?: { reason: string; createdAt: string };
   publication?: {
     phase: 'commit_created' | 'workflow_running' | 'workflow_succeeded' | 'workflow_failed' | 'pages_running' | 'pages_failed' | 'deployed' | 'tracking_timed_out';
     trackingStatus: 'pending' | 'observing' | 'completed' | 'timed_out';

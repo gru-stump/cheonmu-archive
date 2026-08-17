@@ -1,4 +1,4 @@
-import { BrowserRouter, NavLink, Route, Routes, useParams } from 'react-router-dom';
+import { BrowserRouter, NavLink, Route, Routes, useNavigate, useParams } from 'react-router-dom';
 import type { ReactNode } from 'react';
 import { AuthGate, type AuthClient, useAdminSession } from '../auth/AuthGate';
 import { authClient, narrativeApi } from '../lib/supabase';
@@ -21,7 +21,8 @@ const routes = [
 
 function DraftRoute({ api, readOnly }: { api: NarrativeApi; readOnly: boolean }) {
   const { draftId } = useParams();
-  return draftId ? <DraftReviewPage api={api} draftId={draftId} readOnly={readOnly} /> : <p role="alert">초안 ID가 없습니다.</p>;
+  const navigate = useNavigate();
+  return draftId ? <DraftReviewPage api={api} draftId={draftId} readOnly={readOnly} onRejected={() => navigate('/drafts?view=rejected', { state: { reviewMessage: '거절했습니다. 사유가 다음 생성의 수정 지침에 저장됐습니다.' } })} /> : <p role="alert">초안 ID가 없습니다.</p>;
 }
 
 export function AdminShell({ children, utility, notice }: { children: ReactNode; utility?: ReactNode; notice?: ReactNode }) {

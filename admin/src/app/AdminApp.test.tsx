@@ -107,4 +107,32 @@ describe('AdminApp local preview composition', () => {
     expect(signOut.closest('.admin-shell__utility')).not.toBeNull();
     expect(signOut.closest('.admin-shell')).not.toBeNull();
   });
+
+  it('returns a rejected review to the rejected list with a clear feedback confirmation', async () => {
+    const api = previewApi();
+    const generated = await api.getDraft(previewDraftId);
+    const reason = '가벼운 부상에는 천령의 피를 쓰지 않는다.';
+    api.getDraft = vi.fn().mockResolvedValue(generated);
+    api.review = vi.fn().mockResolvedValue({ draftId: previewDraftId, versionId: generated.latestVersionId, status: 'rejected' });
+    api.listDrafts = vi.fn().mockImplementation(async ({ status } = {}) => status === 'rejected' ? [{
+      id: previewDraftId,
+      kind: 'short_dialogue',
+      status: 'rejected',
+      title: generated.title,
+      updatedAt: '2026-08-17T01:28:00Z',
+      latestVersionId: generated.latestVersionId,
+      continuityLevel: 'review',
+    }] : []);
+    window.history.replaceState({}, '', `/drafts/${previewDraftId}`);
+
+    render(<AdminApp client={ownerClient()} api={api} />);
+    await userEvent.click(await screen.findByRole('button', { name: '거절' }));
+    await userEvent.type(screen.getByLabelText('거절 사유'), reason);
+    await userEvent.click(screen.getByRole('button', { name: '거절 확정' }));
+
+    expect(await screen.findByRole('heading', { name: '초안' })).toBeInTheDocument();
+    expect(screen.getByText('거절했습니다. 사유가 다음 생성의 수정 지침에 저장됐습니다.')).toBeInTheDocument();
+    expect(await screen.findByRole('link', { name: /비 갠 뒤의 약속/ })).toBeInTheDocument();
+    expect(api.listDrafts).toHaveBeenCalledWith({ status: 'rejected' });
+  });
 });
