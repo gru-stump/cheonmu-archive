@@ -53,7 +53,7 @@ export const localPreviewApi: NarrativeApi = {
   saveManualVersion: readOnly,
   review: readOnly,
   retryPublish: readOnly,
-  archive: readOnly, restore: readOnly,
+  archive: readOnly, restore: readOnly, reopenRejected: readOnly,
   setMemoryEnabled: readOnly,
   correctMemory: readOnly,
   saveSchedule: readOnly,

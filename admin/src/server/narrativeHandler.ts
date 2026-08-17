@@ -1,7 +1,7 @@
 type ServerConfig = { supabaseUrl: string; supabaseAnonKey: string; fetch?: typeof globalThis.fetch };
 
 const conflicts = new Set([
-  'stale_review', 'stale_review_submission', 'stale_manual_version', 'stale_revision', 'stale_archive', 'stale_restore', 'stale_publish_retry',
+  'stale_review', 'stale_review_submission', 'stale_manual_version', 'stale_revision', 'stale_archive', 'stale_restore', 'stale_reopen', 'stale_publish_retry',
   'blocked_version_reject_only', 'revision_cost_changed', 'duplicate_review', 'version_not_approvable', 'duplicate_generation',
   'fixed_canon_read_only', 'stale_memory', 'stale_provider_pricing', 'invalid_provider_pricing', 'manual_generation_disabled', 'schedule_automation_disabled',
   'manual_call_limit_reached', 'invalid_generation_source', 'workflow_phase_not_approved',
@@ -371,6 +371,12 @@ export function createNarrativeHandler({ supabaseUrl, supabaseAnonKey, fetch = g
         if (path[2] === 'restore') {
           if (typeof input.expectedVersionId !== 'string' || !input.expectedVersionId) return json({ error: 'invalid_restore_command' }, 400);
           return json(await rpc('restore_narrative_draft', { p_draft_id: input.draftId, p_expected_version_id: input.expectedVersionId }));
+        }
+        if (path[2] === 'reopen') {
+          if (typeof input.expectedVersionId !== 'string' || !input.expectedVersionId || Object.keys(input).sort().join(',') !== 'draftId,expectedVersionId') {
+            return json({ error: 'invalid_reopen_command' }, 400);
+          }
+          return json(await rpc('reopen_rejected_draft', { p_draft_id: input.draftId, p_expected_version_id: input.expectedVersionId }));
         }
         if (path[2] === 'retry-publish') {
           if (input.expectedState !== 'publish_failed' || typeof input.expectedVersionId !== 'string' || !input.expectedVersionId) {

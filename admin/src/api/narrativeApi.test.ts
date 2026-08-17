@@ -104,6 +104,19 @@ describe('NarrativeApi', () => {
     }));
   });
 
+  it('sends rejected draft reopening through the authenticated same-origin boundary with the exact version', async () => {
+    const fetch = vi.fn().mockResolvedValue(Response.json({ status: 'reviewing' }));
+    const api = createNarrativeApi({ tokenProvider: async () => 'owner-token', fetch });
+
+    await api.reopenRejected({ draftId: 'd1', expectedVersionId: 'v2' });
+
+    expect(fetch).toHaveBeenCalledWith('/api/narrative/drafts/d1/reopen', expect.objectContaining({
+      method: 'POST',
+      body: JSON.stringify({ draftId: 'd1', expectedVersionId: 'v2' }),
+      headers: expect.objectContaining({ authorization: 'Bearer owner-token' }),
+    }));
+  });
+
   it('keeps publish retry selectors on the authenticated same-origin server boundary', async () => {
     const fetch = vi.fn().mockResolvedValue(Response.json({ status: 'published' }));
     const api = createNarrativeApi({ tokenProvider: async () => 'owner-token', fetch });

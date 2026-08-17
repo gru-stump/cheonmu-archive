@@ -90,6 +90,7 @@ export function createE2EFixture() {
       return { draftId: draft.id, versionId: draft.latestVersionId, status: draft.status as 'rejected' | 'approved_private' | 'approved' };
     },
     retryPublish: async () => ({ status: 'publishing' }), archive: async () => ({ status: 'archived' }), restore: async () => ({ status: 'generated' }),
+    reopenRejected: async ({ draftId }) => { store.drafts.get(draftId)!.status = 'reviewing'; return { status: 'reviewing' }; },
     getMemory: async () => structuredClone(memory), setMemoryEnabled: async ({ enabled }) => ({ enabled }), correctMemory: async ({ memoryId }) => ({ memoryId }),
     getSchedules: async () => ({ schedules: structuredClone(store.schedules) }),
     saveSchedule: async (input) => {

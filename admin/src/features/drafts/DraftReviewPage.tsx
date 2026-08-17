@@ -20,7 +20,7 @@ const statusLabels: Record<string, string> = {
 const continuityLabels: Record<string, string> = {
   pass: '문제 없음', review: '확인 필요', block: '승인 불가',
 };
-const staleConflictCodes = new Set(['stale_review', 'stale_review_submission', 'stale_manual_version', 'stale_revision', 'stale_archive', 'stale_publish_retry', 'stale_restore']);
+const staleConflictCodes = new Set(['stale_review', 'stale_review_submission', 'stale_manual_version', 'stale_revision', 'stale_archive', 'stale_publish_retry', 'stale_restore', 'stale_reopen']);
 const operationalConflictMessages: Record<string, string> = {
   stale_provider_pricing: '제공자 단가 확인일이 만료되었습니다. 설정에서 단가를 다시 확인해 주세요.',
   automation_disabled: '자동 생성이 꺼져 있습니다. 설정에서 자동 생성을 켜 주세요.',
@@ -195,6 +195,17 @@ export function DraftReviewPage({ api, draftId, readOnly = false, onRejected }: 
     try { const result = await api.restore({ draftId, expectedVersionId: detail.latestVersionId }); setDetail({ ...detail, status: result.status }); setMessage(`초안을 ${result.status} 상태로 복원했습니다.`); }
     catch (error) { if (!handleConflict(error)) { setProblem(true); setMessage('초안을 복원하지 못했습니다.'); } }
   };
+  const reopenRejected = async () => {
+    if (detail.status !== 'rejected') return;
+    setMessage(null); setProblem(false); setStale(false);
+    try {
+      await api.reopenRejected({ draftId, expectedVersionId: detail.latestVersionId });
+      setDetail({ ...detail, status: 'reviewing' });
+      setMessage('초안을 다시 검토할 수 있도록 열었습니다.');
+    } catch (error) {
+      if (!handleConflict(error)) { setProblem(true); setMessage('초안을 다시 열지 못했습니다.'); }
+    }
+  };
   const retryPublish = async () => {
     setMessage(null); setProblem(false); setStale(false);
     try { await api.retryPublish({ draftId, expectedVersionId: detail.latestVersionId, expectedState: 'publish_failed' }); setDetail({ ...detail, status: 'publishing' }); setMessage('게시를 다시 요청했습니다.'); }
@@ -224,6 +235,7 @@ export function DraftReviewPage({ api, draftId, readOnly = false, onRejected }: 
       <details className="version-history"><summary>버전 이력 · {detail.versions.length}개</summary><ol>{detail.versions.map((item: DraftVersion) => <li key={item.id}><strong>버전 {item.versionNumber}</strong> <time dateTime={item.createdAt}>{seoulDate(item.createdAt)}</time><p>{item.content.body}</p></li>)}</ol></details>
       <div className="review-actions" aria-label="초안 작업">
         {detail.status === 'archived' && <button className="button button--ink review-actions__primary" type="button" disabled={readOnly} onClick={() => void restore()}>복원</button>}
+        {detail.status === 'rejected' && <button className="button button--ink review-actions__primary" type="button" disabled={readOnly} onClick={() => void reopenRejected()}>다시 검토하기</button>}
         {!blocked && reviewable && <button className="button button--primary review-actions__primary" type="button" disabled={readOnly} onClick={() => void review('approve_public')}>승인하고 게시</button>}
         {blocked && reviewable && <button className="button button--danger-outline review-actions__primary" type="button" disabled={readOnly} onClick={(event) => openDialog('reject', event)}>거절</button>}
         {!blocked && <details className="review-actions__more" open={!mobileActionDisclosure}><summary>작업</summary><div className="review-actions__secondary">

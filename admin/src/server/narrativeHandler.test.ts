@@ -482,6 +482,29 @@ describe('same-origin narrative server boundary', () => {
     });
   });
 
+  it('reopens a rejected draft only through the narrow owner database command', async () => {
+    const calls: Array<{ path: string; body: Record<string, unknown> }> = [];
+    const fetch: typeof globalThis.fetch = vi.fn(async (input, init) => {
+      const path = new URL(String(input)).pathname;
+      calls.push({ path, body: init?.body ? JSON.parse(String(init.body)) : {} });
+      if (path === '/auth/v1/user') return Response.json({ id: 'owner-1' });
+      if (path === '/rest/v1/owner_profiles') return Response.json([{ owner_id: 'owner-1' }]);
+      return Response.json({ status: 'reviewing' });
+    });
+    const handler = createNarrativeHandler({ supabaseUrl: 'https://db.example.test', supabaseAnonKey: 'anon', fetch });
+    const response = await handler(new Request('https://admin.example.test/api/narrative/drafts/draft-1/reopen', {
+      method: 'POST', headers: { authorization: 'Bearer owner-token', 'content-type': 'application/json' },
+      body: JSON.stringify({ draftId: 'draft-1', expectedVersionId: 'version-2' }),
+    }));
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ status: 'reviewing' });
+    expect(calls[2]).toEqual({
+      path: '/rest/v1/rpc/reopen_rejected_draft',
+      body: { p_draft_id: 'draft-1', p_expected_version_id: 'version-2' },
+    });
+  });
+
   it('resolves the failed server-owned publish job and retries through publish-draft with its stable key', async () => {
     // Calling the removed browser RPC or accepting a browser job/key would bypass the migrated Edge boundary.
     const draftId = '91000000-0000-0000-0000-000000000001';

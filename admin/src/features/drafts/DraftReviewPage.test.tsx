@@ -49,6 +49,7 @@ function api(overrides: Partial<NarrativeApi> = {}): NarrativeApi {
     retryPublish: vi.fn(),
     archive: vi.fn(),
     restore: vi.fn(),
+    reopenRejected: vi.fn(),
     ...overrides,
   } as NarrativeApi;
 }
@@ -290,6 +291,26 @@ describe('DraftReviewPage', () => {
     expect(screen.getByRole('status')).toHaveTextContent('거절 사유가 다음 생성의 수정 지침에 반영됐습니다.');
     expect(screen.getByText('가벼운 부상에는 피를 쓰지 않는다.')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '거절' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '다시 검토하기' })).toBeInTheDocument();
+  });
+
+  it('reopens a rejected draft and restores all review choices without changing its version', async () => {
+    const rejected = {
+      ...detail,
+      status: 'rejected' as const,
+      rejection: { reason: '말투를 다시 다듬어야 한다.', createdAt: '2026-08-17T02:35:00Z' },
+    };
+    const reopenRejected = vi.fn().mockResolvedValue({ status: 'reviewing' as const });
+    render(<DraftReviewPage api={api({ getDraft: vi.fn().mockResolvedValue(rejected), reopenRejected })} draftId="draft-1" />);
+
+    await userEvent.click(await screen.findByRole('button', { name: '다시 검토하기' }));
+
+    expect(reopenRejected).toHaveBeenCalledWith({ draftId: 'draft-1', expectedVersionId: 'version-2' });
+    expect(screen.getByText('검토 중')).toBeInTheDocument();
+    for (const name of ['직접 수정', '부분 AI 수정', '비공개 정사 승인', '승인하고 게시', '거절']) {
+      expect(screen.getByRole('button', { name })).toBeInTheDocument();
+    }
+    expect(screen.getByText('버전 이력 · 2개')).toBeInTheDocument();
   });
 
   it('retries the real draft detail request and recovers from an initial route error', async () => {
