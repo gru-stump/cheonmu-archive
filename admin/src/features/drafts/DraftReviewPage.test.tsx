@@ -242,10 +242,13 @@ describe('DraftReviewPage', () => {
     expect(within(dialog).getByRole('checkbox', { name: /최대 비용을 확인했습니다/ })).not.toBeChecked();
   });
 
-  it('keeps revision inputs and explains an AI response-length failure in Korean', async () => {
+  it('restores review actions after an AI response-length failure and keeps the revision inputs', async () => {
     const generate = vi.fn().mockRejectedValue(new NarrativeApiError(502, 'provider_output_limit'));
+    const getDraft = vi.fn()
+      .mockResolvedValueOnce(detail)
+      .mockResolvedValue({ ...detail, status: 'reviewing' as const });
     const user = userEvent.setup();
-    render(<DraftReviewPage api={api({ generate })} draftId="draft-1" />);
+    render(<DraftReviewPage api={api({ generate, getDraft })} draftId="draft-1" />);
     await screen.findByRole('heading', { name: '빗소리 아래' });
 
     await user.click(screen.getByRole('button', { name: '부분 AI 수정' }));
@@ -255,9 +258,16 @@ describe('DraftReviewPage', () => {
     await user.click(within(dialog).getByRole('checkbox', { name: /최대 비용을 확인했습니다/ }));
     await user.click(within(dialog).getByRole('button', { name: '새 버전 생성' }));
 
-    expect(within(dialog).getByRole('alert')).toHaveTextContent('AI 답변 길이가 부족해 수정하지 못했습니다. 입력 내용은 유지했으니 다시 시도해 주세요.');
-    expect(within(dialog).getByDisplayValue('남겨 둘 선택 구절')).toBeInTheDocument();
-    expect(within(dialog).getByDisplayValue('조금 더 자연스럽게')).toBeInTheDocument();
+    expect(await screen.findByText('AI 수정은 실패했지만 기존 초안으로 계속 작업할 수 있습니다. 다시 수정하거나 승인·거절해 주세요.')).toBeInTheDocument();
+    expect(screen.queryByRole('dialog', { name: '부분 AI 수정' })).not.toBeInTheDocument();
+    for (const name of ['직접 수정', '부분 AI 수정', '비공개로 승인', '승인하고 게시', '거절']) {
+      expect(screen.getByRole('button', { name })).toBeInTheDocument();
+    }
+
+    await user.click(screen.getByRole('button', { name: '부분 AI 수정' }));
+    const reopened = screen.getByRole('dialog', { name: '부분 AI 수정' });
+    expect(within(reopened).getByDisplayValue('남겨 둘 선택 구절')).toBeInTheDocument();
+    expect(within(reopened).getByDisplayValue('조금 더 자연스럽게')).toBeInTheDocument();
   });
 
   it('keeps freshly generated blocked latest versions inspectable and routes rejection through generated submission', async () => {

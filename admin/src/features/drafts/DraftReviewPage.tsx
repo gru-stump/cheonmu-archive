@@ -209,8 +209,14 @@ export function DraftReviewPage({ api, draftId, readOnly = false, onRejected }: 
       closeDialog(); await load(); setMessage('부분 수정 결과를 새 버전으로 생성했습니다.');
     } catch (error) {
       if (error instanceof NarrativeApiError && error.code === 'provider_output_limit') {
+        closeDialog(true);
+        try {
+          const value = await api.getDraft(draftId);
+          setDetail(value);
+          setManualText(value.latestVersion.content.body);
+        } catch { /* 기존 초안을 화면에 유지하고 다음 새로고침에서 다시 확인 */ }
         setProblem(true);
-        setMessage('AI 답변 길이가 부족해 수정하지 못했습니다. 입력 내용은 유지했으니 다시 시도해 주세요.');
+        setMessage('AI 수정은 실패했지만 기존 초안으로 계속 작업할 수 있습니다. 다시 수정하거나 승인·거절해 주세요.');
       } else if (!handleConflict(error)) setMessage('부분 수정에 실패했습니다.');
     }
   };
