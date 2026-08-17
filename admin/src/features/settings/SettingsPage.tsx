@@ -68,6 +68,7 @@ export function SettingsPage({ api, readOnly = false }: { api: NarrativeApi; rea
   const [dailyWon, setDailyWon] = useState('');
   const [secretInputs, setSecretInputs] = useState<Record<SecretKind, string>>({ openai: '', anthropic: '', github: '' });
   const [loadFailed, setLoadFailed] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ tone: 'success' | 'danger'; text: string } | null>(null);
 
   const applySettings = (value: NarrativeSettings) => {
@@ -139,6 +140,7 @@ export function SettingsPage({ api, readOnly = false }: { api: NarrativeApi; rea
       return;
     }
     const activeProviderKey = settings.providers.find((provider) => provider.enabled)?.providerKey ?? null;
+    setSaving(true);
     try {
       await api.saveSettings({
         manualGenerationEnabled: settings.manualGenerationEnabled,
@@ -178,6 +180,8 @@ export function SettingsPage({ api, readOnly = false }: { api: NarrativeApi; rea
     } catch (error) {
       const code = error instanceof NarrativeApiError ? error.code : '';
       setMessage({ tone: 'danger', text: saveErrorCopy[code] ?? '설정을 저장하지 못했습니다. 잠시 후 다시 시도해 주세요.' });
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -296,7 +300,7 @@ export function SettingsPage({ api, readOnly = false }: { api: NarrativeApi; rea
         </div>}
       </div>
 
-      <button type="submit" disabled={readOnly}>설정 저장</button>
+      <button type="submit" disabled={readOnly || saving}>{saving ? '저장 중…' : '설정 저장'}</button>
     </form>
 
     <fieldset className="settings-card publishing-secret" aria-label="GitHub">

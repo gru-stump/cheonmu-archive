@@ -120,12 +120,38 @@ export function DraftReviewPage({ api, draftId, readOnly = false, onRejected }: 
   const [message, setMessage] = useState<string | null>(null);
   const [stale, setStale] = useState(false);
   const [problem, setProblem] = useState(false);
+  const [busy, setBusy] = useState(false);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const publishPollStartedAt = useRef(0);
+
+  useEffect(() => {
+    if (detail?.status !== 'publishing') { publishPollStartedAt.current = 0; return; }
+    if (!publishPollStartedAt.current) publishPollStartedAt.current = Date.now();
+    if (Date.now() - publishPollStartedAt.current >= 120_000) {
+      setMessage('게시가 오래 걸리고 있습니다. 새로고침으로 최신 상태를 확인해 주세요.');
+      return;
+    }
+    const timer = window.setTimeout(async () => {
+      try {
+        const value = await api.getDraft(draftId);
+        setDetail((current) => current ? { ...current, status: value.status, publication: value.publication } : current);
+        if (value.status === 'published') setMessage('공개 사이트 게시가 완료됐습니다.');
+      } catch { /* 다음 주기에 다시 확인 */ }
+    }, 4_000);
+    return () => window.clearTimeout(timer);
+  }, [detail, api, draftId]);
 
   const load = async () => { setLoadError(false); try { const value = await api.getDraft(draftId); setDetail(value); setManualText(value.latestVersion.content.body); setStale(false); setProblem(false); setMessage(null); setConfirmedRevisionSignature(null); } catch { setLoadError(true); } };
   useEffect(() => { let active = true; void api.getDraft(draftId).then((value) => { if (active) { setDetail(value); setManualText(value.latestVersion.content.body); } }).catch(() => { if (active) setLoadError(true); }); return () => { active = false; }; }, [api, draftId]);
   const closeDialog = (preserveMessage = false) => { setDialog(null); setConfirmedRevisionSignature(null); setStale(false); if (!preserveMessage) { setProblem(false); setMessage(null); } queueMicrotask(() => triggerRef.current?.focus()); };
-  const openDialog = (kind: Exclude<DialogKind, null>, event: React.MouseEvent<HTMLButtonElement>) => { triggerRef.current = event.currentTarget; setDialog(kind); setMessage(null); setStale(false); setProblem(false); setConfirmedRevisionSignature(null); };
+  const openDialog = (kind: Exclude<DialogKind, null>, event: React.MouseEvent<HTMLButtonElement>) => {
+    triggerRef.current = event.currentTarget;
+    if (kind === 'revision' && detail) {
+      const highlighted = window.getSelection?.()?.toString().trim() ?? '';
+      if (highlighted && detail.latestVersion.content.body.includes(highlighted)) setSelectedText(highlighted);
+    }
+    setDialog(kind); setMessage(null); setStale(false); setProblem(false); setConfirmedRevisionSignature(null);
+  };
   const handleConflict = (error: unknown) => {
     if (!(error instanceof NarrativeApiError) || error.status !== 409) return false;
     const isStale = staleConflictCodes.has(error.code);
@@ -152,7 +178,7 @@ export function DraftReviewPage({ api, draftId, readOnly = false, onRejected }: 
   });
   const costConfirmed = confirmedRevisionSignature === revisionSignature;
   const review = async (action: ReviewInput['action'], reviewReason?: string) => {
-    setMessage(null); setProblem(false); setStale(false);
+    setMessage(null); setProblem(false); setStale(false); setBusy(true);
     try {
       const result = await api.review({ draftId, expectedVersionId: detail.latestVersionId, expectedState: detail.status === 'generated' ? 'generated' : 'reviewing', action, ...(reviewReason ? { reason: reviewReason } : {}) });
       setDetail({ ...detail, status: result.status, ...(action === 'reject' && reviewReason ? { rejection: { reason: reviewReason, createdAt: new Date().toISOString() } } : {}) });
@@ -164,6 +190,7 @@ export function DraftReviewPage({ api, draftId, readOnly = false, onRejected }: 
           : '검토 결과를 저장했습니다.');
       closeDialog(true);
     } catch (error) { if (!handleConflict(error)) setMessage('요청을 처리하지 못했습니다.'); }
+    finally { setBusy(false); }
   };
   const saveManual = async (event: FormEvent) => {
     event.preventDefault(); setMessage(null); setProblem(false); setStale(false);
@@ -252,9 +279,9 @@ export function DraftReviewPage({ api, draftId, readOnly = false, onRejected }: 
         </div></details>}
       </div>
       {dialog === 'manual' && <Modal title="직접 수정" onClose={() => closeDialog()}>{conflictRecovery}<form onSubmit={saveManual}><label htmlFor="manual-body">최종 본문</label><textarea id="manual-body" rows={12} value={manualText} onChange={(event) => setManualText(event.target.value)} required /><button type="submit">새 버전 저장</button></form></Modal>}
-      {dialog === 'revision' && <Modal title="부분 AI 수정" onClose={() => closeDialog()}>{conflictRecovery}<form onSubmit={revise}><label htmlFor="selected-text">선택한 구절</label><textarea id="selected-text" value={selectedText} onChange={(event) => { setSelectedText(event.target.value); setConfirmedRevisionSignature(null); }} required /><label htmlFor="revision-instruction">수정 지시</label><textarea id="revision-instruction" value={instruction} onChange={(event) => { setInstruction(event.target.value); setConfirmedRevisionSignature(null); }} required /><p>AI가 필요한 답변 길이는 모델에 맞게 자동으로 정합니다.</p><p>최대 예상 비용: {formatKrw(estimatedRevisionCostKrw)}</p><label><input type="checkbox" checked={costConfirmed} onChange={(event) => setConfirmedRevisionSignature(event.target.checked ? revisionSignature : null)} /> 최대 비용을 확인했습니다</label><button type="submit">새 버전 생성</button></form></Modal>}
-      {dialog === 'reject' && <Modal title="거절" onClose={() => closeDialog()}>{conflictRecovery}<form onSubmit={(event) => { event.preventDefault(); void review('reject', reason); }}><label htmlFor="reject-reason">거절 사유</label><textarea id="reject-reason" value={reason} onChange={(event) => setReason(event.target.value)} required /><button type="submit">거절 확정</button></form></Modal>}
-      {dialog === 'approve-public' && <Modal title="승인하고 게시" onClose={() => closeDialog()}>{conflictRecovery}<p>이 초안을 승인하면 <strong>공개 사이트에 게시</strong>됩니다. 게시 후에는 방문자 누구나 읽을 수 있습니다.</p><p>계속할까요?</p><button type="button" className="button button--primary" onClick={() => void review('approve_public')}>승인하고 게시하기</button></Modal>}
+      {dialog === 'revision' && <Modal title="부분 AI 수정" onClose={() => closeDialog()}>{conflictRecovery}<p className="settings-help">본문에서 고칠 문장을 드래그해 선택한 채 이 창을 열면 구절이 자동으로 채워집니다.</p><form onSubmit={revise}><label htmlFor="selected-text">선택한 구절</label><textarea id="selected-text" value={selectedText} onChange={(event) => { setSelectedText(event.target.value); setConfirmedRevisionSignature(null); }} required /><label htmlFor="revision-instruction">수정 지시</label><textarea id="revision-instruction" value={instruction} onChange={(event) => { setInstruction(event.target.value); setConfirmedRevisionSignature(null); }} required /><p>AI가 필요한 답변 길이는 모델에 맞게 자동으로 정합니다.</p><p>최대 예상 비용: {formatKrw(estimatedRevisionCostKrw)}</p><label><input type="checkbox" checked={costConfirmed} onChange={(event) => setConfirmedRevisionSignature(event.target.checked ? revisionSignature : null)} /> 최대 비용을 확인했습니다</label><button type="submit">새 버전 생성</button></form></Modal>}
+      {dialog === 'reject' && <Modal title="거절" onClose={() => closeDialog()}>{conflictRecovery}<p className="settings-help">거절 사유는 다음 이야기 생성의 수정 지침으로 쓰입니다. 자주 쓰는 문구로 시작할 수 있습니다.</p><div className="reject-templates">{['말투가 어긋납니다', '설정과 충돌합니다', '전개가 어색합니다'].map((template) => <button key={template} type="button" onClick={() => setReason((current) => current ? `${current}\n${template}: ` : `${template}: `)}>{template}</button>)}</div><form onSubmit={(event) => { event.preventDefault(); void review('reject', reason); }}><label htmlFor="reject-reason">거절 사유</label><textarea id="reject-reason" value={reason} onChange={(event) => setReason(event.target.value)} required /><button type="submit" disabled={busy}>{busy ? '처리 중…' : '거절 확정'}</button></form></Modal>}
+      {dialog === 'approve-public' && <Modal title="승인하고 게시" onClose={() => closeDialog()}>{conflictRecovery}<p>이 초안을 승인하면 <strong>공개 사이트에 게시</strong>됩니다. 게시 후에는 방문자 누구나 읽을 수 있습니다.</p><p>계속할까요?</p><button type="button" className="button button--primary" disabled={busy} onClick={() => void review('approve_public')}>{busy ? '게시 요청 중…' : '승인하고 게시하기'}</button></Modal>}
     </article>
   );
 }

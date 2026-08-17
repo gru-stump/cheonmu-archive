@@ -15,6 +15,16 @@ const scheduleTypeHelp: Record<string, string> = {
   manual: '자동으로 실행되지 않습니다. 직접 만들 때의 기준 시각으로만 사용합니다.',
   special: '지정한 날짜 하루에만 실행되는 일정입니다.',
 };
+const weekdayNames = ['일', '월', '화', '수', '목', '금', '토'];
+const scheduleKindLabels: Record<string, string> = { short_dialogue: '짧은 대화', daily_event: '일상 사건' };
+
+function scheduleSummary(draft: SaveScheduleInput): string {
+  const kind = scheduleKindLabels[draft.kind] ?? '이야기';
+  if (draft.scheduleType === 'manual') return '자동으로 실행되지 않는 기준용 일정입니다.';
+  if (draft.scheduleType === 'special') return `${draft.specialDate || '날짜 미정'} ${draft.seoulTime}에 한 번, '${kind}' 이야기를 만듭니다.`;
+  const day = draft.weekday === null || draft.weekday === undefined ? '매일' : `${weekdayNames[draft.weekday] ?? ''}요일마다`;
+  return `${day} ${draft.seoulTime}에 '${kind}' 이야기를 만듭니다.`;
+}
 
 function ScheduleForm({ api, schedule, readOnly, onSaved, onMessage, onDiscard }: { api: NarrativeApi; schedule: NarrativeSchedule; readOnly: boolean; onSaved(): Promise<void>; onMessage(message: string): void; onDiscard?(): void }) {
   const [draft, setDraft] = useState<SaveScheduleInput>({
@@ -23,15 +33,19 @@ function ScheduleForm({ api, schedule, readOnly, onSaved, onMessage, onDiscard }
     seoulTime: schedule.seoulTime, weekday: schedule.weekday, specialDate: schedule.specialDate,
     minimumIntervalMinutes: schedule.minimumIntervalMinutes, kind: schedule.kind,
   });
+  const [saving, setSaving] = useState(false);
   const save = async (event: FormEvent) => {
     event.preventDefault();
+    setSaving(true);
     try { await api.saveSchedule(draft); }
-    catch { onMessage('일정을 저장하지 못했습니다. 설정 화면에서 ① 자동 만들기가 켜져 있는지 ② AI 요금 정보가 최신인지 확인해 주세요.'); return; }
+    catch { onMessage('일정을 저장하지 못했습니다. 설정 화면에서 ① 자동 만들기가 켜져 있는지 ② AI 요금 정보가 최신인지 확인해 주세요.'); setSaving(false); return; }
     try { await onSaved(); onMessage('일정을 저장했습니다.'); }
     catch { onMessage('저장했지만 최신 일정을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.'); }
+    finally { setSaving(false); }
   };
   return <article className="schedule-row">
     <header className="schedule-row__header"><div><h2>{draft.scheduleKey}</h2><p>{draft.scheduleType === 'special' ? '특별일' : draft.scheduleType === 'automatic' ? '자동 일정' : '수동 일정'}</p></div><AdminStatusBadge tone={draft.enabled ? 'green' : 'neutral'}>{draft.enabled ? '사용 중' : '멈춤'}</AdminStatusBadge></header>
+    <p className="schedule-summary">{draft.enabled ? scheduleSummary(draft) : `멈춰 있는 일정입니다 — 켜면 ${scheduleSummary(draft)}`}</p>
     <form className="schedule-form" onSubmit={save}>
       <div className="schedule-field"><label htmlFor={`schedule-key-${schedule.id}`}>일정 이름</label>
       <input id={`schedule-key-${schedule.id}`} value={draft.scheduleKey} disabled={readOnly} onChange={(event) => setDraft({ ...draft, scheduleKey: event.target.value })} required />
@@ -51,7 +65,7 @@ function ScheduleForm({ api, schedule, readOnly, onSaved, onMessage, onDiscard }
       <div className="schedule-field"><label htmlFor={`schedule-kind-${schedule.id}`}>만들 이야기</label>
       <select id={`schedule-kind-${schedule.id}`} value={draft.kind} disabled={readOnly} onChange={(event) => setDraft({ ...draft, kind: event.target.value as SaveScheduleInput['kind'] })}><option value="short_dialogue">짧은 대화</option><option value="daily_event">일상 사건</option></select></div>
       <dl><dt>마지막 실행</dt><dd>{seoulDate(schedule.lastRunAt)}</dd><dt>다음 실행</dt><dd>{seoulDate(schedule.nextRunAt)}</dd></dl>
-      <button type="submit" aria-label={`${draft.scheduleKey} 일정 저장`} disabled={readOnly}>일정 저장</button>
+      <button type="submit" aria-label={`${draft.scheduleKey} 일정 저장`} disabled={readOnly || saving}>{saving ? '저장 중…' : '일정 저장'}</button>
       {onDiscard && <button type="button" className="button--quiet" onClick={onDiscard}>추가 취소</button>}
     </form>
   </article>;

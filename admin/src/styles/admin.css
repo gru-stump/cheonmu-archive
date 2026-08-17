@@ -247,6 +247,21 @@ body { margin: 0; min-width: 320px; background: var(--admin-paper); font-family:
   .admin-shell .modal{ padding: 1.1rem; }
 }
 
+.admin-shell .draft-body{ max-width: 46rem; }
+
+.admin-shell .budget-bar{ display: flex; align-items: center; gap: .6rem; margin-top: .8rem; }
+.admin-shell .budget-bar__track{ flex: 1; height: 8px; overflow: hidden; border-radius: 999px; background: var(--admin-muted-surface); border: 1px solid var(--admin-rule); }
+.admin-shell .budget-bar__fill{ height: 100%; border-radius: 999px; transition: width .3s ease; }
+.admin-shell .budget-bar__fill--ok{ background: #6f8a74; }
+.admin-shell .budget-bar__fill--warn{ background: #c6a876; }
+.admin-shell .budget-bar__fill--danger{ background: var(--admin-red); }
+.admin-shell .budget-bar__label{ color: var(--admin-muted); font-size: .74rem; font-weight: 750; white-space: nowrap; }
+
+.admin-shell .schedule-summary{ margin: .3rem 0 1rem; color: var(--admin-muted); font-size: .9rem; }
+
+.admin-shell .reject-templates{ display: flex; flex-wrap: wrap; gap: .45rem; margin-bottom: .8rem; }
+.admin-shell .reject-templates button{ padding: .3rem .7rem; font-size: .8rem; }
+
 .admin-shell .settings-sticky-note{ position: sticky; bottom: .75rem; z-index: 10; }
 .admin-shell .settings-sticky-note .admin-notice{ box-shadow: 0 .4rem 1.4rem rgb(36 32 29 / 16%); }
 

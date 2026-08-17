@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { NarrativeApiError, type AccessEstimate, type DashboardData, type NarrativeApi } from '../../api/narrativeApi';
 import { AdminNotice } from '../../components/AdminNotice';
 import { AdminPageHeader } from '../../components/AdminPageHeader';
@@ -20,6 +21,16 @@ const accessErrorCopy: Record<string, string> = {
   manual_call_limit_reached: '하루 직접 만들기 횟수를 모두 사용했습니다. 내일 다시 시도하거나 설정에서 횟수를 조정해 주세요.',
 };
 
+function BudgetBar({ spentMicros, remainingMicros, label }: { spentMicros: number; remainingMicros: number; label: string }) {
+  const total = spentMicros + remainingMicros;
+  const percent = total > 0 ? Math.min(100, Math.round((spentMicros / total) * 100)) : 0;
+  const tone = percent >= 95 ? 'danger' : percent >= 80 ? 'warn' : 'ok';
+  return <div className="budget-bar" role="img" aria-label={`${label} 한도의 ${percent}%를 사용했습니다`}>
+    <div className="budget-bar__track"><div className={`budget-bar__fill budget-bar__fill--${tone}`} style={{ width: `${percent}%` }} /></div>
+    <span className="budget-bar__label">{percent}% 사용</span>
+  </div>;
+}
+
 export function TodayPage({ api, readOnly = false, now = () => new Date() }: { api: NarrativeApi; readOnly?: boolean; now?: () => Date }) {
   const [data, setData] = useState<DashboardData | null>(null);
   const [error, setError] = useState(false);
@@ -27,7 +38,17 @@ export function TodayPage({ api, readOnly = false, now = () => new Date() }: { a
   const [accessMessage, setAccessMessage] = useState<string | null>(null);
   const [estimate, setEstimate] = useState<AccessEstimate | null>(null);
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
+  const [pendingReviewCount, setPendingReviewCount] = useState<number | null>(null);
   const pollStartedAt = useRef(0);
+
+  useEffect(() => {
+    if (typeof api.listDrafts !== 'function') return;
+    let active = true;
+    void api.listDrafts({ status: 'active' })
+      .then((rows) => { if (active) setPendingReviewCount(rows.filter((row) => row.status === 'generated' || row.status === 'reviewing').length); })
+      .catch(() => { if (active) setPendingReviewCount(null); });
+    return () => { active = false; };
+  }, [api, data]);
 
   const load = async () => {
     setError(false);
@@ -94,15 +115,19 @@ export function TodayPage({ api, readOnly = false, now = () => new Date() }: { a
   if (!data) return <section>{header}<AdminNotice>오늘 현황을 불러오는 중입니다.</AdminNotice></section>;
   const dailyUnconfirmed = data.budget.dailyUnconfirmedMicros ?? 0;
   const monthlyUnconfirmed = data.budget.monthlyUnconfirmedMicros ?? 0;
+  const monthlyTotal = data.budget.monthlySpentMicros + data.budget.monthlyRemainingMicros;
+  const monthlyPercent = monthlyTotal > 0 ? Math.round((data.budget.monthlySpentMicros / monthlyTotal) * 100) : 0;
 
   return <section>
     {header}
+    {monthlyPercent >= 80 && <AdminNotice tone="warning">이번 달 예산의 {Math.min(monthlyPercent, 100)}%를 사용했습니다. 예산이 부족하면 설정에서 한도를 조정할 수 있습니다.</AdminNotice>}
     <div className="dashboard-grid">
-      <AdminSection title="오늘 사용"><dl><dt>확정 사용</dt><dd>{displayCost(Math.max(data.budget.dailySpentMicros - dailyUnconfirmed, 0), data.krwPerUsd)}</dd><dt>남은 한도</dt><dd>{displayCost(data.budget.dailyRemainingMicros, data.krwPerUsd)}</dd></dl></AdminSection>
-      <AdminSection title="이번 달 사용"><dl><dt>확정 사용</dt><dd>{displayCost(Math.max(data.budget.monthlySpentMicros - monthlyUnconfirmed, 0), data.krwPerUsd)}</dd><dt>남은 한도</dt><dd>{displayCost(data.budget.monthlyRemainingMicros, data.krwPerUsd)}</dd></dl></AdminSection>
+      <AdminSection title="오늘 사용"><dl><dt>확정 사용</dt><dd>{displayCost(Math.max(data.budget.dailySpentMicros - dailyUnconfirmed, 0), data.krwPerUsd)}</dd><dt>남은 한도</dt><dd>{displayCost(data.budget.dailyRemainingMicros, data.krwPerUsd)}</dd></dl><BudgetBar spentMicros={data.budget.dailySpentMicros} remainingMicros={data.budget.dailyRemainingMicros} label="오늘" /></AdminSection>
+      <AdminSection title="이번 달 사용"><dl><dt>확정 사용</dt><dd>{displayCost(Math.max(data.budget.monthlySpentMicros - monthlyUnconfirmed, 0), data.krwPerUsd)}</dd><dt>남은 한도</dt><dd>{displayCost(data.budget.monthlyRemainingMicros, data.krwPerUsd)}</dd></dl><BudgetBar spentMicros={data.budget.monthlySpentMicros} remainingMicros={data.budget.monthlyRemainingMicros} label="이번 달" /></AdminSection>
       <AdminSection title="확인되지 않은 최대 비용"><p className="metric-value">{displayCost(monthlyUnconfirmed, data.krwPerUsd)}</p><p className="settings-help">AI 결과를 받지 못한 요청의 안전한 최대값이며, 실제 결제액으로 확정된 금액이 아닙니다.</p></AdminSection>
       <AdminSection title="처리 중인 예상 비용"><p className="metric-value">{displayCost(data.budget.reservedMicros, data.krwPerUsd)}</p><p className="settings-help">지금 만드는 중인 이야기에 쓸 수 있는 최대 금액입니다. 완료되면 실제 사용액으로 바뀝니다.</p></AdminSection>
       <AdminSection title="일정"><dl><dt>다음 예약</dt><dd>{data.nextScheduleAt ? formatSeoulTimestamp(data.nextScheduleAt, now()).relative : '예정 없음'}</dd><dt>마지막 성공</dt><dd>{data.lastSuccessAt ? formatSeoulTimestamp(data.lastSuccessAt, now()).relative : '아직 없음'}</dd></dl></AdminSection>
+      {pendingReviewCount !== null && <AdminSection title="검토 대기"><p className="metric-value">{pendingReviewCount}편</p>{pendingReviewCount > 0 ? <p className="settings-help"><Link to="/drafts">초안함에서 검토를 시작하세요 →</Link></p> : <p className="settings-help">지금 검토할 초안이 없습니다.</p>}</AdminSection>}
     </div>
 
     {!readOnly && <AdminSection title="이야기 만들기" description="지금 천령과 무영의 짧은 대화 한 편을 요청합니다. 예산 안에서 연속으로 테스트할 수 있으며, 요청 전에 최대 비용을 먼저 보여드립니다.">
@@ -116,7 +141,7 @@ export function TodayPage({ api, readOnly = false, now = () => new Date() }: { a
         const occurredAt = item.completedAt ?? item.failedAt ?? item.createdAt ?? item.scheduledFor;
         const formatted = formatSeoulTimestamp(occurredAt, now());
         return <li key={item.id}>
-          <div><strong>{copy.title}</strong><p>{copy.description}</p>{copy.action && <p>{copy.action}</p>}</div>
+          <div><strong>{copy.title}</strong><p>{copy.description}</p>{copy.action && <p>{copy.action}</p>}{item.state === 'completed' && <p><Link to="/drafts">초안 검토하러 가기 →</Link></p>}</div>
           <time dateTime={occurredAt} title={formatted.exact}>{formatted.relative}<span className="exact-time">{formatted.exact}</span></time>
           {item.state === 'retry-wait' && item.retryAt && <p>다시 시도 예정: {formatSeoulTimestamp(item.retryAt, now()).relative}</p>}
           {(item.unconfirmedMaximumCostMicros ?? 0) > 0 && <p>확인되지 않은 최대 비용 {displayCost(item.unconfirmedMaximumCostMicros ?? 0, data.krwPerUsd)}</p>}

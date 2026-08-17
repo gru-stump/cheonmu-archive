@@ -1,5 +1,5 @@
-import { BrowserRouter, NavLink, Route, Routes, useNavigate, useParams } from 'react-router-dom';
-import type { ReactNode } from 'react';
+import { BrowserRouter, NavLink, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom';
+import { useEffect, type ReactNode } from 'react';
 import { AuthGate, type AuthClient, useAdminSession } from '../auth/AuthGate';
 import { authClient, narrativeApi } from '../lib/supabase';
 import type { NarrativeApi } from '../api/narrativeApi';
@@ -18,6 +18,16 @@ const routes = [
   { path: '/schedules', label: '일정', title: '일정' },
   { path: '/settings', label: '설정', title: '설정' },
 ] as const;
+
+function DocumentTitle() {
+  const location = useLocation();
+  useEffect(() => {
+    const route = [...routes].sort((left, right) => right.path.length - left.path.length)
+      .find((candidate) => candidate.path === '/' ? location.pathname === '/' : location.pathname.startsWith(candidate.path));
+    document.title = `${route?.title ?? '천무'} · 천무 서사 편집실`;
+  }, [location]);
+  return null;
+}
 
 function DraftRoute({ api, readOnly }: { api: NarrativeApi; readOnly: boolean }) {
   const { draftId } = useParams();
@@ -47,6 +57,7 @@ export function AdminShell({ children, utility, notice }: { children: ReactNode;
 
 export function PrivateAdminRoutes({ api, readOnly = false, utility, notice }: { api: NarrativeApi; readOnly?: boolean; utility?: ReactNode; notice?: ReactNode }) {
   return <AdminShell utility={utility} notice={notice}>
+    <DocumentTitle />
     <Routes>
         <Route path="/" element={<TodayPage api={api} readOnly={readOnly} />} />
         <Route path="/drafts" element={<DraftListPage api={api} />} />

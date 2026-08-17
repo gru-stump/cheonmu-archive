@@ -1,6 +1,7 @@
 ﻿import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
+import { MemoryRouter } from 'react-router-dom';
 import { TodayPage } from './TodayPage';
 import { NarrativeApiError, type DashboardData, type NarrativeApi } from '../../api/narrativeApi';
 
@@ -22,7 +23,7 @@ describe('TodayPage plain-language owner flow', () => {
   it('explains generation state in Korean with exact Seoul timestamps and hides raw codes', async () => {
     const cancelGenerationJob = vi.fn().mockResolvedValue({ status: 'cancelled' });
     const api = { getDashboard: vi.fn().mockResolvedValue(baseDashboard), cancelGenerationJob } as unknown as NarrativeApi;
-    render(<TodayPage api={api} now={() => new Date('2026-08-16T13:20:00Z')} />);
+    render(<MemoryRouter><TodayPage api={api} now={() => new Date('2026-08-16T13:20:00Z')} /></MemoryRouter>);
 
     expect(await screen.findByRole('heading', { name: '이야기 생성 현황' })).toBeInTheDocument();
     expect(screen.getByText('이야기 생성 대기 중')).toBeInTheDocument();
@@ -47,7 +48,7 @@ describe('TodayPage plain-language owner flow', () => {
     const triggerAccess = vi.fn().mockResolvedValue({ id: 'access-job-1', scheduledFor: '2026-08-16T13:14:00Z', dispatchState: 'started' });
     const api = { getDashboard, estimateAccess, triggerAccess } as unknown as NarrativeApi;
     const user = userEvent.setup();
-    render(<TodayPage api={api} />);
+    render(<MemoryRouter><TodayPage api={api} /></MemoryRouter>);
 
     await user.click(await screen.findByRole('button', { name: '이야기 만들기' }));
     expect(await screen.findByRole('dialog', { name: '이야기 생성 비용 확인' })).toHaveTextContent('GPT-5 mini');
@@ -74,7 +75,7 @@ describe('TodayPage plain-language owner flow', () => {
       triggerAccess: vi.fn().mockRejectedValue(new NarrativeApiError(409, code)),
     } as unknown as NarrativeApi;
     const user = userEvent.setup();
-    render(<TodayPage api={api} />);
+    render(<MemoryRouter><TodayPage api={api} /></MemoryRouter>);
 
     await user.click(await screen.findByRole('button', { name: '이야기 만들기' }));
     await user.click(await screen.findByRole('button', { name: '최대 6원으로 만들기' }));
@@ -99,7 +100,7 @@ describe('TodayPage plain-language owner flow', () => {
       }),
     } as unknown as NarrativeApi;
 
-    render(<TodayPage api={client} />);
+    render(<MemoryRouter><TodayPage api={client} /></MemoryRouter>);
 
     expect(await screen.findByRole('region', { name: '오늘 사용' })).toHaveTextContent('확정 사용0원');
     expect(screen.getByRole('region', { name: '확인되지 않은 최대 비용' })).toHaveTextContent('8원');
