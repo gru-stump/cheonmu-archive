@@ -14,7 +14,8 @@ function signedOutClient(): AuthClient {
     auth: {
       getSession: vi.fn().mockResolvedValue({ data: { session: null }, error: null }),
       onAuthStateChange: vi.fn().mockReturnValue({ data: { subscription: { unsubscribe: vi.fn() } } }),
-      signInWithOtp: vi.fn(),
+      signInWithPassword: vi.fn(),
+      updateUser: vi.fn(),
       signOut: vi.fn(),
     },
     ownerProfiles: { findByOwnerId: vi.fn() },
@@ -26,7 +27,8 @@ function ownerClient(): AuthClient {
     auth: {
       getSession: vi.fn().mockResolvedValue({ data: { session: { user: { id: 'owner-1', email: 'owner@example.test' } } }, error: null }),
       onAuthStateChange: vi.fn().mockReturnValue({ data: { subscription: { unsubscribe: vi.fn() } } }),
-      signInWithOtp: vi.fn(),
+      signInWithPassword: vi.fn(),
+      updateUser: vi.fn().mockResolvedValue({ error: null }),
       signOut: vi.fn().mockResolvedValue({ error: null }),
     },
     ownerProfiles: { findByOwnerId: vi.fn().mockResolvedValue({ data: { owner_id: 'owner-1' }, error: null }) },
@@ -106,6 +108,59 @@ describe('AdminApp local preview composition', () => {
     const signOut = await screen.findByRole('button', { name: '로그아웃' });
     expect(signOut.closest('.admin-shell__utility')).not.toBeNull();
     expect(signOut.closest('.admin-shell')).not.toBeNull();
+  });
+
+  it('lets the signed-in owner replace a temporary password', async () => {
+    const client = ownerClient();
+    render(<AdminApp client={client} api={previewApi()} />);
+
+    await userEvent.click(await screen.findByRole('button', { name: '비밀번호 변경' }));
+    await userEvent.type(screen.getByLabelText('새 비밀번호'), 'new-secure-password');
+    await userEvent.type(screen.getByLabelText('새 비밀번호 확인'), 'new-secure-password');
+    await userEvent.click(screen.getByRole('button', { name: '비밀번호 저장' }));
+
+    expect(await screen.findByRole('status')).toHaveTextContent('비밀번호를 변경했습니다.');
+    expect(client.auth.updateUser).toHaveBeenCalledWith({ password: 'new-secure-password' });
+  });
+
+  it('does not submit two different new passwords', async () => {
+    const client = ownerClient();
+    render(<AdminApp client={client} api={previewApi()} />);
+
+    await userEvent.click(await screen.findByRole('button', { name: '비밀번호 변경' }));
+    await userEvent.type(screen.getByLabelText('새 비밀번호'), 'new-secure-password');
+    await userEvent.type(screen.getByLabelText('새 비밀번호 확인'), 'different-password');
+    await userEvent.click(screen.getByRole('button', { name: '비밀번호 저장' }));
+
+    expect(await screen.findByRole('status')).toHaveTextContent('새 비밀번호가 서로 다릅니다.');
+    expect(client.auth.updateUser).not.toHaveBeenCalled();
+  });
+
+  it('explains a rejected password change without clearing the form', async () => {
+    const client = ownerClient();
+    client.auth.updateUser = vi.fn().mockResolvedValue({ error: { message: 'password rejected' } });
+    render(<AdminApp client={client} api={previewApi()} />);
+
+    await userEvent.click(await screen.findByRole('button', { name: '비밀번호 변경' }));
+    await userEvent.type(screen.getByLabelText('새 비밀번호'), 'new-secure-password');
+    await userEvent.type(screen.getByLabelText('새 비밀번호 확인'), 'new-secure-password');
+    await userEvent.click(screen.getByRole('button', { name: '비밀번호 저장' }));
+
+    expect(await screen.findByRole('status')).toHaveTextContent('비밀번호를 변경하지 못했습니다. 잠시 후 다시 시도해 주세요.');
+    expect(screen.getByLabelText('새 비밀번호')).toHaveValue('new-secure-password');
+  });
+
+  it('keeps the password form usable when the password request cannot reach the server', async () => {
+    const client = ownerClient();
+    client.auth.updateUser = vi.fn().mockRejectedValue(new Error('network unavailable'));
+    render(<AdminApp client={client} api={previewApi()} />);
+
+    await userEvent.click(await screen.findByRole('button', { name: '비밀번호 변경' }));
+    await userEvent.type(screen.getByLabelText('새 비밀번호'), 'new-secure-password');
+    await userEvent.type(screen.getByLabelText('새 비밀번호 확인'), 'new-secure-password');
+    await userEvent.click(screen.getByRole('button', { name: '비밀번호 저장' }));
+
+    expect(await screen.findByRole('status')).toHaveTextContent('비밀번호를 변경하지 못했습니다. 잠시 후 다시 시도해 주세요.');
   });
 
   it('returns a rejected review to the rejected list with a clear feedback confirmation', async () => {

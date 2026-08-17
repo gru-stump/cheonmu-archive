@@ -15,7 +15,8 @@ export const authClient: AuthClient = {
   auth: {
     getSession: () => supabase.auth.getSession(),
     onAuthStateChange: (callback) => supabase.auth.onAuthStateChange(callback),
-    signInWithOtp: (input) => supabase.auth.signInWithOtp(input),
+    signInWithPassword: (input) => supabase.auth.signInWithPassword(input),
+    updateUser: (input) => supabase.auth.updateUser(input),
     signOut: () => supabase.auth.signOut(),
   },
   ownerProfiles: {

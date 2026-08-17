@@ -20,7 +20,7 @@ body { margin: 0; min-width: 320px; background: var(--admin-paper); font-family:
 .admin-shell__nav a:hover{ background: rgb(255 253 248 / 6%); color: #fffdf8; }
 .admin-shell__nav a[aria-current='page']{ border-left-color: #c87773; background: rgb(112 45 43 / 32%); color: #fff; }
 .admin-shell__utility{ display: grid; gap: .75rem; margin-top: auto; padding: 1.25rem 1rem; border-top: 1px solid rgb(255 253 248 / 18%); }
-.admin-shell__signout{ border-color: #766d65 !important; background: transparent !important; color: #eee6d8 !important; }
+.admin-shell__signout, .admin-shell__account{ border-color: #766d65 !important; background: transparent !important; color: #eee6d8 !important; }
 .admin-shell__utility a{ color: #ddd4c8; font-size: .78rem; text-underline-offset: .2em; }
 .admin-shell__main{ width: min(calc(100% - 15.5rem), 72rem); margin-left: max(15.5rem, calc((100% - 15.5rem - 72rem) / 2 + 15.5rem)); padding: 3.5rem clamp(2rem, 4vw, 4.5rem) 5rem; }
 
@@ -208,6 +208,9 @@ body { margin: 0; min-width: 320px; background: var(--admin-paper); font-family:
 }
 
 @media (max-width: 600px) {
+  .admin-shell__brand{ padding-right: 12rem; }
+  .admin-shell__brand span{ display: none; }
+  .admin-shell__utility button{ padding-inline: .55rem; font-size: .75rem; }
   .admin-shell__utility .admin-status-badge{ max-width: 8rem; overflow: hidden; text-overflow: ellipsis; }
   .admin-shell__utility .admin-status-badge + .admin-status-badge{ display: none; }
   .admin-shell__main{ padding: 1.5rem 1rem 5rem; overflow: clip; }

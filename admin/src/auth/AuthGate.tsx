@@ -11,7 +11,8 @@ export interface AuthClient {
     onAuthStateChange(callback: (event: string, session: AuthSession | null) => void): {
       data: { subscription: { unsubscribe(): void } };
     };
-    signInWithOtp(input: { email: string; options: { emailRedirectTo: string } }): Promise<{ error: { message?: string } | null }>;
+    signInWithPassword(input: { email: string; password: string }): Promise<{ error: { message?: string } | null }>;
+    updateUser(input: { password: string }): Promise<{ error: { message?: string } | null }>;
     signOut(): Promise<{ error: unknown }>;
   };
   ownerProfiles: {
@@ -24,11 +25,12 @@ type GateState =
   | { kind: 'checking-owner' }
   | { kind: 'signed-out' }
   | { kind: 'not-owner' }
-  | { kind: 'owner' };
+  | { kind: 'owner'; email?: string | null };
 
 interface AdminSessionUtility {
   email?: string | null;
   signOut(): Promise<void>;
+  changePassword(password: string): Promise<boolean>;
 }
 
 const AdminSessionContext = createContext<AdminSessionUtility | null>(null);
@@ -38,6 +40,7 @@ export const useAdminSession = () => useContext(AdminSessionContext);
 export function AuthGate({ client, children }: { client: AuthClient; children: ReactNode }) {
   const [state, setState] = useState<GateState>({ kind: 'checking-session' });
   const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [message, setMessage] = useState<string | null>(null);
 
   useEffect(() => {
@@ -56,7 +59,7 @@ export function AuthGate({ client, children }: { client: AuthClient; children: R
       try {
         const membership = await client.ownerProfiles.findByOwnerId(session.user.id);
         if (!active || version !== sessionVersion) return;
-        setState(membership.error || membership.data?.owner_id !== session.user.id ? { kind: 'not-owner' } : { kind: 'owner' });
+        setState(membership.error || membership.data?.owner_id !== session.user.id ? { kind: 'not-owner' } : { kind: 'owner', email: session.user.email });
       } catch {
         if (active && version === sessionVersion) setState({ kind: 'not-owner' });
       }
@@ -69,11 +72,23 @@ export function AuthGate({ client, children }: { client: AuthClient; children: R
     return () => { active = false; subscription.unsubscribe(); };
   }, [client]);
 
-  const sendMagicLink = async (event: FormEvent<HTMLFormElement>) => {
+  const signIn = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setMessage(null);
-    const result = await client.auth.signInWithOtp({ email, options: { emailRedirectTo: window.location.origin } });
-    setMessage(result.error ? '로그인 링크를 보내지 못했습니다. 잠시 후 다시 시도해 주세요.' : '로그인 링크를 이메일로 보냈습니다.');
+    try {
+      const result = await client.auth.signInWithPassword({ email: email.trim(), password });
+      if (result.error) setMessage('이메일 또는 비밀번호가 맞지 않습니다.');
+    } catch {
+      setMessage('로그인 서버에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요.');
+    }
+  };
+
+  const changePassword = async (nextPassword: string) => {
+    try {
+      return !(await client.auth.updateUser({ password: nextPassword })).error;
+    } catch {
+      return false;
+    }
   };
 
   const signOut = async () => {
@@ -83,7 +98,7 @@ export function AuthGate({ client, children }: { client: AuthClient; children: R
   };
 
   if (state.kind === 'owner') {
-    return <AdminSessionContext.Provider value={{ email: undefined, signOut }}>{children}</AdminSessionContext.Provider>;
+    return <AdminSessionContext.Provider value={{ email: state.email, signOut, changePassword }}>{children}</AdminSessionContext.Provider>;
   }
   if (state.kind === 'checking-session' || state.kind === 'checking-owner') {
     return <main className="auth-screen" aria-live="polite"><p>{state.kind === 'checking-owner' ? '권한을 확인하고 있습니다.' : '로그인 상태를 확인하고 있습니다.'}</p></main>;
@@ -94,11 +109,13 @@ export function AuthGate({ client, children }: { client: AuthClient; children: R
   return (
     <main className="auth-screen">
       <h1>천무 서사 관리</h1>
-      <p>등록된 소유자 이메일로 로그인 링크를 받으세요.</p>
-      <form onSubmit={sendMagicLink}>
+      <p>등록된 소유자 이메일과 비밀번호로 로그인하세요.</p>
+      <form onSubmit={signIn}>
         <label htmlFor="owner-email">이메일</label>
         <input id="owner-email" type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} required />
-        <button type="submit">로그인 링크 받기</button>
+        <label htmlFor="owner-password">비밀번호</label>
+        <input id="owner-password" type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} required />
+        <button type="submit">로그인</button>
       </form>
       {message && <p role="status">{message}</p>}
     </main>

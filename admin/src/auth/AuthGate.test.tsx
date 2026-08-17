@@ -19,15 +19,17 @@ function createClient(options: {
   session?: AuthSession | null;
   owner?: { owner_id: string } | null;
   ownerPromise?: Promise<{ data: { owner_id: string } | null; error: null }>;
-} = {}): AuthClient & { auth: AuthClient['auth'] & { signInWithOtp: ReturnType<typeof vi.fn>; signOut: ReturnType<typeof vi.fn> }; emitAuth(session: AuthSession | null): void } {
-  const signInWithOtp = vi.fn().mockResolvedValue({ error: null });
+} = {}): AuthClient & { auth: AuthClient['auth'] & { signInWithPassword: ReturnType<typeof vi.fn>; updateUser: ReturnType<typeof vi.fn>; signOut: ReturnType<typeof vi.fn> }; emitAuth(session: AuthSession | null): void } {
+  const signInWithPassword = vi.fn().mockResolvedValue({ error: null });
+  const updateUser = vi.fn().mockResolvedValue({ error: null });
   const signOut = vi.fn().mockResolvedValue({ error: null });
   let authListener: ((event: string, session: AuthSession | null) => void) | undefined;
   return {
     auth: {
       getSession: vi.fn().mockResolvedValue({ data: { session: options.session ?? null }, error: null }),
       onAuthStateChange: vi.fn().mockImplementation((listener) => { authListener = listener; return { data: { subscription: { unsubscribe: vi.fn() } } }; }),
-      signInWithOtp,
+      signInWithPassword,
+      updateUser,
       signOut,
     },
     ownerProfiles: {
@@ -40,20 +42,46 @@ function createClient(options: {
 describe('AuthGate', () => {
   afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
-  it('hides private content and offers an email magic link when signed out', async () => {
+  it('hides private content and signs in with an email and password', async () => {
     const client = createClient();
 
     render(<AuthGate client={client}><p>비공개 초안</p></AuthGate>);
 
     expect(screen.queryByText('비공개 초안')).not.toBeInTheDocument();
-    expect(await screen.findByRole('button', { name: '로그인 링크 받기' })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: '로그인' })).toBeInTheDocument();
 
     await userEvent.type(screen.getByLabelText('이메일'), 'owner@example.com');
-    await userEvent.click(screen.getByRole('button', { name: '로그인 링크 받기' }));
-    expect(client.auth.signInWithOtp).toHaveBeenCalledWith({
+    await userEvent.type(screen.getByLabelText('비밀번호'), 'a-secure-password');
+    await userEvent.click(screen.getByRole('button', { name: '로그인' }));
+    expect(client.auth.signInWithPassword).toHaveBeenCalledWith({
       email: 'owner@example.com',
-      options: { emailRedirectTo: window.location.origin },
+      password: 'a-secure-password',
     });
+    expect(screen.queryByRole('button', { name: '로그인 링크 받기' })).not.toBeInTheDocument();
+  });
+
+  it('shows a plain Korean message when password login fails', async () => {
+    const client = createClient();
+    client.auth.signInWithPassword.mockResolvedValue({ error: { message: 'Invalid login credentials' } });
+
+    render(<AuthGate client={client}><p>비공개 초안</p></AuthGate>);
+    await userEvent.type(await screen.findByLabelText('이메일'), 'owner@example.com');
+    await userEvent.type(screen.getByLabelText('비밀번호'), 'wrong-password');
+    await userEvent.click(screen.getByRole('button', { name: '로그인' }));
+
+    expect(await screen.findByRole('status')).toHaveTextContent('이메일 또는 비밀번호가 맞지 않습니다.');
+  });
+
+  it('shows the same safe message when the login request cannot reach the server', async () => {
+    const client = createClient();
+    client.auth.signInWithPassword.mockRejectedValue(new Error('network unavailable'));
+
+    render(<AuthGate client={client}><p>비공개 초안</p></AuthGate>);
+    await userEvent.type(await screen.findByLabelText('이메일'), 'owner@example.com');
+    await userEvent.type(screen.getByLabelText('비밀번호'), 'a-secure-password');
+    await userEvent.click(screen.getByRole('button', { name: '로그인' }));
+
+    expect(await screen.findByRole('status')).toHaveTextContent('로그인 서버에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요.');
   });
 
   it('does not render private content until the restored session owner membership resolves', async () => {
@@ -98,7 +126,7 @@ describe('AuthGate', () => {
     expect(await screen.findByText('권한을 확인하고 있습니다.')).toBeInTheDocument();
 
     await act(async () => client.emitAuth(null));
-    expect(await screen.findByRole('button', { name: '로그인 링크 받기' })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: '로그인' })).toBeInTheDocument();
     await act(async () => membership.resolve({ data: { owner_id: 'owner-1' }, error: null }));
     expect(screen.queryByText('비공개 초안')).not.toBeInTheDocument();
   });
@@ -112,7 +140,7 @@ describe('AuthGate', () => {
 
     await act(async () => client.emitAuth(null));
     await act(async () => membership.reject(new Error('network failed')));
-    expect(await screen.findByRole('button', { name: '로그인 링크 받기' })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: '로그인' })).toBeInTheDocument();
     expect(screen.queryByText('관리자 권한이 없습니다.')).not.toBeInTheDocument();
   });
 });
