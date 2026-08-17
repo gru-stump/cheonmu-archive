@@ -5,7 +5,7 @@ import { AdminNotice } from '../../components/AdminNotice';
 import { AdminPageHeader } from '../../components/AdminPageHeader';
 import { AdminSection } from '../../components/AdminSection';
 import { AdminStatusBadge } from '../../components/AdminStatusBadge';
-import { formatSeoulTimestamp } from '../../lib/narrativeDisplay';
+import { formatKrw, formatSeoulTimestamp, microsToKrw } from '../../lib/narrativeDisplay';
 
 type DialogKind = 'manual' | 'revision' | 'reject' | null;
 const seoulDate = (value: string) => formatSeoulTimestamp(value).exact;
@@ -116,7 +116,6 @@ export function DraftReviewPage({ api, draftId, readOnly = false, onRejected }: 
   const [manualText, setManualText] = useState('');
   const [selectedText, setSelectedText] = useState('');
   const [instruction, setInstruction] = useState('');
-  const [maxTokens, setMaxTokens] = useState(128);
   const [confirmedRevisionSignature, setConfirmedRevisionSignature] = useState<string | null>(null);
   const [reason, setReason] = useState('');
   const [message, setMessage] = useState<string | null>(null);
@@ -142,12 +141,14 @@ export function DraftReviewPage({ api, draftId, readOnly = false, onRejected }: 
   const blocked = version.continuityLevel === 'block';
   const reviewable = detail.status === 'generated' || detail.status === 'reviewing';
   const mobileActionDisclosure = typeof window !== 'undefined' && window.matchMedia?.('(max-width: 600px)').matches;
-  const estimatedRevisionCost = estimateRevisionCost(detail, maxTokens);
+  const revisionOutputTokens = detail.revisionPricing?.maximumRevisionOutputTokens ?? 0;
+  const estimatedRevisionCost = estimateRevisionCost(detail, revisionOutputTokens);
+  const estimatedRevisionCostKrw = microsToKrw(estimatedRevisionCost, detail.revisionPricing?.krwPerUsd ?? 0);
   const revisionSignature = JSON.stringify({
     versionId: detail.latestVersionId,
     selectedText,
     instruction,
-    maxTokens,
+    requestedMaxOutputTokens: revisionOutputTokens,
     estimatedMaximumCostMicros: estimatedRevisionCost,
   });
   const costConfirmed = confirmedRevisionSignature === revisionSignature;
@@ -171,11 +172,16 @@ export function DraftReviewPage({ api, draftId, readOnly = false, onRejected }: 
   const revise = async (event: FormEvent) => {
     event.preventDefault(); setMessage(null); setProblem(false); setStale(false);
     const estimated = estimatedRevisionCost;
-    if (!selectedText.trim() || !instruction.trim() || maxTokens < 1 || !costConfirmed) { setMessage('구절, 수정 지시, 최대 토큰과 비용 확인이 필요합니다.'); return; }
+    if (!selectedText.trim() || !instruction.trim() || revisionOutputTokens < 1 || !costConfirmed) { setMessage('구절, 수정 지시와 최대 비용 확인이 필요합니다.'); return; }
     try {
-      await api.generate({ draftId, expectedVersionId: detail.latestVersionId, expectedState: detail.status === 'generated' ? 'generated' : 'reviewing', mode: 'revise_selection', kind: detail.kind, revision: { selectedText, instruction }, requestedMaxOutputTokens: maxTokens, maximumCostConfirmed: true, confirmedMaximumCostMicros: estimated });
+      await api.generate({ draftId, expectedVersionId: detail.latestVersionId, expectedState: detail.status === 'generated' ? 'generated' : 'reviewing', mode: 'revise_selection', kind: detail.kind, revision: { selectedText, instruction }, requestedMaxOutputTokens: revisionOutputTokens, maximumCostConfirmed: true, confirmedMaximumCostMicros: estimated });
       closeDialog(); await load(); setMessage('부분 수정 결과를 새 버전으로 생성했습니다.');
-    } catch (error) { if (!handleConflict(error)) setMessage('부분 수정에 실패했습니다.'); }
+    } catch (error) {
+      if (error instanceof NarrativeApiError && error.code === 'provider_output_limit') {
+        setProblem(true);
+        setMessage('AI 답변 길이가 부족해 수정하지 못했습니다. 입력 내용은 유지했으니 다시 시도해 주세요.');
+      } else if (!handleConflict(error)) setMessage('부분 수정에 실패했습니다.');
+    }
   };
   const archive = async () => {
     if (!isArchiveSourceStatus(detail.status)) return;
@@ -230,7 +236,7 @@ export function DraftReviewPage({ api, draftId, readOnly = false, onRejected }: 
         </div></details>}
       </div>
       {dialog === 'manual' && <Modal title="직접 수정" onClose={() => closeDialog()}>{conflictRecovery}<form onSubmit={saveManual}><label htmlFor="manual-body">최종 본문</label><textarea id="manual-body" rows={12} value={manualText} onChange={(event) => setManualText(event.target.value)} required /><button type="submit">새 버전 저장</button></form></Modal>}
-      {dialog === 'revision' && <Modal title="부분 AI 수정" onClose={() => closeDialog()}>{conflictRecovery}<form onSubmit={revise}><label htmlFor="selected-text">선택한 구절</label><textarea id="selected-text" value={selectedText} onChange={(event) => { setSelectedText(event.target.value); setConfirmedRevisionSignature(null); }} required /><label htmlFor="revision-instruction">수정 지시</label><textarea id="revision-instruction" value={instruction} onChange={(event) => { setInstruction(event.target.value); setConfirmedRevisionSignature(null); }} required /><label htmlFor="max-tokens">최대 출력 토큰</label><input id="max-tokens" type="number" min="1" max={detail.revisionPricing?.maximumRevisionOutputTokens ?? 4096} value={maxTokens} onChange={(event) => { setMaxTokens(Number(event.target.value)); setConfirmedRevisionSignature(null); }} required /><p>예상 최대 비용: {estimatedRevisionCost.toLocaleString('en-US')} μUSD</p><label><input type="checkbox" checked={costConfirmed} onChange={(event) => setConfirmedRevisionSignature(event.target.checked ? revisionSignature : null)} /> 최대 비용을 확인했습니다</label><button type="submit">새 버전 생성</button></form></Modal>}
+      {dialog === 'revision' && <Modal title="부분 AI 수정" onClose={() => closeDialog()}>{conflictRecovery}<form onSubmit={revise}><label htmlFor="selected-text">선택한 구절</label><textarea id="selected-text" value={selectedText} onChange={(event) => { setSelectedText(event.target.value); setConfirmedRevisionSignature(null); }} required /><label htmlFor="revision-instruction">수정 지시</label><textarea id="revision-instruction" value={instruction} onChange={(event) => { setInstruction(event.target.value); setConfirmedRevisionSignature(null); }} required /><p>AI가 필요한 답변 길이는 모델에 맞게 자동으로 정합니다.</p><p>최대 예상 비용: {formatKrw(estimatedRevisionCostKrw)}</p><label><input type="checkbox" checked={costConfirmed} onChange={(event) => setConfirmedRevisionSignature(event.target.checked ? revisionSignature : null)} /> 최대 비용을 확인했습니다</label><button type="submit">새 버전 생성</button></form></Modal>}
       {dialog === 'reject' && <Modal title="거절" onClose={() => closeDialog()}>{conflictRecovery}<form onSubmit={(event) => { event.preventDefault(); void review('reject', reason); }}><label htmlFor="reject-reason">거절 사유</label><textarea id="reject-reason" value={reason} onChange={(event) => setReason(event.target.value)} required /><button type="submit">거절 확정</button></form></Modal>}
     </article>
   );

@@ -54,6 +54,7 @@ export interface DraftDetail extends Omit<DraftSummary, 'updatedAt' | 'continuit
     outputCostMicrosPerMillion: number;
     fixedCostMicros: number;
     maximumRevisionOutputTokens: number;
+    krwPerUsd: number;
   };
 }
 

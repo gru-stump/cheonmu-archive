@@ -11,6 +11,7 @@ const conflicts = new Set([
   'publication_in_progress', 'publication_queue_busy', 'publication_idempotency_mismatch',
   'publication_not_approved', 'publication_attempt_mismatch', 'publication_already_finalized', 'publication_not_configured',
 ]);
+const safeProviderFailures = new Set(['provider_output_limit']);
 
 function bearer(request: Request): string | null {
   const match = /^Bearer ([^\s]+)$/.exec(request.headers.get('authorization') ?? '');
@@ -139,7 +140,8 @@ export function createNarrativeHandler({ supabaseUrl, supabaseAnonKey, fetch = g
       if (!response.ok) {
         const message = typeof value.message === 'string' ? value.message : typeof value.error === 'string' ? value.error : 'upstream_error';
         const stable = conflicts.has(message) && (value.code === 'P0001' || response.status === 409);
-        throw { status: stable ? 409 : response.status === 401 || response.status === 403 ? response.status : response.status === 402 ? 402 : 500, code: stable ? message : response.status === 401 ? 'authentication_required' : response.status === 402 ? 'budget_blocked' : 'request_failed' };
+        const safeProviderFailure = safeProviderFailures.has(message);
+        throw { status: stable ? 409 : safeProviderFailure ? 502 : response.status === 401 || response.status === 403 ? response.status : response.status === 402 ? 402 : 500, code: stable || safeProviderFailure ? message : response.status === 401 ? 'authentication_required' : response.status === 402 ? 'budget_blocked' : 'request_failed' };
       }
       return value;
     };
@@ -217,13 +219,17 @@ export function createNarrativeHandler({ supabaseUrl, supabaseAnonKey, fetch = g
         const versions = rows.map(mapVersion); const latestVersion = versions[versions.length - 1]!;
         const settings = await upstream('/rest/v1/provider_settings?select=max_input_tokens,max_revision_output_tokens,input_cost_micros_per_million,output_cost_micros_per_million,fixed_cost_micros&enabled=eq.true') as unknown as Array<Record<string, unknown>>;
         const setting = settings.length === 1 ? settings[0] : undefined;
+        const adminSettings = setting ? await upstream('/rest/v1/narrative_admin_settings?select=krw_per_usd&limit=2') as unknown as Array<Record<string, unknown>> : [];
+        const krwPerUsd = adminSettings.length === 1 && typeof adminSettings[0]?.krw_per_usd === 'number' && Number.isFinite(adminSettings[0].krw_per_usd) && adminSettings[0].krw_per_usd > 0
+          ? adminSettings[0].krw_per_usd
+          : undefined;
         const publicationSelect = encodeURIComponent('id,draft_id,draft_version_id,status,repository_owner,repository_name,commit_sha,publication_phase,tracking_status,workflow_status,workflow_run_id,pages_status,pages_deployment_id,pages_url');
         const publicationRows = await upstream(`/rest/v1/publish_jobs?select=${publicationSelect}&draft_id=eq.${encodeURIComponent(path[1]!)}&draft_version_id=eq.${encodeURIComponent(String(latestVersion.id))}&limit=2`) as unknown as Array<Record<string, unknown>>;
         const publication = publicationRows.length === 1 ? mapPublication(publicationRows[0]) : undefined;
         const reviewRows = draft.status === 'rejected' ? await upstream(`/rest/v1/draft_review_actions?select=reason,created_at&draft_id=eq.${encodeURIComponent(path[1]!)}&draft_version_id=eq.${encodeURIComponent(String(latestVersion.id))}&action=eq.reject&order=created_at.desc&limit=1`) as unknown as Array<Record<string, unknown>> : [];
         const review = reviewRows[0];
         const rejection = review && typeof review.reason === 'string' && review.reason.trim() && typeof review.created_at === 'string' ? { reason: review.reason, createdAt: review.created_at } : undefined;
-        return json({ id: draft.id, kind: draft.kind, status: draft.status, title: draft.title, latestVersionId: latestVersion.id, latestVersion, versions, ...(rejection ? { rejection } : {}), ...(publication ? { publication } : {}), ...(setting ? { revisionPricing: { maximumInputTokens: setting.max_input_tokens, maximumRevisionOutputTokens: setting.max_revision_output_tokens, inputCostMicrosPerMillion: setting.input_cost_micros_per_million, outputCostMicrosPerMillion: setting.output_cost_micros_per_million, fixedCostMicros: setting.fixed_cost_micros } } : {}) });
+        return json({ id: draft.id, kind: draft.kind, status: draft.status, title: draft.title, latestVersionId: latestVersion.id, latestVersion, versions, ...(rejection ? { rejection } : {}), ...(publication ? { publication } : {}), ...(setting && krwPerUsd ? { revisionPricing: { maximumInputTokens: setting.max_input_tokens, maximumRevisionOutputTokens: setting.max_revision_output_tokens, inputCostMicrosPerMillion: setting.input_cost_micros_per_million, outputCostMicrosPerMillion: setting.output_cost_micros_per_million, fixedCostMicros: setting.fixed_cost_micros, krwPerUsd } } : {}) });
       }
       if (request.method === 'POST' && path.join('/') === 'generate') {
         const command = await body(); if (!command) return json({ error: 'invalid_command' }, 400);

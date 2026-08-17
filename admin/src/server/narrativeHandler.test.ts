@@ -187,6 +187,35 @@ describe('same-origin narrative server boundary', () => {
     });
   });
 
+  it('returns the owner exchange rate with safe revision pricing', async () => {
+    const fetch: typeof globalThis.fetch = vi.fn(async (input) => {
+      const url = new URL(String(input));
+      if (url.pathname === '/auth/v1/user') return Response.json({ id: 'owner-1' });
+      if (url.pathname === '/rest/v1/owner_profiles') return Response.json([{ owner_id: 'owner-1' }]);
+      if (url.pathname === '/rest/v1/drafts') return Response.json([{ id: 'draft-1', kind: 'short_dialogue', status: 'reviewing', title: '수정할 초안' }]);
+      if (url.pathname === '/rest/v1/draft_versions') return Response.json([{ id: 'version-1', version_number: 1, created_at: '2026-08-17T01:20:00Z', content: { title: '수정할 초안', body: '본문', canonChangeCandidates: [] }, context_version_ids: [], continuity_level: 'review', continuity_findings: [] }]);
+      if (url.pathname === '/rest/v1/provider_settings') return Response.json([{ max_input_tokens: 4000, max_revision_output_tokens: 2000, input_cost_micros_per_million: 250000, output_cost_micros_per_million: 2000000, fixed_cost_micros: 0 }]);
+      if (url.pathname === '/rest/v1/narrative_admin_settings') return Response.json([{ krw_per_usd: 1380 }]);
+      if (url.pathname === '/rest/v1/publish_jobs') return Response.json([]);
+      return Response.json({ error: 'unexpected_request' }, { status: 500 });
+    });
+    const handler = createNarrativeHandler({ supabaseUrl: 'https://db.example.test', supabaseAnonKey: 'anon', fetch });
+
+    const response = await handler(new Request('https://admin.example.test/api/narrative/drafts/draft-1', { headers: { authorization: 'Bearer owner-token' } }));
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      revisionPricing: {
+        maximumInputTokens: 4000,
+        maximumRevisionOutputTokens: 2000,
+        inputCostMicrosPerMillion: 250000,
+        outputCostMicrosPerMillion: 2000000,
+        fixedCostMicros: 0,
+        krwPerUsd: 1380,
+      },
+    });
+  });
+
   it('submits generated latest version before invoking guarded review', async () => {
     const calls: Array<{ path: string; body: Record<string, unknown> }> = [];
     const fetch: typeof globalThis.fetch = vi.fn(async (input, init) => {
@@ -263,6 +292,31 @@ describe('same-origin narrative server boundary', () => {
       jobId: 'job-3', idempotencyKey: 'revision-key', draftId: 'draft-1', mode: 'revise_selection', kind: 'short_dialogue',
       revision: { selectedText: 'database selection', instruction: 'database instruction' }, requestedMaxOutputTokens: 80,
     } });
+  });
+
+  it('preserves the safe provider output-limit code for a useful revision error', async () => {
+    const fetch: typeof globalThis.fetch = vi.fn(async (input) => {
+      const path = new URL(String(input)).pathname;
+      if (path === '/auth/v1/user') return Response.json({ id: 'owner-1' });
+      if (path === '/rest/v1/owner_profiles') return Response.json([{ owner_id: 'owner-1' }]);
+      if (path.endsWith('/queue_draft_revision')) return Response.json({
+        job_id: 'job-3', idempotency_key: 'revision-key', draft_id: 'draft-1', mode: 'revise_selection', kind: 'short_dialogue',
+        revision: { selectedText: 'database selection', instruction: 'database instruction' }, requested_max_output_tokens: 2000,
+      });
+      return Response.json({ error: 'provider_output_limit' }, { status: 502 });
+    });
+    const handler = createNarrativeHandler({ supabaseUrl: 'https://db.example.test', supabaseAnonKey: 'anon', fetch });
+    const response = await handler(new Request('https://admin.example.test/api/narrative/generate', {
+      method: 'POST', headers: { authorization: 'Bearer owner-token', 'content-type': 'application/json' },
+      body: JSON.stringify({
+        draftId: 'draft-1', expectedVersionId: 'version-2', mode: 'revise_selection', kind: 'short_dialogue',
+        revision: { selectedText: '선택 구절', instruction: '말투 수정' }, requestedMaxOutputTokens: 2000,
+        maximumCostConfirmed: true, confirmedMaximumCostMicros: 5000,
+      }),
+    }));
+
+    expect(response.status).toBe(502);
+    await expect(response.json()).resolves.toEqual({ error: 'provider_output_limit' });
   });
 
   it('fails closed when the revision queue RPC omits canonical request content', async () => {

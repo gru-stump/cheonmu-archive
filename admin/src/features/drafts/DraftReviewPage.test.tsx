@@ -28,6 +28,14 @@ const detail: DraftDetail = {
     { id: 'version-1', versionNumber: 1, createdAt: '2026-08-15T02:00:00.000Z', content: { title: '초안', body: '이전 본문', canonChangeCandidates: [] }, contextVersionIds: ['canon-v7'], continuityLevel: 'review', continuityFindings: [] },
     { id: 'version-2', versionNumber: 2, createdAt: '2026-08-15T03:00:00.000Z', content: { title: '빗소리 아래', body: '천령은 처마 아래에 섰다.\n무영은 말없이 우산을 기울였다.', canonChangeCandidates: ['두 사람이 우산을 함께 씀'] }, contextVersionIds: ['canon-v7', 'memory-v3'], continuityLevel: 'review', continuityFindings: [{ code: 'voice_check', level: 'review', message: '호칭 확인 필요', sourceIds: ['canon-v7'] }] },
   ],
+  revisionPricing: {
+    maximumInputTokens: 4_000,
+    maximumRevisionOutputTokens: 2_000,
+    inputCostMicrosPerMillion: 250_000,
+    outputCostMicrosPerMillion: 2_000_000,
+    fixedCostMicros: 0,
+    krwPerUsd: 1_380,
+  },
 };
 
 function api(overrides: Partial<NarrativeApi> = {}): NarrativeApi {
@@ -138,7 +146,7 @@ describe('DraftReviewPage', () => {
     const generate = vi.fn().mockRejectedValue(new NarrativeApiError(409, 'stale_revision'));
     const getDraft = vi.fn()
       .mockResolvedValueOnce(detail)
-      .mockResolvedValueOnce({ ...detail, revisionPricing: { maximumInputTokens: 2048, inputCostMicrosPerMillion: 10, outputCostMicrosPerMillion: 20, fixedCostMicros: 30, maximumRevisionOutputTokens: 512 } });
+      .mockResolvedValueOnce({ ...detail, revisionPricing: { maximumInputTokens: 2048, inputCostMicrosPerMillion: 10, outputCostMicrosPerMillion: 20, fixedCostMicros: 30, maximumRevisionOutputTokens: 512, krwPerUsd: 1_380 } });
     const user = userEvent.setup();
     render(<DraftReviewPage api={api({ getDraft, generate })} draftId="draft-1" />);
     await screen.findByRole('heading', { name: '빗소리 아래' });
@@ -189,16 +197,16 @@ describe('DraftReviewPage', () => {
     const dialog = screen.getByRole('dialog', { name: '부분 AI 수정' });
     await user.type(within(dialog).getByLabelText('선택한 구절'), '무영은 말없이 우산을 기울였다.');
     await user.type(within(dialog).getByLabelText('수정 지시'), '조금 더 다정한 말투로');
-    await user.clear(within(dialog).getByLabelText('최대 출력 토큰'));
-    await user.type(within(dialog).getByLabelText('최대 출력 토큰'), '128');
-    expect(within(dialog).getByText(/예상 최대 비용.*μUSD/)).toBeInTheDocument();
+    expect(within(dialog).queryByLabelText('최대 출력 토큰')).not.toBeInTheDocument();
+    expect(within(dialog).getByText('AI가 필요한 답변 길이는 모델에 맞게 자동으로 정합니다.')).toBeInTheDocument();
+    expect(within(dialog).getByText('최대 예상 비용: 7원')).toBeInTheDocument();
     await user.click(within(dialog).getByRole('checkbox', { name: /최대 비용을 확인했습니다/ }));
     await user.click(within(dialog).getByRole('button', { name: '새 버전 생성' }));
 
     expect(generate).toHaveBeenCalledWith(expect.objectContaining({
       draftId: 'draft-1', expectedVersionId: 'version-2', mode: 'revise_selection',
       revision: { selectedText: '무영은 말없이 우산을 기울였다.', instruction: '조금 더 다정한 말투로' },
-      requestedMaxOutputTokens: 128,
+      requestedMaxOutputTokens: 2000,
       maximumCostConfirmed: true,
     }));
     await user.click(screen.getByRole('button', { name: '부분 AI 수정' }));
@@ -227,14 +235,28 @@ describe('DraftReviewPage', () => {
     await user.type(instruction, ' 추가');
     expect(confirmation).not.toBeChecked();
     await user.click(confirmation);
-    await user.clear(within(dialog).getByLabelText('최대 출력 토큰'));
-    await user.type(within(dialog).getByLabelText('최대 출력 토큰'), '64');
-    expect(confirmation).not.toBeChecked();
-    await user.click(confirmation);
     await user.click(within(dialog).getByRole('button', { name: '닫기' }));
     await user.click(trigger);
     dialog = screen.getByRole('dialog', { name: '부분 AI 수정' });
     expect(within(dialog).getByRole('checkbox', { name: /최대 비용을 확인했습니다/ })).not.toBeChecked();
+  });
+
+  it('keeps revision inputs and explains an AI response-length failure in Korean', async () => {
+    const generate = vi.fn().mockRejectedValue(new NarrativeApiError(502, 'provider_output_limit'));
+    const user = userEvent.setup();
+    render(<DraftReviewPage api={api({ generate })} draftId="draft-1" />);
+    await screen.findByRole('heading', { name: '빗소리 아래' });
+
+    await user.click(screen.getByRole('button', { name: '부분 AI 수정' }));
+    const dialog = screen.getByRole('dialog', { name: '부분 AI 수정' });
+    await user.type(within(dialog).getByLabelText('선택한 구절'), '남겨 둘 선택 구절');
+    await user.type(within(dialog).getByLabelText('수정 지시'), '조금 더 자연스럽게');
+    await user.click(within(dialog).getByRole('checkbox', { name: /최대 비용을 확인했습니다/ }));
+    await user.click(within(dialog).getByRole('button', { name: '새 버전 생성' }));
+
+    expect(within(dialog).getByRole('alert')).toHaveTextContent('AI 답변 길이가 부족해 수정하지 못했습니다. 입력 내용은 유지했으니 다시 시도해 주세요.');
+    expect(within(dialog).getByDisplayValue('남겨 둘 선택 구절')).toBeInTheDocument();
+    expect(within(dialog).getByDisplayValue('조금 더 자연스럽게')).toBeInTheDocument();
   });
 
   it('keeps freshly generated blocked latest versions inspectable and routes rejection through generated submission', async () => {
