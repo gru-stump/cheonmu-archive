@@ -33,7 +33,7 @@ export const providerCatalog: readonly ProviderCatalogEntry[] = [
     cost: 'low',
     recommended: true,
     maxInputTokens: 4_000,
-    maxOutputTokens: 4_000,
+    maxOutputTokens: 8_000,
     maxRevisionOutputTokens: 2_000,
     inputPriceMicrosPerMillion: 250_000,
     outputPriceMicrosPerMillion: 2_000_000,

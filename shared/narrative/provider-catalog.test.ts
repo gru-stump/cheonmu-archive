@@ -21,6 +21,7 @@ describe('provider catalog', () => {
 
   it('uses the hand-checked official GPT-5 mini prices and verification date', () => {
     expect(providerCatalog.find((item) => item.id === 'gpt-5-mini')).toMatchObject({
+      maxOutputTokens: 8_000,
       inputPriceMicrosPerMillion: 250_000,
       outputPriceMicrosPerMillion: 2_000_000,
       verifiedAt: '2026-08-16',
@@ -30,6 +31,6 @@ describe('provider catalog', () => {
   it('calculates the maximum charge from catalog token caps and prices', () => {
     const model = providerCatalog.find((item) => item.id === 'gpt-5-mini');
     expect(model).toBeDefined();
-    expect(estimateMaximumGenerationMicros(model!)).toBe(9_000);
+    expect(estimateMaximumGenerationMicros(model!)).toBe(17_000);
   });
 });
