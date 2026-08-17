@@ -86,7 +86,7 @@ export function AuthGate({ client, children }: { client: AuthClient; children: R
     return <AdminSessionContext.Provider value={{ email: undefined, signOut }}>{children}</AdminSessionContext.Provider>;
   }
   if (state.kind === 'checking-session' || state.kind === 'checking-owner') {
-    return <main className="auth-screen" aria-live="polite"><p>{state.kind === 'checking-owner' ? '권한을 확인하고 있습니다.' : '세션을 확인하고 있습니다.'}</p></main>;
+    return <main className="auth-screen" aria-live="polite"><p>{state.kind === 'checking-owner' ? '권한을 확인하고 있습니다.' : '로그인 상태를 확인하고 있습니다.'}</p></main>;
   }
   if (state.kind === 'not-owner') {
     return <main className="auth-screen"><h1>관리자 권한이 없습니다.</h1><p>등록된 소유자 계정으로 로그인해 주세요.</p><button type="button" onClick={signOut}>로그아웃</button></main>;

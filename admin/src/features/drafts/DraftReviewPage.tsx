@@ -5,27 +5,26 @@ import { AdminNotice } from '../../components/AdminNotice';
 import { AdminPageHeader } from '../../components/AdminPageHeader';
 import { AdminSection } from '../../components/AdminSection';
 import { AdminStatusBadge } from '../../components/AdminStatusBadge';
-import { formatKrw, formatSeoulTimestamp, microsToKrw } from '../../lib/narrativeDisplay';
+import { draftStatusGuides, draftStatusLabels, draftStatusTone, formatKrw, formatSeoulTimestamp, microsToKrw } from '../../lib/narrativeDisplay';
 
-type DialogKind = 'manual' | 'revision' | 'reject' | null;
+type DialogKind = 'manual' | 'revision' | 'reject' | 'approve-public' | null;
 const seoulDate = (value: string) => formatSeoulTimestamp(value).exact;
 const kindLabels: Record<string, string> = {
   short_dialogue: '짧은 대화', daily_event: '일상 사건', major_event_proposal: '큰 사건 제안',
-};
-const statusLabels: Record<string, string> = {
-  queued: '대기 중', generating: '만드는 중', generated: '검토 필요', reviewing: '검토 중',
-  rejected: '거절됨', archived: '보관됨', approved_private: '비공개 승인', approved: '게시 승인',
-  publishing: '게시 중', published: '공개 완료', publish_failed: '게시 실패',
 };
 const continuityLabels: Record<string, string> = {
   pass: '문제 없음', review: '확인 필요', block: '승인 불가',
 };
 const staleConflictCodes = new Set(['stale_review', 'stale_review_submission', 'stale_manual_version', 'stale_revision', 'stale_archive', 'stale_publish_retry', 'stale_restore', 'stale_reopen']);
 const operationalConflictMessages: Record<string, string> = {
-  stale_provider_pricing: '제공자 단가 확인일이 만료되었습니다. 설정에서 단가를 다시 확인해 주세요.',
-  automation_disabled: '자동 생성이 꺼져 있습니다. 설정에서 자동 생성을 켜 주세요.',
-  active_provider_setting_required: '활성 제공자 설정이 필요합니다. 설정에서 제공자를 선택해 주세요.',
-  revision_cost_changed: '예상 비용이 변경되었습니다. 현재 단가로 다시 확인해 주세요.',
+  stale_provider_pricing: 'AI 요금 정보가 오래되었습니다. 설정에서 모델 정보를 다시 불러와 저장해 주세요.',
+  automation_disabled: '자동 만들기가 꺼져 있습니다. 설정에서 켜 주세요.',
+  active_provider_setting_required: '사용할 AI 모델이 선택되지 않았습니다. 설정에서 모델을 선택해 주세요.',
+  revision_cost_changed: '예상 비용이 바뀌었습니다. 다시 확인한 뒤 시도해 주세요.',
+  duplicate_review: '이미 검토가 끝난 초안입니다. 새로 불러온 뒤 확인해 주세요.',
+  publication_in_progress: '이미 게시가 진행 중입니다. 잠시 후 상태를 새로 불러와 확인해 주세요.',
+  publication_queue_busy: '다른 게시 작업이 진행 중입니다. 끝난 뒤 다시 시도해 주세요.',
+  publication_not_configured: '게시에 필요한 GitHub 연결이 없습니다. 설정에서 GitHub 키를 저장해 주세요.',
 };
 
 function Modal({ title, onClose, children }: { title: string; onClose(): void; children: ReactNode }) {
@@ -158,7 +157,12 @@ export function DraftReviewPage({ api, draftId, readOnly = false, onRejected }: 
       const result = await api.review({ draftId, expectedVersionId: detail.latestVersionId, expectedState: detail.status === 'generated' ? 'generated' : 'reviewing', action, ...(reviewReason ? { reason: reviewReason } : {}) });
       setDetail({ ...detail, status: result.status, ...(action === 'reject' && reviewReason ? { rejection: { reason: reviewReason, createdAt: new Date().toISOString() } } : {}) });
       if (action === 'reject' && reviewReason) { closeDialog(true); onRejected?.(reviewReason); return; }
-      setMessage('검토 결과를 저장했습니다.'); closeDialog(true);
+      setMessage(action === 'approve_public'
+        ? '승인했습니다. 곧 게시가 시작되며, 진행 상황은 게시 진행 상태에서 확인할 수 있습니다.'
+        : action === 'approve_private'
+          ? '비공개로 승인했습니다. 사이트에는 올라가지 않고 이야기 기억에 반영됩니다.'
+          : '검토 결과를 저장했습니다.');
+      closeDialog(true);
     } catch (error) { if (!handleConflict(error)) setMessage('요청을 처리하지 못했습니다.'); }
   };
   const saveManual = async (event: FormEvent) => {
@@ -192,7 +196,7 @@ export function DraftReviewPage({ api, draftId, readOnly = false, onRejected }: 
   const restore = async () => {
     if (detail.status !== 'archived') return;
     setMessage(null); setProblem(false); setStale(false);
-    try { const result = await api.restore({ draftId, expectedVersionId: detail.latestVersionId }); setDetail({ ...detail, status: result.status }); setMessage(`초안을 ${result.status} 상태로 복원했습니다.`); }
+    try { const result = await api.restore({ draftId, expectedVersionId: detail.latestVersionId }); setDetail({ ...detail, status: result.status }); setMessage(`초안을 '${draftStatusLabels[result.status] ?? result.status}' 상태로 복원했습니다.`); }
     catch (error) { if (!handleConflict(error)) { setProblem(true); setMessage('초안을 복원하지 못했습니다.'); } }
   };
   const reopenRejected = async () => {
@@ -218,7 +222,7 @@ export function DraftReviewPage({ api, draftId, readOnly = false, onRejected }: 
 
   return (
     <article className="draft-review">
-      <AdminPageHeader eyebrow={kindLabels[detail.kind] ?? '이야기'} title={detail.title} description="이야기를 읽고 이어짐 문제가 없는지 확인한 뒤 승인합니다." action={<AdminStatusBadge tone={detail.status === 'rejected' || blocked ? 'danger' : detail.status === 'approved_private' ? 'plum' : 'green'}>{statusLabels[detail.status] ?? '상태 확인 필요'}</AdminStatusBadge>} />
+      <AdminPageHeader eyebrow={kindLabels[detail.kind] ?? '이야기'} title={detail.title} description={draftStatusGuides[detail.status] ?? '이야기를 읽고 이어짐 문제가 없는지 확인한 뒤 승인합니다.'} action={<AdminStatusBadge tone={blocked ? 'danger' : draftStatusTone(detail.status)}>{draftStatusLabels[detail.status] ?? '상태 확인 필요'}</AdminStatusBadge>} />
       {detail.status === 'rejected' && <AdminNotice tone="info"><strong>거절 완료</strong> · 거절 사유가 다음 생성의 수정 지침에 반영됐습니다.{detail.rejection && <><p>{detail.rejection.reason}</p><time dateTime={detail.rejection.createdAt}>거절 {seoulDate(detail.rejection.createdAt)}</time></>}</AdminNotice>}
       {blocked && detail.status !== 'rejected' && <AdminNotice tone="danger"><strong>차단된 버전</strong> · {reviewable ? '이 버전은 사유를 남겨 거절만 할 수 있습니다.' : '검토가 종료되어 추가 작업을 할 수 없습니다.'}</AdminNotice>}
       {!dialog && message && <AdminNotice tone={stale || problem ? 'danger' : 'success'}>{message}</AdminNotice>}
@@ -227,21 +231,21 @@ export function DraftReviewPage({ api, draftId, readOnly = false, onRejected }: 
       <div className="draft-review__layout">
         <section className="draft-reader" aria-labelledby="final-text"><h2 id="final-text">최종 본문</h2><pre className="draft-body">{version.content.body}</pre><span data-testid="reader-end" aria-hidden="true" /></section>
         <aside className="draft-review__rail" aria-label="검토 근거">
-          <AdminSection title="이어짐 검사">{version.continuityFindings.length ? <ul className="finding-list">{version.continuityFindings.map((finding) => <li key={`${finding.code}-${finding.message}`}><strong>{finding.message}</strong><span>이어짐 {continuityLabels[finding.level] ?? '확인 필요'}</span>{finding.sourceIds.length > 0 && <span>참고한 기억: {finding.sourceIds.join(', ')}</span>}</li>)}</ul> : <p className="empty-copy">이어짐 문제 없음</p>}</AdminSection>
-          <AdminSection title="참고한 이야기"><ul className="source-list">{version.contextVersionIds.map((id) => <li key={id}>{id}</li>)}</ul></AdminSection>
+          <AdminSection title="이어짐 검사">{version.continuityFindings.length ? <ul className="finding-list">{version.continuityFindings.map((finding) => <li key={`${finding.code}-${finding.message}`}><strong>{finding.message}</strong><span>이어짐 {continuityLabels[finding.level] ?? '확인 필요'}</span>{finding.sourceIds.length > 0 && <details><summary>기술 정보 · 참고한 기억 {finding.sourceIds.length}건</summary><p>{finding.sourceIds.join(', ')}</p></details>}</li>)}</ul> : <p className="empty-copy">이어짐 문제 없음</p>}</AdminSection>
+          <AdminSection title="참고한 이야기">{version.contextVersionIds.length === 0 ? <p className="empty-copy">참고한 앞 이야기가 없습니다.</p> : <><p>이 초안은 앞 이야기 {version.contextVersionIds.length}편을 참고해 만들었습니다.</p><details><summary>기술 정보 · 참고 기록 번호</summary><ul className="source-list">{version.contextVersionIds.map((id) => <li key={id}>{id}</li>)}</ul></details></>}</AdminSection>
           <AdminSection title="새로 확정할 설정 후보">{version.content.canonChangeCandidates.length ? <ul>{version.content.canonChangeCandidates.map((candidate) => <li key={candidate}>{candidate}</li>)}</ul> : <p className="empty-copy">후보 없음</p>}</AdminSection>
         </aside>
       </div>
-      <details className="version-history"><summary>버전 이력 · {detail.versions.length}개</summary><ol>{detail.versions.map((item: DraftVersion) => <li key={item.id}><strong>버전 {item.versionNumber}</strong> <time dateTime={item.createdAt}>{seoulDate(item.createdAt)}</time><p>{item.content.body}</p></li>)}</ol></details>
+      <details className="version-history"><summary>버전 이력 · {detail.versions.length}개</summary><ol>{detail.versions.map((item: DraftVersion) => <li key={item.id}><details><summary><strong>버전 {item.versionNumber}</strong> <time dateTime={item.createdAt}>{seoulDate(item.createdAt)}</time></summary><p>{item.content.body}</p></details></li>)}</ol></details>
       <div className="review-actions" aria-label="초안 작업">
         {detail.status === 'archived' && <button className="button button--ink review-actions__primary" type="button" disabled={readOnly} onClick={() => void restore()}>복원</button>}
         {detail.status === 'rejected' && <button className="button button--ink review-actions__primary" type="button" disabled={readOnly} onClick={() => void reopenRejected()}>다시 검토하기</button>}
-        {!blocked && reviewable && <button className="button button--primary review-actions__primary" type="button" disabled={readOnly} onClick={() => void review('approve_public')}>승인하고 게시</button>}
+        {!blocked && reviewable && <button className="button button--primary review-actions__primary" type="button" disabled={readOnly} onClick={(event) => openDialog('approve-public', event)}>승인하고 게시</button>}
         {blocked && reviewable && <button className="button button--danger-outline review-actions__primary" type="button" disabled={readOnly} onClick={(event) => openDialog('reject', event)}>거절</button>}
         {!blocked && <details className="review-actions__more" open={!mobileActionDisclosure}><summary>작업</summary><div className="review-actions__secondary">
           {!blocked && reviewable && <button type="button" disabled={readOnly} onClick={(event) => openDialog('manual', event)}>직접 수정</button>}
           {!blocked && reviewable && <button type="button" disabled={readOnly} onClick={(event) => openDialog('revision', event)}>부분 AI 수정</button>}
-          {!blocked && reviewable && <button className="button button--ink" type="button" disabled={readOnly} onClick={() => void review('approve_private')}>비공개 정사 승인</button>}
+          {!blocked && reviewable && <button className="button button--ink" type="button" disabled={readOnly} onClick={() => void review('approve_private')}>비공개로 승인</button>}
           {!blocked && isArchiveSourceStatus(detail.status) && <button className="button button--quiet" type="button" disabled={readOnly} onClick={() => void archive()}>보관</button>}
           {!blocked && detail.status === 'publish_failed' && <button type="button" disabled={readOnly} onClick={() => void retryPublish()}>게시 재시도</button>}
           {reviewable && <button className="button button--danger-text" type="button" disabled={readOnly} onClick={(event) => openDialog('reject', event)}>거절</button>}
@@ -250,6 +254,7 @@ export function DraftReviewPage({ api, draftId, readOnly = false, onRejected }: 
       {dialog === 'manual' && <Modal title="직접 수정" onClose={() => closeDialog()}>{conflictRecovery}<form onSubmit={saveManual}><label htmlFor="manual-body">최종 본문</label><textarea id="manual-body" rows={12} value={manualText} onChange={(event) => setManualText(event.target.value)} required /><button type="submit">새 버전 저장</button></form></Modal>}
       {dialog === 'revision' && <Modal title="부분 AI 수정" onClose={() => closeDialog()}>{conflictRecovery}<form onSubmit={revise}><label htmlFor="selected-text">선택한 구절</label><textarea id="selected-text" value={selectedText} onChange={(event) => { setSelectedText(event.target.value); setConfirmedRevisionSignature(null); }} required /><label htmlFor="revision-instruction">수정 지시</label><textarea id="revision-instruction" value={instruction} onChange={(event) => { setInstruction(event.target.value); setConfirmedRevisionSignature(null); }} required /><p>AI가 필요한 답변 길이는 모델에 맞게 자동으로 정합니다.</p><p>최대 예상 비용: {formatKrw(estimatedRevisionCostKrw)}</p><label><input type="checkbox" checked={costConfirmed} onChange={(event) => setConfirmedRevisionSignature(event.target.checked ? revisionSignature : null)} /> 최대 비용을 확인했습니다</label><button type="submit">새 버전 생성</button></form></Modal>}
       {dialog === 'reject' && <Modal title="거절" onClose={() => closeDialog()}>{conflictRecovery}<form onSubmit={(event) => { event.preventDefault(); void review('reject', reason); }}><label htmlFor="reject-reason">거절 사유</label><textarea id="reject-reason" value={reason} onChange={(event) => setReason(event.target.value)} required /><button type="submit">거절 확정</button></form></Modal>}
+      {dialog === 'approve-public' && <Modal title="승인하고 게시" onClose={() => closeDialog()}>{conflictRecovery}<p>이 초안을 승인하면 <strong>공개 사이트에 게시</strong>됩니다. 게시 후에는 방문자 누구나 읽을 수 있습니다.</p><p>계속할까요?</p><button type="button" className="button button--primary" onClick={() => void review('approve_public')}>승인하고 게시하기</button></Modal>}
     </article>
   );
 }

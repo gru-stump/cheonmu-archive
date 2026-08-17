@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+﻿import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import type { DraftDetail, NarrativeApi } from '../../api/narrativeApi';
@@ -105,7 +105,7 @@ describe('DraftReviewPage', () => {
     render(<DraftReviewPage api={api()} draftId="draft-1" />);
 
     expect(await screen.findByRole('heading', { name: '빗소리 아래' })).toBeInTheDocument();
-    expect(screen.getByText('검토 필요')).toBeInTheDocument();
+    expect(screen.getByText('새 초안')).toBeInTheDocument();
     expect(screen.getByText('이어짐 확인 필요')).toBeInTheDocument();
     expect(screen.getByText('호칭 확인 필요')).toBeInTheDocument();
     expect(screen.getAllByText('canon-v7').length).toBeGreaterThan(0);
@@ -184,7 +184,7 @@ describe('DraftReviewPage', () => {
     const dialog = screen.getByRole('dialog', { name: '직접 수정' });
     await user.click(within(dialog).getByRole('button', { name: '새 버전 저장' }));
 
-    expect(within(dialog).getByRole('alert')).toHaveTextContent('제공자 단가 확인일이 만료되었습니다. 설정에서 단가를 다시 확인해 주세요.');
+    expect(within(dialog).getByRole('alert')).toHaveTextContent('AI 요금 정보가 오래되었습니다. 설정에서 모델 정보를 다시 불러와 저장해 주세요.');
     expect(within(dialog).queryByRole('button', { name: '새로 불러오기' })).not.toBeInTheDocument();
   });
 
@@ -267,7 +267,7 @@ describe('DraftReviewPage', () => {
     render(<DraftReviewPage api={api({ getDraft: vi.fn().mockResolvedValue(blocked), review })} draftId="draft-1" />);
 
     expect(await screen.findByText('차단된 버전')).toBeInTheDocument();
-    for (const name of ['직접 수정', '부분 AI 수정', '비공개 정사 승인', '승인하고 게시', '보관']) {
+    for (const name of ['직접 수정', '부분 AI 수정', '비공개로 승인', '승인하고 게시', '보관']) {
       expect(screen.queryByRole('button', { name })).not.toBeInTheDocument();
     }
     await user.click(screen.getByRole('button', { name: '거절' }));
@@ -306,8 +306,8 @@ describe('DraftReviewPage', () => {
     await userEvent.click(await screen.findByRole('button', { name: '다시 검토하기' }));
 
     expect(reopenRejected).toHaveBeenCalledWith({ draftId: 'draft-1', expectedVersionId: 'version-2' });
-    expect(screen.getByText('검토 중')).toBeInTheDocument();
-    for (const name of ['직접 수정', '부분 AI 수정', '비공개 정사 승인', '승인하고 게시', '거절']) {
+    expect(screen.getByText('검토 진행 중')).toBeInTheDocument();
+    for (const name of ['직접 수정', '부분 AI 수정', '비공개로 승인', '승인하고 게시', '거절']) {
       expect(screen.getByRole('button', { name })).toBeInTheDocument();
     }
     expect(screen.getByText('버전 이력 · 2개')).toBeInTheDocument();
@@ -349,7 +349,7 @@ describe('DraftReviewPage', () => {
     await userEvent.click(await screen.findByRole('button', { name: '복원' }));
 
     expect(restore).toHaveBeenCalledWith({ draftId: 'draft-1', expectedVersionId: 'version-2' });
-    expect(await screen.findByText('초안을 approved_private 상태로 복원했습니다.')).toBeInTheDocument();
+    expect(await screen.findByText("초안을 '비공개 승인' 상태로 복원했습니다.")).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '복원' })).not.toBeInTheDocument();
   });
 

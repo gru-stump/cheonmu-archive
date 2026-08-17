@@ -87,6 +87,7 @@ body { margin: 0; min-width: 320px; background: var(--admin-paper); font-family:
 .admin-shell .generation-status-list > li > button{ grid-column: 2; grid-row: 2 / span 2; align-self: end; }
 
 .admin-shell .draft-list{ border-top: 1px solid var(--admin-ink); }
+.admin-shell .draft-list__group-title{ margin: 1.8rem 0 .6rem; color: var(--admin-muted); font-size: .82rem; font-weight: 750; letter-spacing: .04em; }
 .admin-shell .draft-list__filters{ display: inline-flex; gap: .35rem; }
 .admin-shell .draft-list__filters button{ padding-inline: .75rem; white-space: nowrap; }
 .admin-shell .draft-list__filters button[aria-pressed="true"]{ color: var(--admin-paper); background: var(--admin-ink); border-color: var(--admin-ink); }
@@ -245,6 +246,9 @@ body { margin: 0; min-width: 320px; background: var(--admin-paper); font-family:
   .admin-shell .memory-correction{ margin-left: .5rem; }
   .admin-shell .modal{ padding: 1.1rem; }
 }
+
+.admin-shell .settings-sticky-note{ position: sticky; bottom: .75rem; z-index: 10; }
+.admin-shell .settings-sticky-note .admin-notice{ box-shadow: 0 .4rem 1.4rem rgb(36 32 29 / 16%); }
 
 @media (prefers-reduced-motion: reduce) {
   .admin-shell *, .admin-shell *::before, .admin-shell *::after{ scroll-behavior: auto !important; animation: none !important; transition-duration: 0s !important; transform: none !important; }

@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+﻿import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { TodayPage } from './TodayPage';
@@ -25,8 +25,8 @@ describe('TodayPage plain-language owner flow', () => {
     render(<TodayPage api={api} now={() => new Date('2026-08-16T13:20:00Z')} />);
 
     expect(await screen.findByRole('heading', { name: '이야기 생성 현황' })).toBeInTheDocument();
-    expect(screen.getByText('접속 이야기 생성 대기 중')).toBeInTheDocument();
-    expect(screen.getByText('접속 이야기 생성 중')).toBeInTheDocument();
+    expect(screen.getByText('이야기 생성 대기 중')).toBeInTheDocument();
+    expect(screen.getByText('이야기 생성 중')).toBeInTheDocument();
     expect(screen.getByText('직접 요청한 이야기 다시 시도 대기 중')).toBeInTheDocument();
     expect(screen.getByText('예약 이야기 생성 중단')).toBeInTheDocument();
     expect(screen.getAllByText('2026.08.16 22:14').length).toBeGreaterThan(0);
@@ -34,7 +34,7 @@ describe('TodayPage plain-language owner flow', () => {
     expect(screen.getByRole('region', { name: '오늘 사용' })).toHaveTextContent('2원');
     expect(screen.queryByText(/비용 단위|μUSD/)).not.toBeInTheDocument();
 
-    const queued = screen.getByText('접속 이야기 생성 대기 중').closest('li')!;
+    const queued = screen.getByText('이야기 생성 대기 중').closest('li')!;
     expect(within(queued).getByRole('button', { name: '대기 취소' })).toBeInTheDocument();
     expect(screen.getAllByRole('button', { name: '대기 취소' })).toHaveLength(1);
     await userEvent.click(within(queued).getByRole('button', { name: '대기 취소' }));
@@ -49,14 +49,14 @@ describe('TodayPage plain-language owner flow', () => {
     const user = userEvent.setup();
     render(<TodayPage api={api} />);
 
-    await user.click(await screen.findByRole('button', { name: '접속 이야기 만들기' }));
-    expect(await screen.findByRole('dialog', { name: '접속 이야기 비용 확인' })).toHaveTextContent('GPT-5 mini');
+    await user.click(await screen.findByRole('button', { name: '이야기 만들기' }));
+    expect(await screen.findByRole('dialog', { name: '이야기 생성 비용 확인' })).toHaveTextContent('GPT-5 mini');
     expect(screen.getByRole('dialog')).toHaveTextContent('최대 6원');
     expect(triggerAccess).not.toHaveBeenCalled();
     await user.click(screen.getByRole('button', { name: '취소' }));
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: '접속 이야기 만들기' }));
+    await user.click(screen.getByRole('button', { name: '이야기 만들기' }));
     await user.click(await screen.findByRole('button', { name: '최대 6원으로 만들기' }));
     await waitFor(() => expect(triggerAccess).toHaveBeenCalledWith({ maximumCostConfirmed: true, confirmedMaximumCostMicros: 4200 }));
     expect(await screen.findByRole('status')).toHaveTextContent('이야기 생성을 시작했습니다');
@@ -66,7 +66,7 @@ describe('TodayPage plain-language owner flow', () => {
   it.each([
     ['budget_risk', '설정한 예산 한도에 가까워 생성하지 않았습니다. 예산 설정을 확인해 주세요.'],
     ['stale_provider_pricing', 'AI 요금 정보가 오래되었습니다. 설정에서 모델 정보를 다시 불러와 저장해 주세요.'],
-    ['manual_generation_disabled', '설정에서 수동 생성을 켜고 사용할 AI 모델을 확인해 주세요.'],
+    ['manual_generation_disabled', '설정에서 직접 이야기 만들기를 켜고 사용할 AI 모델을 확인해 주세요.'],
   ])('explains the access failure %s without blaming an API key', async (code, expectedMessage) => {
     const api = {
       getDashboard: vi.fn().mockResolvedValue({ ...baseDashboard, queue: [] }),
@@ -76,7 +76,7 @@ describe('TodayPage plain-language owner flow', () => {
     const user = userEvent.setup();
     render(<TodayPage api={api} />);
 
-    await user.click(await screen.findByRole('button', { name: '접속 이야기 만들기' }));
+    await user.click(await screen.findByRole('button', { name: '이야기 만들기' }));
     await user.click(await screen.findByRole('button', { name: '최대 6원으로 만들기' }));
 
     expect(await screen.findByRole('status')).toHaveTextContent(expectedMessage);
@@ -104,7 +104,7 @@ describe('TodayPage plain-language owner flow', () => {
     expect(await screen.findByRole('region', { name: '오늘 사용' })).toHaveTextContent('확정 사용0원');
     expect(screen.getByRole('region', { name: '확인되지 않은 최대 비용' })).toHaveTextContent('8원');
     expect(screen.getByRole('region', { name: '확인되지 않은 최대 비용' })).toHaveTextContent('실제 결제액으로 확정된 금액이 아닙니다');
-    const failed = screen.getByText('접속 이야기 생성 중단').closest('li')!;
+    const failed = screen.getByText('이야기 생성 중단').closest('li')!;
     expect(failed).toHaveTextContent('확인되지 않은 최대 비용 8원');
   });
 });

@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from '@testing-library/react';
+﻿import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { NarrativeApi } from '../api/narrativeApi';
@@ -79,7 +79,7 @@ describe('AdminApp local preview composition', () => {
     await user.click(screen.getByRole('link', { name: '초안' }));
     await user.click(await screen.findByRole('link', { name: /비 갠 뒤의 약속/ }));
     expect((await screen.findAllByText('천령과 무영은 젖은 처마 아래에서 조용히 웃었다.')).length).toBeGreaterThan(0);
-    for (const name of ['직접 수정', '부분 AI 수정', '비공개 정사 승인', '승인하고 게시', '거절', '보관']) {
+    for (const name of ['직접 수정', '부분 AI 수정', '비공개로 승인', '승인하고 게시', '거절', '보관']) {
       expect(screen.getByRole('button', { name })).toBeDisabled();
     }
 

@@ -3,22 +3,21 @@ import { NarrativeApiError, type AccessEstimate, type DashboardData, type Narrat
 import { AdminNotice } from '../../components/AdminNotice';
 import { AdminPageHeader } from '../../components/AdminPageHeader';
 import { AdminSection } from '../../components/AdminSection';
-import { formatKrw, formatSeoulTimestamp, generationStatusCopy, microsToKrw } from '../../lib/narrativeDisplay';
+import { failureReasonCopy, formatKrw, formatSeoulTimestamp, generationStatusCopy, microsToKrw } from '../../lib/narrativeDisplay';
 
 const displayCost = (value: number, krwPerUsd: number) => formatKrw(microsToKrw(value, krwPerUsd));
-const failureCopy: Record<string, string> = {
-  provider_timeout: 'AI 응답이 늦어 작업이 중단됐습니다.',
-  provider_outcome_unknown: 'AI 요청 결과를 확인하지 못해 안전하게 중단했습니다.',
-};
 const accessErrorCopy: Record<string, string> = {
   budget_risk: '설정한 예산 한도에 가까워 생성하지 않았습니다. 예산 설정을 확인해 주세요.',
   budget_blocked: '설정한 예산 한도를 넘을 수 있어 생성하지 않았습니다. 예산 설정을 확인해 주세요.',
   stale_provider_pricing: 'AI 요금 정보가 오래되었습니다. 설정에서 모델 정보를 다시 불러와 저장해 주세요.',
   invalid_provider_pricing: '저장된 AI 요금 정보가 올바르지 않습니다. 설정에서 모델 정보를 다시 불러와 저장해 주세요.',
-  manual_generation_disabled: '설정에서 수동 생성을 켜고 사용할 AI 모델을 확인해 주세요.',
+  manual_generation_disabled: '설정에서 직접 이야기 만들기를 켜고 사용할 AI 모델을 확인해 주세요.',
   schedule_automation_disabled: '설정에서 자동 일정 정책을 켜 주세요. 정기 일정은 꺼진 상태로 둘 수 있습니다.',
   active_provider_setting_required: '설정에서 사용할 AI 모델을 선택해 주세요.',
   stale_cost_confirmation: '비용 정보가 바뀌었습니다. 다시 확인해 주세요.',
+  daily_access_limit: '오늘 만들 수 있는 횟수를 모두 사용했습니다. 내일 다시 시도해 주세요.',
+  access_interval_not_elapsed: '이전 이야기를 만든 지 얼마 되지 않았습니다. 잠시 뒤에 다시 시도해 주세요.',
+  manual_call_limit_reached: '하루 직접 만들기 횟수를 모두 사용했습니다. 내일 다시 시도하거나 설정에서 횟수를 조정해 주세요.',
 };
 
 export function TodayPage({ api, readOnly = false, now = () => new Date() }: { api: NarrativeApi; readOnly?: boolean; now?: () => Date }) {
@@ -44,7 +43,11 @@ export function TodayPage({ api, readOnly = false, now = () => new Date() }: { a
       setActiveJobId(null);
       return;
     }
-    if (Date.now() - pollStartedAt.current >= 120_000) return;
+    if (Date.now() - pollStartedAt.current >= 120_000) {
+      setActiveJobId(null);
+      setAccessMessage('생성이 오래 걸리고 있어 자동 확인을 멈췄습니다. 잠시 후 새로고침으로 최신 상태를 확인해 주세요.');
+      return;
+    }
     const elapsed = Date.now() - pollStartedAt.current;
     const delay = elapsed < 1_000 ? 1_000 : elapsed < 3_000 ? 2_000 : elapsed < 6_000 ? 3_000 : 5_000;
     const timer = window.setTimeout(() => void load(), delay);
@@ -72,7 +75,7 @@ export function TodayPage({ api, readOnly = false, now = () => new Date() }: { a
     } catch (caught) {
       const code = caught instanceof NarrativeApiError ? caught.code : 'request_failed';
       setEstimate(null);
-      setAccessMessage(accessErrorCopy[code] ?? '접속 이야기 요청을 처리하지 못했습니다. 잠시 후 다시 시도해 주세요.');
+      setAccessMessage(accessErrorCopy[code] ?? '이야기 생성 요청을 처리하지 못했습니다. 잠시 후 다시 시도해 주세요.');
     } finally { setAccessPending(false); }
   };
 
@@ -98,12 +101,12 @@ export function TodayPage({ api, readOnly = false, now = () => new Date() }: { a
       <AdminSection title="오늘 사용"><dl><dt>확정 사용</dt><dd>{displayCost(Math.max(data.budget.dailySpentMicros - dailyUnconfirmed, 0), data.krwPerUsd)}</dd><dt>남은 한도</dt><dd>{displayCost(data.budget.dailyRemainingMicros, data.krwPerUsd)}</dd></dl></AdminSection>
       <AdminSection title="이번 달 사용"><dl><dt>확정 사용</dt><dd>{displayCost(Math.max(data.budget.monthlySpentMicros - monthlyUnconfirmed, 0), data.krwPerUsd)}</dd><dt>남은 한도</dt><dd>{displayCost(data.budget.monthlyRemainingMicros, data.krwPerUsd)}</dd></dl></AdminSection>
       <AdminSection title="확인되지 않은 최대 비용"><p className="metric-value">{displayCost(monthlyUnconfirmed, data.krwPerUsd)}</p><p className="settings-help">AI 결과를 받지 못한 요청의 안전한 최대값이며, 실제 결제액으로 확정된 금액이 아닙니다.</p></AdminSection>
-      <AdminSection title="처리 중인 예상 비용"><p className="metric-value">{displayCost(data.budget.reservedMicros, data.krwPerUsd)}</p></AdminSection>
+      <AdminSection title="처리 중인 예상 비용"><p className="metric-value">{displayCost(data.budget.reservedMicros, data.krwPerUsd)}</p><p className="settings-help">지금 만드는 중인 이야기에 쓸 수 있는 최대 금액입니다. 완료되면 실제 사용액으로 바뀝니다.</p></AdminSection>
       <AdminSection title="일정"><dl><dt>다음 예약</dt><dd>{data.nextScheduleAt ? formatSeoulTimestamp(data.nextScheduleAt, now()).relative : '예정 없음'}</dd><dt>마지막 성공</dt><dd>{data.lastSuccessAt ? formatSeoulTimestamp(data.lastSuccessAt, now()).relative : '아직 없음'}</dd></dl></AdminSection>
     </div>
 
-    {!readOnly && <AdminSection title="접속 이야기 만들기" description="지금 천령과 무영의 짧은 대화 한 편을 요청합니다. 예산 안에서 연속으로 테스트할 수 있으며, 결제 전에 최대 비용을 먼저 보여드립니다.">
-      <button type="button" disabled={accessPending || Boolean(activeJobId)} onClick={() => void openEstimate()}>{accessPending ? '확인 중…' : '접속 이야기 만들기'}</button>
+    {!readOnly && <AdminSection title="이야기 만들기" description="지금 천령과 무영의 짧은 대화 한 편을 요청합니다. 예산 안에서 연속으로 테스트할 수 있으며, 요청 전에 최대 비용을 먼저 보여드립니다.">
+      <button type="button" disabled={accessPending || Boolean(activeJobId)} onClick={() => void openEstimate()}>{accessPending ? '확인 중…' : '이야기 만들기'}</button>
       {accessMessage && <p role="status">{accessMessage}</p>}
     </AdminSection>}
 
@@ -126,13 +129,14 @@ export function TodayPage({ api, readOnly = false, now = () => new Date() }: { a
     <AdminSection title="최근 확인할 일" description="중단된 작업이 있으면 이해하기 쉬운 이유를 보여드립니다." className="incident-section">
       {data.failures.length === 0 ? <p className="empty-copy">확인할 문제가 없습니다.</p> : <ul className="incident-list">{data.failures.map((failure) => {
         const formatted = formatSeoulTimestamp(failure.occurredAt, now());
-        return <li key={failure.id}><strong>{failureCopy[failure.code] ?? '이야기 생성이 중단됐습니다.'}</strong><time dateTime={failure.occurredAt} title={formatted.exact}>{formatted.relative}</time></li>;
+        const reason = failureReasonCopy[failure.code];
+        return <li key={failure.id}><strong>{reason?.description ?? '이야기 생성이 중단됐습니다.'}</strong>{reason?.action && <p>{reason.action}</p>}<time dateTime={failure.occurredAt} title={formatted.exact}>{formatted.relative}</time></li>;
       })}</ul>}
     </AdminSection>
 
     {estimate && <div className="modal-backdrop" role="presentation">
       <section className="modal" role="dialog" aria-modal="true" aria-labelledby="access-estimate-title">
-        <h2 id="access-estimate-title">접속 이야기 비용 확인</h2>
+        <h2 id="access-estimate-title">이야기 생성 비용 확인</h2>
         <p><strong>{estimate.modelLabel}</strong> 모델로 짧은 대화를 만듭니다.</p>
         <p>실제 사용량에 따라 더 적게 들 수 있으며, 최대 {formatKrw(estimate.maximumCostKrw)}까지만 사용합니다.</p>
         <div className="inline-actions">

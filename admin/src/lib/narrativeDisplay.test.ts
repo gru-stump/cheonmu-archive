@@ -27,7 +27,7 @@ describe('narrativeDisplay', () => {
       attemptCount: 3,
       failureCode: 'provider_outcome_unknown',
     })).toEqual({
-      title: '접속 이야기 생성 중단',
+      title: '이야기 생성 중단',
       description: 'AI 요청 결과를 확인하지 못해 안전하게 중단했습니다.',
       action: 'API 키 문제로 단정할 수 없습니다. 잠시 뒤 다시 요청하고, 반복되면 운영 기록을 확인해 주세요.',
     });
@@ -39,7 +39,7 @@ describe('narrativeDisplay', () => {
     ['provider_connection_failed', 'AI 서비스와 연결이 도중에 끊겼습니다.', '잠시 뒤 다시 요청해 주세요.'],
   ])('explains %s in owner-friendly Korean', (failureCode, description, action) => {
     expect(generationStatusCopy({ source: 'access', state: 'failed/dead-letter', attemptCount: 1, failureCode }))
-      .toEqual({ title: '접속 이야기 생성 중단', description, action });
+      .toEqual({ title: '이야기 생성 중단', description, action });
   });
 
   it('uses safe generic copy for unknown internal states and codes', () => {

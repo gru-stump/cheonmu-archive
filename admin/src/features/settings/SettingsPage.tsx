@@ -1,5 +1,5 @@
 import { type FormEvent, useEffect, useMemo, useState } from 'react';
-import type { ModelOption, NarrativeApi, NarrativeSettings, ProviderSetting } from '../../api/narrativeApi';
+import { NarrativeApiError, type ModelOption, type NarrativeApi, type NarrativeSettings, type ProviderSetting } from '../../api/narrativeApi';
 import { AdminNotice } from '../../components/AdminNotice';
 import { AdminPageHeader } from '../../components/AdminPageHeader';
 import { formatKrw, krwToMicros, microsToKrw } from '../../lib/narrativeDisplay';
@@ -36,6 +36,13 @@ function addProviderDrafts(settings: NarrativeSettings) {
     ],
   };
 }
+
+const saveErrorCopy: Record<string, string> = {
+  budget_limit_below_committed: '입력한 예산이 이미 사용했거나 처리 중인 금액보다 작습니다. 그보다 큰 금액으로 입력해 주세요.',
+  stale_provider_pricing: '모델 요금 정보가 오래되었습니다. 모델을 목록에서 다시 선택한 뒤 저장해 주세요.',
+  invalid_provider_pricing: '모델 요금 정보가 올바르지 않습니다. 모델을 목록에서 다시 선택한 뒤 저장해 주세요.',
+  active_provider_setting_required: '사용할 AI 모델을 먼저 선택한 뒤 저장해 주세요.',
+};
 
 function digits(value: string) {
   return value.replace(/[^0-9]/g, '');
@@ -168,8 +175,9 @@ export function SettingsPage({ api, readOnly = false }: { api: NarrativeApi; rea
         krwPerUsd: settings.budget.krwPerUsd,
       });
       setMessage({ tone: 'success', text: '설정을 저장했습니다.' });
-    } catch {
-      setMessage({ tone: 'danger', text: '설정을 저장하지 못했습니다. 잠시 후 다시 시도해 주세요.' });
+    } catch (error) {
+      const code = error instanceof NarrativeApiError ? error.code : '';
+      setMessage({ tone: 'danger', text: saveErrorCopy[code] ?? '설정을 저장하지 못했습니다. 잠시 후 다시 시도해 주세요.' });
     }
   };
 
@@ -293,6 +301,7 @@ export function SettingsPage({ api, readOnly = false }: { api: NarrativeApi; rea
 
     <fieldset className="settings-card publishing-secret" aria-label="GitHub">
       <legend>GitHub 게시 연결</legend>
+      <p className="settings-help">승인한 이야기를 공개 사이트에 올릴 때 사용하는 연결입니다. 연결이 없으면 게시가 진행되지 않습니다.</p>
       <p>{settings.secrets.github ? '연결됨' : '연결되지 않음'}</p>
       <div className="secret-form">
         <label htmlFor="github-secret">GitHub API 키</label>
@@ -302,6 +311,6 @@ export function SettingsPage({ api, readOnly = false }: { api: NarrativeApi; rea
       </div>
     </fieldset>
 
-    {message && <AdminNotice tone={message.tone}>{message.text}</AdminNotice>}
+    {message && <div className="settings-sticky-note"><AdminNotice tone={message.tone}>{message.text}</AdminNotice></div>}
   </section>;
 }
