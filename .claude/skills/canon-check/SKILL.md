@@ -14,7 +14,7 @@ argument-hint: "[전체 | 특정 기록 id]"
 2. **미확정 canon ↔ 프로필** — `references/unresolved-canon.md`와 `천무_캐릭터_프로필.md` 8장을 대조한다: 이미 확정된 항목이 미확정 목록에 남아 있는지, 프로필에 새로 생긴 미확정 항목이 목록에 빠졌는지.
 3. **세계관 문서 무결성** — `src/content/world.yaml`: relatedRecords가 공개 기록만 가리키는지, 문서당 카테고리 1개 규칙, documentNumber 중복, `WORLD_PUBLIC_STAGE`(`src/content/schema.ts`) 초과 revealStage 문단의 존재.
 4. **금지 문구 유출** — 공개 경로(`src/content/records/*.md`(`_hidden` 제외), `scenes/`, `documents/*.md`(`_hidden` 제외), `profiles/`, `world.yaml`, `gallery.yaml`)에서 다음을 grep한다: `천령은 인외`, `인외 의사`, `피는 독이자 약`, `흰 백사`, `실제 나이 불명`, `독과 약으로`, `CM-07`, `promise-to-return`, `귀환의 약속`.
-5. **호칭 규칙** — 공개 씬에서 단계별 호칭 규칙 위반 여부: 천령→무영 `지휘관 씨`(위기 시 `무영`), 무영→천령 초반(1~3단계) `의료관님` / 4단계 이후 `천령 선생`(감정이 흔들릴 때 `천령`).
+5. **호칭 규칙** — 공개 씬의 호칭 규칙 위반 여부: 천령→무영 `지휘관 씨`(위기 시 `무영`), 무영→천령 `천령 의료관님` 또는 문맥상 `의료관님`(감정이 크게 흔들릴 때 `천령`). `천령 선생`과 `선생님`은 사용하지 않는다.
 6. **자동 검증** — `npm run validate`를 실행해 결과를 첨부한다.
 
 ## 보고 형식

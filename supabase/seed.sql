@@ -111,6 +111,26 @@ set content = excluded.content,
     status = excluded.status,
     blocking = excluded.blocking;
 
+insert into public.memory_items (
+  id, owner_id, memory_type, content, importance, metadata, status, blocking
+)
+values (
+  '15000000-0000-0000-0000-000000000002',
+  '10000000-0000-0000-0000-000000000001',
+  'canon',
+  '무영은 관계 단계와 무관하게 천령을 ''천령 의료관님''이라고 부른다. 대화의 맥락이 분명할 때는 ''의료관님''으로 줄여 부른다. ''천령 선생''과 ''선생님''은 사용하지 않는다. 감정이 크게 흔들릴 때만 ''천령''이라고 부른다.',
+  100,
+  '{"canonKey":"muyeong-cheonryeong-appellation-v1","tokenCount":70,"continuityFacts":{"relationshipStage":7,"voiceAndTitleRules":true}}'::jsonb,
+  'approved',
+  false
+)
+on conflict (id) do update
+set content = excluded.content,
+    importance = excluded.importance,
+    metadata = excluded.metadata,
+    status = excluded.status,
+    blocking = excluded.blocking;
+
 insert into public.budget_periods (id, owner_id, currency, period_start, period_end, limit_micros, daily_limit_micros)
 values (
   '13000000-0000-0000-0000-000000000001',

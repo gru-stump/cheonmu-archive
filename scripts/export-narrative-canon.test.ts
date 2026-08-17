@@ -85,6 +85,17 @@ describe('exportNarrativeCanon', () => {
     expect(snapshot.currentRelationshipStage).toBe(7);
   });
 
+  it('exports the approved Muyeong-to-Cheonryeong appellation without the retired teacher title', async () => {
+    const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+
+    const snapshot = await exportNarrativeCanon(projectRoot);
+    const canonText = JSON.stringify(snapshot);
+
+    expect(canonText).toContain('천령 의료관님');
+    expect(canonText).toContain('‘천령 선생’과 ‘선생님’은 사용하지 않는다');
+    expect(canonText).not.toContain('4단계~)에는 ‘천령 선생’');
+  });
+
   it('derives the latest confirmed relationship stage and excludes hidden prose bodies', async () => {
     const fixtureRoot = await createFixture();
 
