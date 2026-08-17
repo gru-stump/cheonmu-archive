@@ -89,6 +89,36 @@ describe('SettingsPage simple owner experience', () => {
     expect(screen.getByText(/대략 805회/)).toBeInTheDocument();
   });
 
+  it('normalizes a legacy saved GPT-5 mini limit even when the owner keeps the same selected model', async () => {
+    const legacy = structuredClone(settings);
+    legacy.providers[0] = { ...legacy.providers[0], maxInputTokens: 8192, maxOutputTokens: 2048, maxRevisionOutputTokens: 512 };
+    const client = api({ getSettings: vi.fn().mockResolvedValue(legacy) });
+    render(<SettingsPage api={client} />);
+
+    await screen.findByRole('combobox', { name: 'OpenAI에서 사용할 모델' });
+    await userEvent.click(screen.getByRole('button', { name: '설정 저장' }));
+
+    await waitFor(() => expect(client.saveSettings).toHaveBeenCalled());
+    expect(vi.mocked(client.saveSettings).mock.calls[0][0].providers).toContainEqual(expect.objectContaining({
+      providerKey: 'openai', modelKey: 'gpt-5-mini', maxInputTokens: 4000, maxOutputTokens: 4000, maxRevisionOutputTokens: 2000,
+    }));
+  });
+
+  it('preserves deliberate advanced values that are not the known legacy GPT-5 mini limits', async () => {
+    const customized = structuredClone(settings);
+    customized.providers[0] = { ...customized.providers[0], maxInputTokens: 3500, inputPriceMicrosPerMillion: 300000 };
+    const client = api({ getSettings: vi.fn().mockResolvedValue(customized) });
+    render(<SettingsPage api={client} />);
+
+    await screen.findByRole('combobox', { name: 'OpenAI에서 사용할 모델' });
+    await userEvent.click(screen.getByRole('button', { name: '설정 저장' }));
+
+    await waitFor(() => expect(client.saveSettings).toHaveBeenCalled());
+    expect(vi.mocked(client.saveSettings).mock.calls[0][0].providers).toContainEqual(expect.objectContaining({
+      providerKey: 'openai', maxInputTokens: 3500, inputPriceMicrosPerMillion: 300000,
+    }));
+  });
+
   it('blocks negative or malformed won before a settings request', async () => {
     const client = api();
     const user = userEvent.setup();

@@ -6,7 +6,7 @@ import type { DashboardData, NarrativeApi } from '../../api/narrativeApi';
 
 const baseDashboard: DashboardData = {
   krwPerUsd: 1380,
-  budget: { dailySpentMicros: 1200, monthlySpentMicros: 8400, reservedMicros: 700, dailyRemainingMicros: 18100, monthlyRemainingMicros: 90900 },
+  budget: { dailySpentMicros: 1200, monthlySpentMicros: 8400, dailyUnconfirmedMicros: 0, monthlyUnconfirmedMicros: 0, reservedMicros: 700, dailyRemainingMicros: 18100, monthlyRemainingMicros: 90900 },
   nextScheduleAt: '2026-08-16T00:30:00.000Z',
   lastSuccessAt: '2026-08-15T05:10:00.000Z',
   failures: [{ id: 'failure-1', occurredAt: '2026-08-15T04:00:00.000Z', code: 'provider_timeout' }],
@@ -61,5 +61,30 @@ describe('TodayPage plain-language owner flow', () => {
     await waitFor(() => expect(triggerAccess).toHaveBeenCalledWith({ maximumCostConfirmed: true, confirmedMaximumCostMicros: 4200 }));
     expect(await screen.findByRole('status')).toHaveTextContent('이야기 생성을 시작했습니다');
     expect(getDashboard).toHaveBeenCalledTimes(2);
+  });
+
+  it('separates an unknown provider charge from confirmed usage', async () => {
+    const client = {
+      getDashboard: vi.fn().mockResolvedValue({
+        ...baseDashboard,
+        budget: {
+          ...baseDashboard.budget,
+          dailySpentMicros: 6_144,
+          monthlySpentMicros: 6_144,
+          dailyUnconfirmedMicros: 6_144,
+          monthlyUnconfirmedMicros: 6_144,
+          reservedMicros: 0,
+        },
+        queue: [{ ...baseDashboard.queue[3], source: 'access', failureCode: 'provider_output_limit', unconfirmedMaximumCostMicros: 6_144 }],
+      }),
+    } as unknown as NarrativeApi;
+
+    render(<TodayPage api={client} />);
+
+    expect(await screen.findByRole('region', { name: '오늘 사용' })).toHaveTextContent('확정 사용0원');
+    expect(screen.getByRole('region', { name: '확인되지 않은 최대 비용' })).toHaveTextContent('8원');
+    expect(screen.getByRole('region', { name: '확인되지 않은 최대 비용' })).toHaveTextContent('실제 결제액으로 확정된 금액이 아닙니다');
+    const failed = screen.getByText('접속 이야기 생성 중단').closest('li')!;
+    expect(failed).toHaveTextContent('확인되지 않은 최대 비용 8원');
   });
 });

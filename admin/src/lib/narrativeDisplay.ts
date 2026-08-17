@@ -72,11 +72,20 @@ export function generationStatusCopy(input: GenerationStatusInput): GenerationSt
   if (input.state === 'running') return { title: `${source} 생성 중`, description: 'AI가 이야기를 만들고 있습니다.', action: null };
   if (input.state === 'retry-wait') return { title: `${source} 다시 시도 대기 중`, description: '일시적인 문제로 잠시 뒤 자동으로 다시 시도합니다.', action: null };
   if (input.state === 'completed') return { title: `${source} 생성 완료`, description: '새 초안을 검토할 수 있습니다.', action: null };
+  if (input.state === 'failed/dead-letter' && input.failureCode === 'provider_timeout') {
+    return { title: `${source} 생성 중단`, description: 'AI 응답이 너무 늦어 생성을 멈췄습니다.', action: '잠시 뒤 다시 요청해 주세요.' };
+  }
+  if (input.state === 'failed/dead-letter' && input.failureCode === 'provider_output_limit') {
+    return { title: `${source} 생성 중단`, description: '이야기를 완성하기 전에 AI의 글자 한도에 도달했습니다.', action: '권장 모델 설정을 적용한 뒤 다시 요청해 주세요.' };
+  }
+  if (input.state === 'failed/dead-letter' && input.failureCode === 'provider_connection_failed') {
+    return { title: `${source} 생성 중단`, description: 'AI 서비스와 연결이 도중에 끊겼습니다.', action: '잠시 뒤 다시 요청해 주세요.' };
+  }
   if (input.state === 'failed/dead-letter' && input.failureCode === 'provider_outcome_unknown') {
     return {
       title: `${source} 생성 중단`,
       description: 'AI 요청 결과를 확인하지 못해 안전하게 중단했습니다.',
-      action: '설정과 API 키를 확인해 주세요.',
+      action: 'API 키 문제로 단정할 수 없습니다. 잠시 뒤 다시 요청하고, 반복되면 운영 기록을 확인해 주세요.',
     };
   }
   if (input.state === 'failed/dead-letter') {

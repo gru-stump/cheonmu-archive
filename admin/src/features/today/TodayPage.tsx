@@ -79,12 +79,15 @@ export function TodayPage({ api, readOnly = false, now = () => new Date() }: { a
   const header = <AdminPageHeader eyebrow="운영 기록" title="오늘" description="이야기 진행 상태와 비용, 다음 일정을 한눈에 확인합니다." />;
   if (error) return <section>{header}<AdminNotice tone="danger" action={<button type="button" onClick={() => void load()}>다시 시도</button>}>오늘 현황을 불러오지 못했습니다.</AdminNotice></section>;
   if (!data) return <section>{header}<AdminNotice>오늘 현황을 불러오는 중입니다.</AdminNotice></section>;
+  const dailyUnconfirmed = data.budget.dailyUnconfirmedMicros ?? 0;
+  const monthlyUnconfirmed = data.budget.monthlyUnconfirmedMicros ?? 0;
 
   return <section>
     {header}
     <div className="dashboard-grid">
-      <AdminSection title="오늘 사용"><dl><dt>사용</dt><dd>{displayCost(data.budget.dailySpentMicros, data.krwPerUsd)}</dd><dt>남은 한도</dt><dd>{displayCost(data.budget.dailyRemainingMicros, data.krwPerUsd)}</dd></dl></AdminSection>
-      <AdminSection title="이번 달 사용"><dl><dt>사용</dt><dd>{displayCost(data.budget.monthlySpentMicros, data.krwPerUsd)}</dd><dt>남은 한도</dt><dd>{displayCost(data.budget.monthlyRemainingMicros, data.krwPerUsd)}</dd></dl></AdminSection>
+      <AdminSection title="오늘 사용"><dl><dt>확정 사용</dt><dd>{displayCost(Math.max(data.budget.dailySpentMicros - dailyUnconfirmed, 0), data.krwPerUsd)}</dd><dt>남은 한도</dt><dd>{displayCost(data.budget.dailyRemainingMicros, data.krwPerUsd)}</dd></dl></AdminSection>
+      <AdminSection title="이번 달 사용"><dl><dt>확정 사용</dt><dd>{displayCost(Math.max(data.budget.monthlySpentMicros - monthlyUnconfirmed, 0), data.krwPerUsd)}</dd><dt>남은 한도</dt><dd>{displayCost(data.budget.monthlyRemainingMicros, data.krwPerUsd)}</dd></dl></AdminSection>
+      <AdminSection title="확인되지 않은 최대 비용"><p className="metric-value">{displayCost(monthlyUnconfirmed, data.krwPerUsd)}</p><p className="settings-help">AI 결과를 받지 못한 요청의 안전한 최대값이며, 실제 결제액으로 확정된 금액이 아닙니다.</p></AdminSection>
       <AdminSection title="처리 중인 예상 비용"><p className="metric-value">{displayCost(data.budget.reservedMicros, data.krwPerUsd)}</p></AdminSection>
       <AdminSection title="일정"><dl><dt>다음 예약</dt><dd>{data.nextScheduleAt ? formatSeoulTimestamp(data.nextScheduleAt, now()).relative : '예정 없음'}</dd><dt>마지막 성공</dt><dd>{data.lastSuccessAt ? formatSeoulTimestamp(data.lastSuccessAt, now()).relative : '아직 없음'}</dd></dl></AdminSection>
     </div>
@@ -103,6 +106,7 @@ export function TodayPage({ api, readOnly = false, now = () => new Date() }: { a
           <div><strong>{copy.title}</strong><p>{copy.description}</p>{copy.action && <p>{copy.action}</p>}</div>
           <time dateTime={occurredAt} title={formatted.exact}>{formatted.relative}<span className="exact-time">{formatted.exact}</span></time>
           {item.state === 'retry-wait' && item.retryAt && <p>다시 시도 예정: {formatSeoulTimestamp(item.retryAt, now()).relative}</p>}
+          {(item.unconfirmedMaximumCostMicros ?? 0) > 0 && <p>확인되지 않은 최대 비용 {displayCost(item.unconfirmedMaximumCostMicros ?? 0, data.krwPerUsd)}</p>}
           {item.attemptCount > 0 && <details><summary>기술 정보</summary><p>시도 횟수 {item.attemptCount}회</p></details>}
           {!readOnly && item.state === 'queued' && item.attemptCount === 0 && <button type="button" onClick={() => void cancelJob(item.id)}>대기 취소</button>}
         </li>;

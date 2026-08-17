@@ -10,6 +10,7 @@ import {
   buildFrozenContinuityContext,
   createLocalFixtureProvider,
   createGenerateDraftHandler,
+  createRuntimeGenerationProviderResolver,
   createSupabaseGenerationDependencies,
   createSupabaseProviderSecretReader,
   estimateActualCostMicros,
@@ -387,6 +388,40 @@ describe('runGeneration', () => {
     await expect(runGeneration(h.deps, baseCommand)).rejects.toMatchObject({ status: 502, code: 'provider_generation_failed', details: undefined });
     expect(h.aborts).toMatchObject([{ failureCode: 'provider_generation_failed' }]);
     expect(h.events.filter((event) => event === 'abort')).toHaveLength(1);
+  });
+
+  it.each([
+    ['timeout', 'provider_timeout'],
+    ['output_limit', 'provider_output_limit'],
+    ['upstream_unavailable', 'provider_connection_failed'],
+  ])('keeps the sanitized provider %s reason after the dispatch fence', async (providerCode, expectedFailureCode) => {
+    const h = harness({ provider: { generate: async () => { throw Object.assign(new Error('private upstream detail'), { code: providerCode }); } } });
+
+    await expect(runGeneration(h.deps, baseCommand)).rejects.toMatchObject({ status: 502, code: expectedFailureCode });
+    expect(h.aborts).toMatchObject([{ failureCode: expectedFailureCode }]);
+  });
+
+  it('allows the runtime provider more than thirty seconds but stops before the worker lease expires', async () => {
+    vi.useFakeTimers();
+    try {
+      const fetch: typeof globalThis.fetch = async (_input, init) => await new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')), { once: true });
+      });
+      const resolveProvider = createRuntimeGenerationProviderResolver(
+        { url: 'http://supabase', anonKey: 'anon', serviceRoleKey: 'service', fetch },
+        (name) => name === 'OPENAI_KEY' ? 'server-secret' : undefined,
+      );
+      const openAiPolicy = { ...policy, providerKey: 'openai', modelKey: 'gpt-5-mini', secretRef: 'OPENAI_KEY', secretSource: 'env' as const };
+      const provider = await resolveProvider('owner-1', openAiPolicy, { ...openAiPolicy, attemptToken, worstCaseCostMicros: 905, contextVersionIds: [], contextSnapshot: [] });
+      const pending = provider.generate({ kind: 'short_dialogue', mode: 'new', modelKey: 'gpt-5-mini', maxInputTokens: 4_000, maxOutputTokens: 4_000, contextVersionIds: [], contextMemories: [] });
+      let settled = false;
+      void pending.finally(() => { settled = true; }).catch(() => undefined);
+
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(settled).toBe(false);
+      await vi.advanceTimersByTimeAsync(45_000);
+      await expect(pending).rejects.toMatchObject({ code: 'timeout' });
+    } finally { vi.useRealTimers(); }
   });
 
   it('logs only a stable failure code when a provider error contains secret material', async () => {

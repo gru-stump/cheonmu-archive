@@ -41,7 +41,7 @@ async function psql(sql: string) {
 }
 
 const historical = readdirSync(migrations)
-  .filter((name) => /^2026081400(0[1-9]|1[0-9]|2[01])_.*\.sql$/.test(name))
+  .filter((name) => /^2026081400(0[1-9]|1[0-9]|2[0-2])_.*\.sql$/.test(name))
   .sort();
 const before = new Map(historical.map((name) => [
   name,
@@ -56,7 +56,7 @@ const completed = 'c2230000-0000-0000-0000-000000000002';
 const failed = 'c2230000-0000-0000-0000-000000000003';
 
 try {
-  await run('npx', ['supabase', 'db', 'reset', '--local', '--yes', '--version', '202608140021', '--no-seed']);
+  await run('npx', ['supabase', 'db', 'reset', '--local', '--yes', '--version', '202608140022', '--no-seed']);
   await psql(`
 insert into auth.users (id, instance_id, aud, role, email, encrypted_password, email_confirmed_at, created_at, updated_at)
 values ('${owner}', '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated',
@@ -69,7 +69,7 @@ insert into public.provider_settings (
 ) values (
   '${provider}', '${owner}', 'openai', true,
   '{"vaultSecretName":"narrative_${owner}_openai"}', 'gpt-5-mini',
-  4000, 4000, 2000, 250000, 2000000, 0, public.narrative_business_date(current_timestamp)
+  8192, 2048, 512, 250000, 2000000, 0, public.narrative_business_date(current_timestamp)
 );
 insert into public.budget_periods (id, owner_id, currency, period_start, period_end, limit_micros, daily_limit_micros)
 values ('${period}', '${owner}', 'USD', current_date - 1, current_date + 1, 100000000, 100000000);
@@ -104,23 +104,26 @@ from public.provider_settings as provider
 join public.narrative_admin_settings as settings on settings.owner_id = provider.owner_id
 where provider.id = '${provider}';
 select count(*) from vault.secrets where name = 'narrative_${owner}_openai';
+select concat(max_input_tokens, '|', max_output_tokens, '|', max_revision_output_tokens)
+from public.provider_settings where id = '${provider}';
 `);
   const lines = result.trim().split(/\r?\n/);
-  if (lines.length !== 6
-    || lines[0] !== '202608140022'
+  if (lines.length !== 7
+    || lines[0] !== '202608140023'
     || lines[1] !== '9000|12'
     || lines[2] !== '3|1|1'
     || lines[3] !== 'cancelled'
     || lines[4] !== 't|t|t|gpt-5-mini'
-    || lines[5] !== '1') {
-    throw new Error(`021→022 did not preserve settings/history or expose safe controls\n${result}`);
+    || lines[5] !== '1'
+    || lines[6] !== '4000|4000|2000') {
+    throw new Error(`022→023 did not preserve settings/history or normalize the legacy GPT-5 mini limits\n${result}`);
   }
 
   for (const [name, hash] of before) {
     const after = createHash('sha256').update(readFileSync(join(migrations, name))).digest('hex');
-    if (after !== hash) throw new Error(`historical migration changed during 021→022 upgrade test: ${name}`);
+    if (after !== hash) throw new Error(`historical migration changed during 022→023 upgrade test: ${name}`);
   }
-  console.log('PASS: actual 021→022 upgrade preserves provider, budget, secret, and job history while enabling quote, timestamps, and safe cancellation.');
+  console.log('PASS: actual 022→023 upgrade preserves provider, budget, secret, and job history while normalizing legacy GPT-5 mini limits.');
 } finally {
   await run('npx', ['supabase', 'db', 'reset', '--local', '--yes']);
 }

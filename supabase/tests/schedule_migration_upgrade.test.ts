@@ -119,7 +119,7 @@ insert into public.provider_settings (
   headApplied = true;
   assert.equal(
     await scalar('select max(version) from supabase_migrations.schema_migrations;'),
-    '202608140022',
+    '202608140023',
     'upgrade fixture must apply migrations 011 through the plain-language admin at current head',
   );
   assert.equal(

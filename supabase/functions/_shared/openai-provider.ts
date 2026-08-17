@@ -2,7 +2,7 @@ import { parseGenerationResult, type GenerationRequest } from '../../../shared/n
 import type { NarrativeProvider, NarrativeProviderResponse } from './provider.ts';
 
 export class ProviderRequestError extends Error {
-  constructor(public readonly code: 'timeout' | 'rate_limited' | 'upstream_unavailable' | 'malformed_response' | 'provider_setting_mismatch') { super(code); this.name = 'ProviderRequestError'; }
+  constructor(public readonly code: 'timeout' | 'rate_limited' | 'upstream_unavailable' | 'malformed_response' | 'provider_setting_mismatch' | 'output_limit') { super(code); this.name = 'ProviderRequestError'; }
 }
 
 export interface ProviderHttpOptions { apiKey: string; modelKey?: string; fetch?: typeof globalThis.fetch; timeoutMs: number; clock?: () => number; setTimer?: typeof setTimeout; clearTimer?: typeof clearTimeout }
@@ -77,6 +77,12 @@ export class OpenAiNarrativeProvider implements NarrativeProvider {
     const record = value && typeof value === 'object' ? value as Record<string, unknown> : null;
     const id = typeof record?.id === 'string' && record.id ? record.id : null;
     const responseModel = typeof record?.model === 'string' && record.model.trim() ? record.model : null;
+    const incompleteDetails = record?.incomplete_details && typeof record.incomplete_details === 'object'
+      ? record.incomplete_details as Record<string, unknown>
+      : null;
+    if (record?.object === 'response' && record?.status === 'incomplete' && incompleteDetails?.reason === 'max_output_tokens') {
+      throw new ProviderRequestError('output_limit');
+    }
     if (record?.object !== 'response' || record?.status !== 'completed' || !responseModel) throw new ProviderRequestError('malformed_response');
     const output = Array.isArray(record?.output) ? record.output : [];
     const message = output.find((item) => {

@@ -141,7 +141,25 @@ export function SettingsPage({ api, readOnly = false }: { api: NarrativeApi; rea
         providers: settings.providers
           .filter((provider) => (provider.enabled || changedProviderKeys.has(provider.providerKey))
             && (!syntheticKeys.has(provider.providerKey) || touchedSyntheticKeys.has(provider.providerKey)))
-          .map(({ enabled: _enabled, ...provider }) => provider),
+          .map(({ enabled: _enabled, ...provider }) => {
+            const catalogModel = provider.providerKey === 'openai' || provider.providerKey === 'anthropic'
+              ? models[provider.providerKey].find((model) => model.id === provider.modelKey)
+              : undefined;
+            const knownLegacyGptMini = provider.providerKey === 'openai'
+              && provider.modelKey === 'gpt-5-mini'
+              && provider.maxInputTokens === 8192
+              && provider.maxOutputTokens === 2048
+              && provider.maxRevisionOutputTokens === 512;
+            return catalogModel && knownLegacyGptMini ? {
+              ...provider,
+              maxInputTokens: catalogModel.maxInputTokens,
+              maxOutputTokens: catalogModel.maxOutputTokens,
+              maxRevisionOutputTokens: catalogModel.maxRevisionOutputTokens,
+              inputPriceMicrosPerMillion: catalogModel.inputPriceMicrosPerMillion,
+              outputPriceMicrosPerMillion: catalogModel.outputPriceMicrosPerMillion,
+              pricingVerifiedAt: catalogModel.pricingVerifiedAt,
+            } : provider;
+          }),
         monthlyLimitMicros: krwToMicros(monthly, settings.budget.krwPerUsd),
         dailyLimitMicros: krwToMicros(daily, settings.budget.krwPerUsd),
         manualCallLimit: settings.budget.manualCallLimit,

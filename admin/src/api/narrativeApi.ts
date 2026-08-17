@@ -61,6 +61,8 @@ export interface DashboardData {
   budget: {
     dailySpentMicros: number;
     monthlySpentMicros: number;
+    dailyUnconfirmedMicros?: number;
+    monthlyUnconfirmedMicros?: number;
     reservedMicros: number;
     dailyRemainingMicros: number;
     monthlyRemainingMicros: number;
@@ -80,6 +82,7 @@ export interface DashboardData {
     createdAt?: string;
     completedAt?: string | null;
     failedAt?: string | null;
+    unconfirmedMaximumCostMicros?: number;
   }>;
 }
 

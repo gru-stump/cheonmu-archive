@@ -66,6 +66,14 @@ describe('generation worker dispatch', () => {
     expect(h.events).toEqual(['claim', 'fail:budget_blocked']);
   });
 
+  it.each(['provider_timeout', 'provider_output_limit', 'provider_connection_failed'])('preserves the safe post-dispatch %s diagnostic for the database', async (code) => {
+    const h = harness({ generate: async () => { throw Object.assign(new Error('private provider detail'), { code }); } });
+
+    await dispatchGenerationWorker(h.deps);
+
+    expect(h.events).toEqual(['claim', `fail:${code}`]);
+  });
+
   it('retries an idempotent completion response once without regenerating', async () => {
     let calls = 0;
     const h = harness({ complete: async () => { h.events.push('complete'); if (calls++ === 0) throw new Error('response lost'); return { outcome: 'completed' }; } });

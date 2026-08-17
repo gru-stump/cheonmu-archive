@@ -55,12 +55,14 @@ export interface GenerationResponse {
 
 export type AbortGenerationResult =
   | { outcome: 'aborted'; jobStatus: 'queued' | 'failed' | 'cancelled' }
+  | { outcome: 'dead_lettered'; jobId?: string; failureCode?: string }
   | { outcome: 'stale' }
   | { outcome: 'completed'; result: GenerationResponse };
 
 export type GenerationFailureCode =
   | 'freeze_failed' | 'frozen_validation_failed' | 'reservation_failed' | 'budget_blocked'
   | 'provider_dispatch_uncertain' | 'provider_generation_failed' | 'provider_response_invalid' | 'provider_result_kind_mismatch'
+  | 'provider_timeout' | 'provider_output_limit' | 'provider_connection_failed'
   | 'provider_usage_exceeds_reservation' | 'continuity_check_failed' | 'finalization_failed';
 
 export interface GenerationDependencies {
@@ -171,6 +173,7 @@ const generationResponseSchema = z.object({
 });
 const abortResultSchema = z.discriminatedUnion('outcome', [
   z.object({ outcome: z.literal('aborted'), jobStatus: z.enum(['queued', 'failed', 'cancelled']) }),
+  z.object({ outcome: z.literal('dead_lettered'), jobId: z.string().optional(), failureCode: z.string().optional() }),
   z.object({ outcome: z.literal('stale') }),
   z.object({ outcome: z.literal('completed'), result: generationResponseSchema }),
 ]);
@@ -330,6 +333,15 @@ async function abortAfterFreeze(
   throw response;
 }
 
+function classifiedProviderFailure(error: unknown): { failureCode: GenerationFailureCode; response: GenerationError } {
+  const providerCode = error && typeof error === 'object' && 'code' in error ? String(error.code) : '';
+  if (providerCode === 'timeout') return { failureCode: 'provider_timeout', response: new GenerationError(502, 'provider_timeout') };
+  if (providerCode === 'output_limit') return { failureCode: 'provider_output_limit', response: new GenerationError(502, 'provider_output_limit') };
+  if (providerCode === 'upstream_unavailable') return { failureCode: 'provider_connection_failed', response: new GenerationError(502, 'provider_connection_failed') };
+  if (providerCode === 'malformed_response') return { failureCode: 'provider_response_invalid', response: new GenerationError(502, 'provider_response_invalid') };
+  return { failureCode: 'provider_generation_failed', response: new GenerationError(502, 'provider_generation_failed') };
+}
+
 export async function runGeneration(deps: GenerationDependencies, command: GenerationCommand, signal?: AbortSignal): Promise<GenerationResponse> {
   const { ownerId } = await deps.authenticate(command.authToken);
   const authorized = await deps.authorize(ownerId, command);
@@ -394,7 +406,10 @@ export async function runGeneration(deps: GenerationDependencies, command: Gener
   }
   let raw: unknown;
   try { raw = await provider.generate(request, signal); }
-  catch { return abortAfterFreeze(deps, effectiveCommand, attemptToken, 'provider_generation_failed', new GenerationError(502, 'provider_generation_failed')); }
+  catch (error) {
+    const classified = classifiedProviderFailure(error);
+    return abortAfterFreeze(deps, effectiveCommand, attemptToken, classified.failureCode, classified.response);
+  }
   let providerResponse: NarrativeProviderResponse;
   try { providerResponse = deps.parseProviderResponse(raw); }
   catch { return abortAfterFreeze(deps, effectiveCommand, attemptToken, 'provider_response_invalid', new GenerationError(502, 'provider_response_invalid')); }
@@ -756,7 +771,7 @@ export function createRuntimeGenerationProviderResolver(
     return createServerNarrativeProvider(
       [{ provider_key: loadedPolicy.providerKey, enabled: true, model_key: loadedPolicy.modelKey, configuration }],
       (name) => name === 'NARRATIVE_RESOLVED_PROVIDER_SECRET' ? resolvedSecret : undefined,
-      { timeoutMs: 30_000, ...(fakeLocalProvider ? { fakeLocalProvider } : {}) },
+      { timeoutMs: 75_000, ...(config.fetch ? { fetch: config.fetch } : {}), ...(fakeLocalProvider ? { fakeLocalProvider } : {}) },
     );
   };
 }

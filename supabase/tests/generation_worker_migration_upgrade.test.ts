@@ -84,7 +84,7 @@ values ('${owner}', 'b0220000-0000-0000-0000-000000000001', 'b0240000-0000-0000-
 
   await run('npx', ['supabase', 'migration', 'up', '--local']);
   const version = (await psql(`select version from supabase_migrations.schema_migrations order by version desc limit 1;`)).trim();
-  if (version !== '202608140022') throw new Error(`expected migration 022, got ${version}`);
+  if (version !== '202608140023') throw new Error(`expected migration 023, got ${version}`);
   const result = await psql(`
 select concat(status, '|', coalesce(worker_failure_code, ''), '|', provider_dispatch_recorded_at is null, '|', worker_attempt_count)
 from public.generation_jobs where id in (
@@ -111,7 +111,7 @@ from public.budget_entries where generation_job_id = 'b0240000-0000-0000-0000-00
     const after = createHash('sha256').update(readFileSync(join(migrations, name))).digest('hex');
     if (after !== hash) throw new Error(`historical migration changed during 019→021 upgrade test: ${name}`);
   }
-  console.log('PASS: actual 019→022 upgrade fails legacy frozen/running rows closed, preserves terminal rows, fabricates no provider fence, and leaves migrations 001–020 unchanged.');
+  console.log('PASS: actual 019→023 upgrade fails legacy frozen/running rows closed, preserves terminal rows, fabricates no provider fence, and leaves migrations 001–020 unchanged.');
 } finally {
   await run('npx', ['supabase', 'db', 'reset', '--local', '--yes']);
 }

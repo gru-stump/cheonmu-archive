@@ -118,6 +118,23 @@ describe.each([
   });
 });
 
+it('classifies an OpenAI max-output incomplete response without exposing upstream text', async () => {
+  const h = fetchOnce(Response.json({
+    id: 'resp-incomplete',
+    object: 'response',
+    status: 'incomplete',
+    model: 'server-model',
+    output: [],
+    incomplete_details: { reason: 'max_output_tokens' },
+    usage: { input_tokens: 120, output_tokens: 150, total_tokens: 270 },
+  }));
+
+  await expect(new OpenAiNarrativeProvider({ apiKey: 'openai-secret', fetch: h.fetch, timeoutMs: 1_000 }).generate(request))
+    .rejects.toMatchObject({ code: 'output_limit', message: 'output_limit' });
+  await expect(new OpenAiNarrativeProvider({ apiKey: 'openai-secret', fetch: h.fetch, timeoutMs: 1_000 }).generate(request))
+    .rejects.not.toThrow(/max_output_tokens|resp-incomplete|openai-secret/i);
+});
+
 it('uses one identical explicit director/canon prompt with ordered source and claim metadata for both adapters', async () => {
   const detailedRequest: GenerationRequest = {
     ...request,

@@ -77,6 +77,7 @@ const generationFailureCodes = new Set([
   'continuity_check_failed', 'finalization_failed', 'manual_generation_disabled', 'schedule_automation_disabled',
   'active_provider_setting_required', 'stale_provider_pricing', 'invalid_provider_pricing', 'manual_call_limit_reached',
   'generation_worker_attempt_mismatch', 'generation_binding_changed',
+  'provider_timeout', 'provider_output_limit', 'provider_connection_failed',
 ]);
 
 function failureCode(error: unknown): string {
