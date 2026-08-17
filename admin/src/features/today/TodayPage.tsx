@@ -10,6 +10,16 @@ const failureCopy: Record<string, string> = {
   provider_timeout: 'AI 응답이 늦어 작업이 중단됐습니다.',
   provider_outcome_unknown: 'AI 요청 결과를 확인하지 못해 안전하게 중단했습니다.',
 };
+const accessErrorCopy: Record<string, string> = {
+  budget_risk: '설정한 예산 한도에 가까워 생성하지 않았습니다. 예산 설정을 확인해 주세요.',
+  budget_blocked: '설정한 예산 한도를 넘을 수 있어 생성하지 않았습니다. 예산 설정을 확인해 주세요.',
+  stale_provider_pricing: 'AI 요금 정보가 오래되었습니다. 설정에서 모델 정보를 다시 불러와 저장해 주세요.',
+  invalid_provider_pricing: '저장된 AI 요금 정보가 올바르지 않습니다. 설정에서 모델 정보를 다시 불러와 저장해 주세요.',
+  manual_generation_disabled: '설정에서 수동 생성을 켜고 사용할 AI 모델을 확인해 주세요.',
+  schedule_automation_disabled: '설정에서 자동 일정 정책을 켜 주세요. 정기 일정은 꺼진 상태로 둘 수 있습니다.',
+  active_provider_setting_required: '설정에서 사용할 AI 모델을 선택해 주세요.',
+  stale_cost_confirmation: '비용 정보가 바뀌었습니다. 다시 확인해 주세요.',
+};
 
 export function TodayPage({ api, readOnly = false, now = () => new Date() }: { api: NarrativeApi; readOnly?: boolean; now?: () => Date }) {
   const [data, setData] = useState<DashboardData | null>(null);
@@ -62,7 +72,7 @@ export function TodayPage({ api, readOnly = false, now = () => new Date() }: { a
     } catch (caught) {
       const code = caught instanceof NarrativeApiError ? caught.code : 'request_failed';
       setEstimate(null);
-      setAccessMessage(code === 'stale_cost_confirmation' ? '비용 정보가 바뀌었습니다. 다시 확인해 주세요.' : '접속 이야기를 만들지 못했습니다. 설정과 API 키를 확인해 주세요.');
+      setAccessMessage(accessErrorCopy[code] ?? '접속 이야기 요청을 처리하지 못했습니다. 잠시 후 다시 시도해 주세요.');
     } finally { setAccessPending(false); }
   };
 
@@ -92,7 +102,7 @@ export function TodayPage({ api, readOnly = false, now = () => new Date() }: { a
       <AdminSection title="일정"><dl><dt>다음 예약</dt><dd>{data.nextScheduleAt ? formatSeoulTimestamp(data.nextScheduleAt, now()).relative : '예정 없음'}</dd><dt>마지막 성공</dt><dd>{data.lastSuccessAt ? formatSeoulTimestamp(data.lastSuccessAt, now()).relative : '아직 없음'}</dd></dl></AdminSection>
     </div>
 
-    {!readOnly && <AdminSection title="접속 이야기 만들기" description="지금 천령과 무영의 짧은 대화 한 편을 요청합니다. 결제 전에 최대 비용을 먼저 보여드립니다.">
+    {!readOnly && <AdminSection title="접속 이야기 만들기" description="지금 천령과 무영의 짧은 대화 한 편을 요청합니다. 예산 안에서 연속으로 테스트할 수 있으며, 결제 전에 최대 비용을 먼저 보여드립니다.">
       <button type="button" disabled={accessPending || Boolean(activeJobId)} onClick={() => void openEstimate()}>{accessPending ? '확인 중…' : '접속 이야기 만들기'}</button>
       {accessMessage && <p role="status">{accessMessage}</p>}
     </AdminSection>}

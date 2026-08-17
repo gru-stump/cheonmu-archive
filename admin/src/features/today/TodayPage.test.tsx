@@ -2,7 +2,7 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { TodayPage } from './TodayPage';
-import type { DashboardData, NarrativeApi } from '../../api/narrativeApi';
+import { NarrativeApiError, type DashboardData, type NarrativeApi } from '../../api/narrativeApi';
 
 const baseDashboard: DashboardData = {
   krwPerUsd: 1380,
@@ -61,6 +61,26 @@ describe('TodayPage plain-language owner flow', () => {
     await waitFor(() => expect(triggerAccess).toHaveBeenCalledWith({ maximumCostConfirmed: true, confirmedMaximumCostMicros: 4200 }));
     expect(await screen.findByRole('status')).toHaveTextContent('이야기 생성을 시작했습니다');
     expect(getDashboard).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([
+    ['budget_risk', '설정한 예산 한도에 가까워 생성하지 않았습니다. 예산 설정을 확인해 주세요.'],
+    ['stale_provider_pricing', 'AI 요금 정보가 오래되었습니다. 설정에서 모델 정보를 다시 불러와 저장해 주세요.'],
+    ['manual_generation_disabled', '설정에서 수동 생성을 켜고 사용할 AI 모델을 확인해 주세요.'],
+  ])('explains the access failure %s without blaming an API key', async (code, expectedMessage) => {
+    const api = {
+      getDashboard: vi.fn().mockResolvedValue({ ...baseDashboard, queue: [] }),
+      estimateAccess: vi.fn().mockResolvedValue({ maximumCostMicros: 4200, maximumCostKrw: 6, modelLabel: 'GPT-5 mini' }),
+      triggerAccess: vi.fn().mockRejectedValue(new NarrativeApiError(409, code)),
+    } as unknown as NarrativeApi;
+    const user = userEvent.setup();
+    render(<TodayPage api={api} />);
+
+    await user.click(await screen.findByRole('button', { name: '접속 이야기 만들기' }));
+    await user.click(await screen.findByRole('button', { name: '최대 6원으로 만들기' }));
+
+    expect(await screen.findByRole('status')).toHaveTextContent(expectedMessage);
+    expect(screen.getByRole('status')).not.toHaveTextContent('API 키');
   });
 
   it('separates an unknown provider charge from confirmed usage', async () => {

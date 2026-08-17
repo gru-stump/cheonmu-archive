@@ -139,13 +139,13 @@ select is(
   (select count(*)::integer from public.generation_jobs where owner_id = '81000000-0000-0000-0000-000000000002'),
   3, 'the real recency cutoff preserves stale history and queues one fresh job'
 );
-select throws_ok(
+select lives_ok(
   $$ select public.queue_narrative_access_job('81000000-0000-0000-0000-000000000003', '2026-08-14T16:30:00Z') $$,
-  'P0001', 'access_interval_not_elapsed', 'immutable completion evidence enforces the minimum interval'
+  'a recent successful access story does not delay an explicit owner request'
 );
-select throws_ok(
+select lives_ok(
   $$ select public.queue_narrative_access_job('81000000-0000-0000-0000-000000000004', '2026-08-14T16:30:00Z') $$,
-  'P0001', 'daily_access_limit', 'Seoul daily cap follows completion time across creation midnight'
+  'the configured daily direct-generation count does not block an explicit owner request'
 );
 select throws_ok(
   $$ select public.queue_narrative_access_job('81000000-0000-0000-0000-000000000005', '2026-08-14T16:30:00Z') $$,

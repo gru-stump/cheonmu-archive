@@ -210,9 +210,9 @@ reset role;
 select set_config('request.jwt.claim.role', 'service_role', true);
 set local role service_role;
 select is(public.narrative_schedule_budget_state('10000000-0000-0000-0000-000000000001'), 'warning', 'the configured 10 percent warning threshold affects scheduling');
-select throws_ok(
+select lives_ok(
   $$ select public.queue_narrative_access_job('10000000-0000-0000-0000-000000000001', (((current_timestamp at time zone 'Asia/Seoul')::date + time '15:00') at time zone 'Asia/Seoul')) $$,
-  'P0001', 'daily_access_limit', 'the configured zero manual-count limit affects atomic access queueing'
+  'the configured direct-generation count limit does not block explicit owner access queueing'
 );
 reset role;
 insert into public.budget_entries (owner_id, budget_period_id, amount_micros, entry_type, daily_bucket_date, description)
