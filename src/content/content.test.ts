@@ -13,11 +13,13 @@ const NEW_IMAGE_PATHS = [
   '/images/cheonmu_repeated_treatment.jpg',
   '/images/cheonmu_rain.png',
   '/images/children_01.png',
+  '/images/if-au.jpg',
   '/images/cheonmu_idol.png',
   '/images/cheonmu_setlog.png',
   '/images/Cheonmu_charging.png',
   '/images/Cheonmu_lighthouse.jpg',
   '/images/Cheonmu_body.png',
+  '/images/injury.jpg',
 ];
 
 const OLD_IMAGE_PATHS = [
@@ -66,7 +68,7 @@ describe('initial Cheonmu archive content', () => {
     expect(validateContent(content).errors).not.toContain('무영 신장이 185cm와 189cm로 충돌합니다.');
   });
 
-  it('publishes only the sixteen registered gallery images with credit', () => {
+  it('publishes only the eighteen registered gallery images with credit', () => {
     const gallery = loadAllContent().gallery;
 
     expect(gallery.map((item) => item.image)).toEqual(NEW_IMAGE_PATHS);
@@ -83,11 +85,13 @@ describe('initial Cheonmu archive content', () => {
       '레이지빈',
       '사냐',
       '직수',
+      '레이지빈',
       '고젓두',
       '땨땨',
       'Forlavo1796',
       '레이지빈',
       '깡통에 보리밥',
+      '레이지빈',
     ]);
     expect(gallery.every((item) => !('source' in item))).toBe(true);
   });

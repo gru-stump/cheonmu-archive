@@ -89,7 +89,7 @@
   public: true
 
 - id: cheonmu-children
-  title: 환자 이송입니다
+  title: 부작용 보고
   image: /images/children_01.png
   pages:
     - /images/children_01.png
@@ -101,6 +101,16 @@
   characters: [cheonryeong, muyeong]
   tags: [만화, 4쪽, 어려짐]
   public: true
+
+- id: cheonmu-if-au
+  title: 존재하지 않는 기록 - 01
+  image: /images/if-au.jpg
+  alt: 벚꽃이 흩날리는 봄 하늘 아래, 붉은 코트의 천령과 재킷을 어깨에 걸친 무영이 나란히 걷는 사복 차림 일러스트
+  creator: 레이지빈
+  characters: [cheonryeong, muyeong]
+  tags: [2인, 봄, 일상]
+  public: true
+  nonCanon: true
 
 - id: cheonmu-idol
   title: 천령·무영 아이돌 페이스캠
@@ -122,7 +132,7 @@
   public: true
 
 - id: cheonmu-charging
-  title: Charging
+  title: 충전 중
   image: /images/Cheonmu_charging.png
   alt: 검은 전투복 차림의 무영이 흰 의료복 차림의 천령 뒤에 기대어 어깨를 감싸고 있는 2인 일러스트
   creator: Forlavo1796
@@ -131,7 +141,7 @@
   public: true
 
 - id: cheonmu-lighthouse
-  title: lighthouse
+  title: 등대
   image: /images/Cheonmu_lighthouse.jpg
   alt: 밝은 빛을 등진 천령과 방독면을 손에 든 무영이 서로를 마주 보는 장면을 위아래로 배치한 일러스트
   creator: 레이지빈
@@ -146,4 +156,13 @@
   creator: 깡통에 보리밥
   characters: [cheonryeong, muyeong]
   tags: [2인, 체형, 캐릭터-디자인]
+  public: true
+
+- id: cheonmu-injury
+  title: 부상
+  image: /images/injury.jpg
+  alt: 볕이 드는 병상에서 붕대를 감고 피 흘리며 누운 무영의 얼굴을, 피 묻은 손의 천령이 내려다보며 살피는 일러스트
+  creator: 레이지빈
+  characters: [cheonryeong, muyeong]
+  tags: [2인, 치료, 병상]
   public: true
