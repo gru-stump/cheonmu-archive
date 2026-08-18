@@ -12,6 +12,7 @@ const NEW_IMAGE_PATHS = [
   '/images/Forgotten_record_first_meeting.png',
   '/images/cheonmu_repeated_treatment.jpg',
   '/images/cheonmu_rain.png',
+  '/images/children_01.png',
   '/images/cheonmu_idol.png',
   '/images/cheonmu_setlog.png',
   '/images/Cheonmu_charging.png',
@@ -65,7 +66,7 @@ describe('initial Cheonmu archive content', () => {
     expect(validateContent(content).errors).not.toContain('무영 신장이 185cm와 189cm로 충돌합니다.');
   });
 
-  it('publishes only the fifteen registered gallery images with credit', () => {
+  it('publishes only the sixteen registered gallery images with credit', () => {
     const gallery = loadAllContent().gallery;
 
     expect(gallery.map((item) => item.image)).toEqual(NEW_IMAGE_PATHS);
@@ -81,6 +82,7 @@ describe('initial Cheonmu archive content', () => {
       '리몽',
       '레이지빈',
       '사냐',
+      '직수',
       '고젓두',
       '땨땨',
       'Forlavo1796',

@@ -26,6 +26,7 @@ export function GalleryPage({ items = loadAllContent().gallery }: GalleryPagePro
         <span className="gallery-card__image">
           <img src={resolvePublicAssetUrl(item.image)} alt={item.alt} />
           {item.nonCanon && <span className="gallery-card__phantom">존재하지 않는 기록</span>}
+          {item.pages && item.pages.length > 1 && <span className="gallery-card__pages">만화 · {item.pages.length}쪽</span>}
         </span>
         <span className="gallery-card__caption">
           <strong>{item.title}</strong>

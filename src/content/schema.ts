@@ -58,6 +58,7 @@ export const galleryItemSchema = z.object({
   tags: z.array(nonEmptyText).optional(),
   public: z.boolean(),
   nonCanon: z.boolean().optional(),
+  pages: z.array(nonEmptyText.regex(/^\/images\/[A-Za-z0-9_-]+\.(?:png|jpe?g|webp)$/i)).min(2).optional(),
 });
 
 export const gallerySchema = z.array(galleryItemSchema);

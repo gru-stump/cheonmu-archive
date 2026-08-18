@@ -1516,6 +1516,18 @@
 
 .gallery-card__image { position: relative; }
 
+.gallery-card__pages {
+  position: absolute;
+  top: 0.9rem;
+  left: 0.9rem;
+  padding: 0.22rem 0.6rem;
+  color: var(--paper-raised);
+  background: rgb(29 27 26 / 78%);
+  font: 800 0.64rem/1.2 var(--font-label);
+  letter-spacing: 0.12em;
+  pointer-events: none;
+}
+
 .gallery-card__phantom {
   position: absolute;
   top: 0.9rem;

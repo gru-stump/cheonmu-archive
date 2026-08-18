@@ -12,11 +12,13 @@ const focusableSelector = 'a[href], button:not([disabled]), [tabindex]:not([tabi
 
 export function GalleryLightbox({ items, initialIndex, onClose }: GalleryLightboxProps): JSX.Element | null {
   const [index, setIndex] = useState(() => Math.min(Math.max(initialIndex, 0), items.length - 1));
+  const [page, setPage] = useState(0);
   const dialogRef = useRef<HTMLDivElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const previouslyFocusedRef = useRef<HTMLElement | null>(null);
   const titleId = useId();
   const item = items[index];
+  const pages = item?.pages && item.pages.length > 1 ? item.pages : null;
 
   const restoreFocus = useCallback(() => {
     previouslyFocusedRef.current?.focus();
@@ -78,7 +80,7 @@ export function GalleryLightbox({ items, initialIndex, onClose }: GalleryLightbo
       >
         <header className="gallery-lightbox__header">
           <div>
-            <p className="document-kicker">Gallery · {index + 1} / {items.length}</p>
+            <p className="document-kicker">Gallery · {index + 1} / {items.length}{pages && <> · {page + 1}쪽 / {pages.length}쪽</>}</p>
             <h2 id={titleId}>{item.title}</h2>
           </div>
           <button ref={closeButtonRef} type="button" aria-label="라이트박스 닫기" onClick={close}>
@@ -87,7 +89,7 @@ export function GalleryLightbox({ items, initialIndex, onClose }: GalleryLightbo
         </header>
 
         <div className="gallery-lightbox__image-wrap">
-          <img src={resolvePublicAssetUrl(item.image)} alt={item.alt} />
+          <img src={resolvePublicAssetUrl(pages ? pages[page] : item.image)} alt={pages ? `${item.alt} (${page + 1}쪽)` : item.alt} />
         </div>
 
         <footer className="gallery-lightbox__footer">
@@ -102,22 +104,41 @@ export function GalleryLightbox({ items, initialIndex, onClose }: GalleryLightbo
             )}
           </div>
           <div className="gallery-lightbox__controls">
-            <button
-              type="button"
-              aria-label="이전 이미지"
-              disabled={index === 0}
-              onClick={() => setIndex((current) => Math.max(0, current - 1))}
-            >
-              이전
-            </button>
-            <button
-              type="button"
-              aria-label="다음 이미지"
-              disabled={index === items.length - 1}
-              onClick={() => setIndex((current) => Math.min(items.length - 1, current + 1))}
-            >
-              다음
-            </button>
+            {pages ? <>
+              <button
+                type="button"
+                aria-label="이전 쪽"
+                disabled={page === 0}
+                onClick={() => setPage((current) => Math.max(0, current - 1))}
+              >
+                이전 쪽
+              </button>
+              <button
+                type="button"
+                aria-label="다음 쪽"
+                disabled={page === pages.length - 1}
+                onClick={() => setPage((current) => Math.min(pages.length - 1, current + 1))}
+              >
+                다음 쪽
+              </button>
+            </> : <>
+              <button
+                type="button"
+                aria-label="이전 이미지"
+                disabled={index === 0}
+                onClick={() => { setPage(0); setIndex((current) => Math.max(0, current - 1)); }}
+              >
+                이전
+              </button>
+              <button
+                type="button"
+                aria-label="다음 이미지"
+                disabled={index === items.length - 1}
+                onClick={() => { setPage(0); setIndex((current) => Math.min(items.length - 1, current + 1)); }}
+              >
+                다음
+              </button>
+            </>}
           </div>
         </footer>
       </div>
