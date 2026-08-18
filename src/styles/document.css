@@ -1548,6 +1548,109 @@
   font-style: italic;
 }
 
+/* 화랑 — 목차 탭 */
+.gallery-toc {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: var(--space-md);
+  padding: 0.6rem 0;
+  background: var(--paper);
+  border-bottom: 1px solid var(--rule);
+}
+
+.gallery-toc button {
+  padding: 0.35rem 0.8rem;
+  color: var(--ink);
+  background: rgb(251 247 235 / 68%);
+  border: 1px solid var(--rule);
+  font-family: var(--font-label);
+  font-size: 0.74rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+}
+
+.gallery-toc button:hover {
+  color: var(--paper-raised);
+  background: var(--muyeong-black);
+  border-color: var(--muyeong-black);
+}
+
+.gallery-toc button span {
+  margin-left: 0.25rem;
+  color: var(--ink-muted);
+  font-weight: 700;
+}
+
+.gallery-toc button:hover span { color: var(--paper-shadow); }
+
+.gallery-group,
+.gallery-phantom-section {
+  scroll-margin-top: 4rem;
+}
+
+/* 화랑 — 종류별 전시 구역 */
+.gallery-group { margin-top: var(--space-xl); }
+
+.gallery-group__header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: var(--space-md);
+  padding-bottom: var(--space-xs);
+  border-bottom: 0.2rem double var(--rule);
+}
+
+.gallery-group__header h2 {
+  margin: 0;
+  font-size: 1.05rem;
+  letter-spacing: 0.05em;
+}
+
+.gallery-group__header span {
+  color: var(--ink-muted);
+  font-family: var(--font-label);
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+/* 화랑 — 벽돌 배치 */
+.gallery-grid--masonry {
+  display: block;
+  columns: 3;
+  column-gap: var(--space-md);
+}
+
+.gallery-grid--masonry li {
+  margin-bottom: var(--space-md);
+  break-inside: avoid;
+}
+
+.gallery-grid--masonry .gallery-card__image {
+  min-height: 0;
+  display: block;
+  background: none;
+}
+
+.gallery-grid--masonry .gallery-card img {
+  width: 100%;
+  height: auto;
+  max-height: none;
+  object-fit: unset;
+}
+
+@media (max-width: 47.999rem) {
+  .gallery-grid--masonry { columns: 2; }
+}
+
+@media (max-width: 30rem) {
+  .gallery-grid--masonry { columns: 1; }
+}
+
 /* 화랑 — 존재하지 않는 기록 섹션 */
 .gallery-phantom-section {
   margin-top: var(--space-xl);
